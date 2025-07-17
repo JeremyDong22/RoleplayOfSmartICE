@@ -19,6 +19,7 @@ import { TaskSummary } from '../components/TaskSummary/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
+import { saveState, loadState, clearState } from '../utils/persistenceManager'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -288,7 +289,41 @@ export const ChefDashboard: React.FC = () => {
   const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
   const [showPreClosingComplete, setShowPreClosingComplete] = useState(false)
   const waitingRef = useRef(false) // Ref to prevent race conditions
+  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
   const workflowPeriods = loadWorkflowPeriods()
+  
+  // Load state from localStorage on mount
+  useEffect(() => {
+    if (!hasInitialized) {
+      const savedState = loadState('chef')
+      if (savedState) {
+        console.log('[Persistence] Loading saved state from localStorage')
+        setCompletedTaskIds(savedState.completedTaskIds)
+        setTaskStatuses(savedState.taskStatuses)
+        setNoticeComments(savedState.noticeComments)
+        setMissingTasks(savedState.missingTasks)
+        setIsManualClosing(savedState.isManualClosing)
+        setIsWaitingForNextDay(savedState.isWaitingForNextDay)
+        waitingRef.current = savedState.isWaitingForNextDay
+      }
+      setHasInitialized(true)
+    }
+  }, [hasInitialized])
+  
+  // Save state to localStorage whenever key states change
+  useEffect(() => {
+    if (hasInitialized) {
+      console.log('[Persistence] Saving state to localStorage')
+      saveState('chef', {
+        completedTaskIds,
+        taskStatuses,
+        noticeComments,
+        missingTasks,
+        isManualClosing,
+        isWaitingForNextDay
+      })
+    }
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, hasInitialized])
   
   // Helper function to get next period for Chef (only special case for pre-closing)
   const getNextPeriodForChef = (currentTime?: Date) => {
@@ -357,6 +392,9 @@ export const ChefDashboard: React.FC = () => {
       // Check if we just crossed 10:00 AM (from 9:xx to 10:xx)
       if (lastCheckedHour !== 10 && currentHour === 10) {
         console.log('[Daily Reset] Crossing 10:00 AM - resetting all tasks')
+        
+        // Clear localStorage
+        clearState('chef')
         
         // Reset all task-related states
         setTaskStatuses([])

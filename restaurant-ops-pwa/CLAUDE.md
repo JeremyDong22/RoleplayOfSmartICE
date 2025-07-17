@@ -106,6 +106,14 @@ The application uses a complex state management system for handling restaurant o
    - Refs are set before state updates to block unwanted period updates
    - Prevents period update effect from reverting manual state transitions
 
+9. **Data Persistence with localStorage**:
+   - States persist across page refreshes using `persistenceManager.ts`
+   - Separate storage keys for Manager (`restaurant-ops-manager-state`) and Chef (`restaurant-ops-chef-state`)
+   - Automatically saves: completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay
+   - Data automatically resets at 10:00 AM daily when crossing from 9:xx to 10:xx
+   - Handles corrupted data gracefully by returning null
+   - Validates data freshness using timestamps
+
 ### Material-UI Grid v2 Usage
 The project uses MUI v7 with the new Grid2 component. Import as:
 ```typescript

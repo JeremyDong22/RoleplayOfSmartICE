@@ -7,8 +7,7 @@ import {
   AppBar, 
   Toolbar, 
   IconButton,
-  Typography,
-  Paper
+  Typography
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -18,6 +17,7 @@ import { TaskSummary } from '../components/TaskSummary/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
+import { saveState, loadState, clearState } from '../utils/persistenceManager'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -284,8 +284,42 @@ export const ManagerDashboard: React.FC = () => {
   const [isManualClosing, setIsManualClosing] = useState(false)
   const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
   const manualClosingRef = useRef(false) // Ref to prevent race conditions
+  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
   const workflowPeriods = loadWorkflowPeriods()
   console.log('Loaded workflow periods:', workflowPeriods.map(p => ({ id: p.id, name: p.displayName })))
+  
+  // Load state from localStorage on mount
+  useEffect(() => {
+    if (!hasInitialized) {
+      const savedState = loadState('manager')
+      if (savedState) {
+        console.log('[Persistence] Loading saved state from localStorage')
+        setCompletedTaskIds(savedState.completedTaskIds)
+        setTaskStatuses(savedState.taskStatuses)
+        setNoticeComments(savedState.noticeComments)
+        setMissingTasks(savedState.missingTasks)
+        setIsManualClosing(savedState.isManualClosing)
+        setIsWaitingForNextDay(savedState.isWaitingForNextDay)
+        manualClosingRef.current = savedState.isManualClosing
+      }
+      setHasInitialized(true)
+    }
+  }, [hasInitialized])
+  
+  // Save state to localStorage whenever key states change
+  useEffect(() => {
+    if (hasInitialized) {
+      console.log('[Persistence] Saving state to localStorage')
+      saveState('manager', {
+        completedTaskIds,
+        taskStatuses,
+        noticeComments,
+        missingTasks,
+        isManualClosing,
+        isWaitingForNextDay
+      })
+    }
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, hasInitialized])
   
   // Period update effect
   useEffect(() => {
@@ -360,6 +394,9 @@ export const ManagerDashboard: React.FC = () => {
       // Check if we just crossed 10:00 AM (from 9:xx to 10:xx)
       if (lastCheckedHour !== 10 && currentHour === 10) {
         console.log('[Daily Reset] Crossing 10:00 AM - resetting all tasks')
+        
+        // Clear localStorage
+        clearState('manager')
         
         // Reset all task-related states
         setTaskStatuses([])
