@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cd restaurant-ops-pwa && npm install && npm run build",
+  "outputDirectory": "restaurant-ops-pwa/dist",
+  "installCommand": "cd restaurant-ops-pwa && npm install",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
