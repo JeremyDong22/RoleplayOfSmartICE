@@ -583,10 +583,7 @@ export const ChefDashboard: React.FC = () => {
     navigate('/')
   }
   
-  const handleLastCustomerLeft = () => {
-    // Chef doesn't handle closing period, this shouldn't be called
-    // but we keep it for consistency with the interface
-  }
+  // Removed handleLastCustomerLeft as it's not used for Chef
   
   const handleClosingComplete = () => {
     // Check if there are any missing tasks

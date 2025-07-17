@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App-redesigned.tsx'
+import App from './App'
 
 // Register service worker for PWA capabilities
 if ('serviceWorker' in navigator) {

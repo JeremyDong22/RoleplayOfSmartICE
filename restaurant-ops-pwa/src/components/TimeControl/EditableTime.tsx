@@ -20,7 +20,7 @@ interface EditableTimeProps {
   onTimeChange: (date: Date | undefined) => void
 }
 
-export const EditableTime: React.FC<EditableTimeProps> = ({ testTime, onTimeChange }) => {
+export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isEditing, setIsEditing] = useState(false)
   const [editHour, setEditHour] = useState(currentTime.getHours().toString().padStart(2, '0'))

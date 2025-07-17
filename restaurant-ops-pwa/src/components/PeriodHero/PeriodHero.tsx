@@ -1,6 +1,6 @@
 // Hero section showing current workflow period
 import { Box, Typography, Paper, Chip } from '@mui/material'
-import { getBusinessStatus, type WorkflowPeriod } from '../../utils/workflowParser'
+import { getBusinessStatus } from '../../utils/workflowParser'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import StorefrontIcon from '@mui/icons-material/Storefront'

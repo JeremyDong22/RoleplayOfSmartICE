@@ -21,6 +21,9 @@ export interface TaskTemplate {
   requiresPhoto: boolean
   requiresVideo: boolean
   requiresText: boolean
+  timeSlot?: string  // Optional, for display purposes
+  startTime?: string // Optional, for display purposes
+  endTime?: string   // Optional, for display purposes
 }
 
 // Define all workflow periods with tasks
@@ -950,6 +953,8 @@ export function getNextPeriod(testTime?: Date): WorkflowPeriod | null {
 }
 
 // Parse markdown content to extract workflow structure
+// Commented out as it's not currently used
+/*
 function parseWorkflowFromMarkdown(content: string): WorkflowPeriod[] {
   const periods: WorkflowPeriod[] = []
   const lines = content.split('\n')
@@ -1061,6 +1066,7 @@ function parseWorkflowFromMarkdown(content: string): WorkflowPeriod[] {
   
   return periods
 }
+*/
 
 // Load workflow periods from markdown
 export function loadWorkflowPeriods(): WorkflowPeriod[] {
