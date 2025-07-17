@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
-  Box, 
   Container, 
   AppBar, 
   Toolbar, 
@@ -17,6 +16,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { TaskSummary } from '../components/TaskSummary/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
+import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
@@ -143,165 +143,40 @@ interface NoticeComment {
   timestamp: Date
 }
 
-// Component for displaying closed period with countdown
-const ClosedPeriodDisplay: React.FC<{ nextPeriod: WorkflowPeriod | null; testTime?: Date }> = ({ nextPeriod, testTime }) => {
-  const [timeUntilNext, setTimeUntilNext] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
-  
-  useEffect(() => {
-    if (!nextPeriod) return
-    
-    const calculateTime = () => {
-      const now = testTime || new Date()
-      const [startHour, startMinute] = nextPeriod.startTime.split(':').map(Number)
-      const nextStart = new Date(now)
-      nextStart.setHours(startHour, startMinute, 0, 0)
-      
-      // If the next period is tomorrow
-      if (now > nextStart) {
-        nextStart.setDate(nextStart.getDate() + 1)
-      }
-      
-      const timeDiff = nextStart.getTime() - now.getTime()
-      
-      if (timeDiff > 0) {
-        const hours = Math.floor(timeDiff / (1000 * 60 * 60))
-        const minutes = Math.floor((timeDiff / (1000 * 60)) % 60)
-        const seconds = Math.floor((timeDiff / 1000) % 60)
-        setTimeUntilNext({ hours, minutes, seconds })
-      } else {
-        setTimeUntilNext({ hours: 0, minutes: 0, seconds: 0 })
-      }
-    }
-    
-    calculateTime()
-    const interval = setInterval(calculateTime, 1000)
-    return () => clearInterval(interval)
-  }, [nextPeriod, testTime])
-  
-  return (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center', 
-      justifyContent: 'center' 
-    }}>
-      {nextPeriod && (
-        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-
-          {/* Status - positioned absolutely above the circle */}
-          <Typography 
-            variant="overline" 
-            sx={{ 
-              color: 'text.disabled',
-              letterSpacing: 2,
-              fontSize: '0.75rem',
-              position: 'absolute',
-              bottom: '13.5rem', // Use rem units for flexible spacing
-              whiteSpace: 'nowrap'
-            }}
-          >
-            当前状态：休息中
-          </Typography>
-          
-          {/* Next Period Name - also absolute, but closer to the circle */}
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              color: 'text.secondary',
-              fontWeight: 'normal',
-              position: 'absolute',
-              bottom: '12rem', // Positioned relative to the circle's 10rem height
-              whiteSpace: 'nowrap'
-            }}
-          >
-            下一阶段：{nextPeriod.displayName}
-          </Typography>
-
-          {/* Circle Container - this is the centered element */}
-          <Box 
-            sx={{ 
-              position: 'relative',
-              width: 160,
-              height: 160
-            }}
-          >
-            {/* Background Circle */}
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                borderRadius: '50%',
-                border: theme => {
-                  if (!timeUntilNext) return `3px solid ${theme.palette.primary.main}`
-                  const totalMinutes = timeUntilNext.hours * 60 + timeUntilNext.minutes
-                  const totalSeconds = totalMinutes * 60 + timeUntilNext.seconds
-                  return `3px solid ${totalSeconds <= 300 ? theme.palette.warning.main : theme.palette.primary.main}`
-                },
-                opacity: 0.2,
-                transition: 'all 0.3s ease'
-              }}
-            />
-            
-            {/* Countdown Time */}
-            {timeUntilNext && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)'
-                }}
-              >
-                <Typography 
-                  variant="h1" 
-                  sx={{ 
-                    fontWeight: 300,
-                    fontSize: '2rem',
-                    color: theme => {
-                      const totalMinutes = timeUntilNext.hours * 60 + timeUntilNext.minutes
-                      const totalSeconds = totalMinutes * 60 + timeUntilNext.seconds
-                      return totalSeconds <= 300 ? theme.palette.warning.main : theme.palette.primary.main
-                    },
-                    lineHeight: 1
-                  }}
-                >
-                  {String(timeUntilNext.hours).padStart(2, '0')}:
-                  {String(timeUntilNext.minutes).padStart(2, '0')}:
-                  {String(timeUntilNext.seconds).padStart(2, '0')}
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        </Box>
-      )}
-    </Box>
-  )
-}
-
 export const ChefDashboard: React.FC = () => {
-  const navigate = useNavigate()
-  const [testTime, setTestTime] = useState<Date | undefined>(undefined)
-  const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
-  const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
-  const [taskStatuses, setTaskStatuses] = useState<TaskStatus[]>([])
-  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]) // Tracks ALL completed tasks across all periods
-  const [noticeComments, setNoticeComments] = useState<NoticeComment[]>([])
-  const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
-  const [isManualClosing, setIsManualClosing] = useState(false)
-  const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
-  const [showPreClosingComplete, setShowPreClosingComplete] = useState(false)
-  const waitingRef = useRef(false) // Ref to prevent race conditions
-  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
-  const workflowPeriods = loadWorkflowPeriods()
+  console.error('[ChefDashboard] Component render start')
+  
+  // Check if role is correct
+  const selectedRole = localStorage.getItem('selectedRole')
+  console.error('[ChefDashboard] Selected role from localStorage:', selectedRole)
+  
+  try {
+    const navigate = useNavigate()
+    const [testTime, setTestTime] = useState<Date | undefined>(undefined)
+    const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
+    const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
+    const [taskStatuses, setTaskStatuses] = useState<TaskStatus[]>([])
+    const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]) // Tracks ALL completed tasks across all periods
+    const [noticeComments, setNoticeComments] = useState<NoticeComment[]>([])
+    const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
+    const [isManualClosing, setIsManualClosing] = useState(false)
+    const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
+    const [showPreClosingComplete, setShowPreClosingComplete] = useState(false)
+    const waitingRef = useRef(false) // Ref to prevent race conditions
+    const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
+    const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
+    const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
+    
+    console.error('[ChefDashboard] About to load workflow periods')
+    const workflowPeriods = loadWorkflowPeriods()
+    console.error('[ChefDashboard] Workflow periods loaded:', workflowPeriods)
   
   // Load state from localStorage on mount
   useEffect(() => {
+    console.error('[ChefDashboard] localStorage effect - hasInitialized:', hasInitialized)
     if (!hasInitialized) {
       const savedState = loadState('chef')
+      console.error('[ChefDashboard] Saved state from localStorage:', savedState)
       if (savedState) {
         console.log('[Persistence] Loading saved state from localStorage')
         setCompletedTaskIds(savedState.completedTaskIds)
@@ -311,6 +186,8 @@ export const ChefDashboard: React.FC = () => {
         setIsManualClosing(savedState.isManualClosing)
         setIsWaitingForNextDay(savedState.isWaitingForNextDay)
         waitingRef.current = savedState.isWaitingForNextDay
+        setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
+        manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
       }
       setHasInitialized(true)
     }
@@ -326,10 +203,11 @@ export const ChefDashboard: React.FC = () => {
         noticeComments,
         missingTasks,
         isManualClosing,
-        isWaitingForNextDay
+        isWaitingForNextDay,
+        manuallyAdvancedPeriod
       })
     }
-  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, hasInitialized])
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, hasInitialized])
   
   // Helper function to get next period for Chef (only special case for pre-closing)
   const getNextPeriodForChef = (currentTime?: Date) => {
@@ -348,7 +226,10 @@ export const ChefDashboard: React.FC = () => {
   
   // Period update effect
   useEffect(() => {
+    console.error('[ChefDashboard] Period update effect triggered')
     const updatePeriods = () => {
+      console.error('[ChefDashboard] updatePeriods called - waitingRef:', waitingRef.current, 'isWaitingForNextDay:', isWaitingForNextDay)
+      // IMPORTANT: Check waiting state FIRST before manual advance
       // Check waitingRef first for immediate feedback
       if (waitingRef.current || isWaitingForNextDay) {
         const current = getCurrentPeriod(testTime)
@@ -358,6 +239,9 @@ export const ChefDashboard: React.FC = () => {
           waitingRef.current = false
           setIsWaitingForNextDay(false)
           setShowPreClosingComplete(false)
+          // Clear any lingering manual advance state
+          setManuallyAdvancedPeriod(null)
+          manualAdvanceRef.current = null
           setCurrentPeriod(current)
           setNextPeriod(getNextPeriodForChef(testTime))
         }
@@ -365,10 +249,25 @@ export const ChefDashboard: React.FC = () => {
         return
       }
       
+      // Check if we have a manually advanced period
+      if (manualAdvanceRef.current || manuallyAdvancedPeriod) {
+        const current = getCurrentPeriod(testTime)
+        // Check if actual time has caught up to the manually advanced period
+        if (current?.id === manualAdvanceRef.current || current?.id === manuallyAdvancedPeriod) {
+          console.log('[ChefDashboard] Time caught up to manually advanced period, clearing manual advance')
+          setManuallyAdvancedPeriod(null)
+          manualAdvanceRef.current = null
+        } else {
+          // console.log('[ChefDashboard] Keeping manually advanced period:', manualAdvanceRef.current)
+          return // Don't update periods while manually advanced
+        }
+      }
+      
       // Normal period updates
       if (!isManualClosing) {
         const current = getCurrentPeriod(testTime)
         const next = getNextPeriodForChef(testTime)
+        console.error('[ChefDashboard] Normal period update - current:', current, 'next:', next)
         setCurrentPeriod(current)
         setNextPeriod(next)
       }
@@ -380,12 +279,16 @@ export const ChefDashboard: React.FC = () => {
     // Always set interval to check for period changes
     const interval = setInterval(updatePeriods, 1000)
     return () => clearInterval(interval)
-  }, [testTime, isManualClosing, isWaitingForNextDay])
+  }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod])
   
-  // Sync ref with state
+  // Sync refs with state
   useEffect(() => {
     waitingRef.current = isWaitingForNextDay
   }, [isWaitingForNextDay])
+  
+  useEffect(() => {
+    manualAdvanceRef.current = manuallyAdvancedPeriod
+  }, [manuallyAdvancedPeriod])
   
   // Task refresh at 10:00 AM
   useEffect(() => {
@@ -409,12 +312,12 @@ export const ChefDashboard: React.FC = () => {
         setMissingTasks([])
         setShowPreClosingComplete(false)
         
-        // If we're in waiting state, clear it
-        if (isWaitingForNextDay) {
-          setIsWaitingForNextDay(false)
-          waitingRef.current = false
-          setIsManualClosing(false)
-        }
+        // Always clear waiting state and manual advance state at daily reset
+        setIsWaitingForNextDay(false)
+        waitingRef.current = false
+        setIsManualClosing(false)
+        setManuallyAdvancedPeriod(null)
+        manualAdvanceRef.current = null
         
         console.log('[Daily Reset] All tasks reset for new day')
       }
@@ -614,6 +517,9 @@ export const ChefDashboard: React.FC = () => {
       setMissingTasks([])
       setIsManualClosing(false)
       setShowPreClosingComplete(false)
+      // Clear manual advance state to prevent conflicts
+      setManuallyAdvancedPeriod(null)
+      manualAdvanceRef.current = null
       setIsWaitingForNextDay(true) // Set waiting state
       setCurrentPeriod(null) // Clear current period - should show waiting display
       
@@ -663,14 +569,28 @@ export const ChefDashboard: React.FC = () => {
       setMissingTasks(prev => [...prev, ...uncompletedTasks])
     }
     
+    // Set manual advance flag BEFORE updating period
+    setManuallyAdvancedPeriod(nextPeriod.id)
+    manualAdvanceRef.current = nextPeriod.id
+    
     // Force transition to next period
     setCurrentPeriod(nextPeriod)
     setNextPeriod(getNextPeriod(testTime))
     
-    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id)
+    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id, '- manual advance set')
   }
   
   const currentTasks = currentPeriod?.tasks.chef || []
+  
+  console.error('[ChefDashboard] Before render - currentPeriod:', currentPeriod)
+  console.error('[ChefDashboard] Before render - currentTasks:', currentTasks)
+  console.error('[ChefDashboard] Before render - isWaitingForNextDay:', isWaitingForNextDay)
+  console.error('[ChefDashboard] Before render - nextPeriod:', nextPeriod)
+  
+  // Check for early returns
+  if (selectedRole !== 'chef') {
+    console.error('[ChefDashboard] WARNING: Selected role is not chef, but ChefDashboard is rendered!')
+  }
   
   return (
     <>
@@ -760,4 +680,11 @@ export const ChefDashboard: React.FC = () => {
       </Container>
     </>
   )
+  } catch (error) {
+    console.error('[ChefDashboard] Error during render:', error)
+    console.error('[ChefDashboard] Error stack:', error instanceof Error ? error.stack : 'No stack')
+    throw error // Re-throw to be caught by error boundary
+  } finally {
+    console.error('[ChefDashboard] Component render completed (or failed)')
+  }
 }

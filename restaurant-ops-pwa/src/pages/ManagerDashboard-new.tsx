@@ -1,8 +1,8 @@
 // Manager Dashboard with status island and new timer display
+// Updated: Added debug logs for isManualClosing state tracking and recovery mechanism for stuck states
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
-  Box, 
   Container, 
   AppBar, 
   Toolbar, 
@@ -15,6 +15,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { TaskSummary } from '../components/TaskSummary/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
+import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
@@ -133,145 +134,6 @@ interface NoticeComment {
   timestamp: Date
 }
 
-// Component for displaying closed period with countdown
-const ClosedPeriodDisplay: React.FC<{ nextPeriod: WorkflowPeriod | null; testTime?: Date }> = ({ nextPeriod, testTime }) => {
-  const [timeUntilNext, setTimeUntilNext] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
-  
-  useEffect(() => {
-    if (!nextPeriod) return
-    
-    const calculateTime = () => {
-      const now = testTime || new Date()
-      const [startHour, startMinute] = nextPeriod.startTime.split(':').map(Number)
-      const nextStart = new Date(now)
-      nextStart.setHours(startHour, startMinute, 0, 0)
-      
-      // If the next period is tomorrow
-      if (now > nextStart) {
-        nextStart.setDate(nextStart.getDate() + 1)
-      }
-      
-      const timeDiff = nextStart.getTime() - now.getTime()
-      
-      if (timeDiff > 0) {
-        const hours = Math.floor(timeDiff / (1000 * 60 * 60))
-        const minutes = Math.floor((timeDiff / (1000 * 60)) % 60)
-        const seconds = Math.floor((timeDiff / 1000) % 60)
-        setTimeUntilNext({ hours, minutes, seconds })
-      } else {
-        setTimeUntilNext({ hours: 0, minutes: 0, seconds: 0 })
-      }
-    }
-    
-    calculateTime()
-    const interval = setInterval(calculateTime, 1000)
-    return () => clearInterval(interval)
-  }, [nextPeriod, testTime])
-  
-  return (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center', 
-      justifyContent: 'center' 
-    }}>
-      {nextPeriod && (
-        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-
-          {/* Status - positioned absolutely above the circle */}
-          <Typography 
-            variant="overline" 
-            sx={{ 
-              color: 'text.disabled',
-              letterSpacing: 2,
-              fontSize: '0.75rem',
-              position: 'absolute',
-              bottom: '13.5rem', // Use rem units for flexible spacing
-              whiteSpace: 'nowrap'
-            }}
-          >
-            当前状态：休息中
-          </Typography>
-          
-          {/* Next Period Name - also absolute, but closer to the circle */}
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              color: 'text.secondary',
-              fontWeight: 'normal',
-              position: 'absolute',
-              bottom: '11rem', // Positioned relative to the circle's 10rem height
-              whiteSpace: 'nowrap'
-            }}
-          >
-            下一阶段：{nextPeriod.displayName}
-          </Typography>
-
-          {/* Circle Container - this is the centered element */}
-          <Box 
-            sx={{ 
-              position: 'relative',
-              width: 160,
-              height: 160
-            }}
-          >
-            {/* Background Circle */}
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                borderRadius: '50%',
-                border: theme => {
-                  if (!timeUntilNext) return `3px solid ${theme.palette.primary.main}`
-                  const totalMinutes = timeUntilNext.hours * 60 + timeUntilNext.minutes
-                  const totalSeconds = totalMinutes * 60 + timeUntilNext.seconds
-                  return `3px solid ${totalSeconds <= 300 ? theme.palette.warning.main : theme.palette.primary.main}`
-                },
-                opacity: 0.2,
-                transition: 'all 0.3s ease'
-              }}
-            />
-            
-            {/* Countdown Time */}
-            {timeUntilNext && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)'
-                }}
-              >
-                <Typography 
-                  variant="h1" 
-                  sx={{ 
-                    fontWeight: 300,
-                    fontSize: '2rem',
-                    color: theme => {
-                      const totalMinutes = timeUntilNext.hours * 60 + timeUntilNext.minutes
-                      const totalSeconds = totalMinutes * 60 + timeUntilNext.seconds
-                      return totalSeconds <= 300 ? theme.palette.warning.main : theme.palette.primary.main
-                    },
-                    lineHeight: 1
-                  }}
-                >
-                  {String(timeUntilNext.hours).padStart(2, '0')}:
-                  {String(timeUntilNext.minutes).padStart(2, '0')}:
-                  {String(timeUntilNext.seconds).padStart(2, '0')}
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        </Box>
-      )}
-    </Box>
-  )
-}
-
 export const ManagerDashboard: React.FC = () => {
   const navigate = useNavigate()
   const [testTime, setTestTime] = useState<Date | undefined>(undefined)
@@ -285,15 +147,43 @@ export const ManagerDashboard: React.FC = () => {
   const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
   const manualClosingRef = useRef(false) // Ref to prevent race conditions
   const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
+  const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
+  const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
   const workflowPeriods = loadWorkflowPeriods()
-  console.log('Loaded workflow periods:', workflowPeriods.map(p => ({ id: p.id, name: p.displayName })))
+  
+  // DEBUG: Log component render state
+  console.log('[DEBUG ManagerDashboard] Component render state:', {
+    currentPeriod: currentPeriod ? { id: currentPeriod.id, name: currentPeriod.displayName } : null,
+    nextPeriod: nextPeriod ? { id: nextPeriod.id, name: nextPeriod.displayName } : null,
+    isManualClosing,
+    isWaitingForNextDay,
+    hasInitialized,
+    manuallyAdvancedPeriod,
+    completedTaskIds: completedTaskIds.length,
+    timestamp: new Date().toISOString()
+  })
   
   // Load state from localStorage on mount
   useEffect(() => {
     if (!hasInitialized) {
       const savedState = loadState('manager')
       if (savedState) {
-        console.log('[Persistence] Loading saved state from localStorage')
+        console.log('[DEBUG Persistence] Loading saved state from localStorage:', {
+          isManualClosing: savedState.isManualClosing,
+          isWaitingForNextDay: savedState.isWaitingForNextDay,
+          manuallyAdvancedPeriod: savedState.manuallyAdvancedPeriod,
+          completedTaskIds: savedState.completedTaskIds?.length || 0,
+          taskStatuses: savedState.taskStatuses?.length || 0,
+          missingTasks: savedState.missingTasks?.length || 0
+        })
+        
+        // Check for invalid stuck state BEFORE applying it
+        if (savedState.isManualClosing && !savedState.isWaitingForNextDay) {
+          console.log('[DEBUG Persistence] RECOVERY - Found stuck isManualClosing=true without waiting state')
+          console.log('[DEBUG Persistence] Clearing isManualClosing to recover from stuck state')
+          savedState.isManualClosing = false
+        }
+        
         setCompletedTaskIds(savedState.completedTaskIds)
         setTaskStatuses(savedState.taskStatuses)
         setNoticeComments(savedState.noticeComments)
@@ -301,6 +191,10 @@ export const ManagerDashboard: React.FC = () => {
         setIsManualClosing(savedState.isManualClosing)
         setIsWaitingForNextDay(savedState.isWaitingForNextDay)
         manualClosingRef.current = savedState.isManualClosing
+        setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
+        manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
+      } else {
+        console.log('[DEBUG Persistence] No saved state found in localStorage')
       }
       setHasInitialized(true)
     }
@@ -316,40 +210,52 @@ export const ManagerDashboard: React.FC = () => {
         noticeComments,
         missingTasks,
         isManualClosing,
-        isWaitingForNextDay
+        isWaitingForNextDay,
+        manuallyAdvancedPeriod
       })
     }
-  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, hasInitialized])
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, hasInitialized])
   
   // Period update effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null
     
     const updatePeriods = () => {
+      console.log('[DEBUG Period Update] Starting update check:', {
+        isManualClosing,
+        manualClosingRef: manualClosingRef.current,
+        isWaitingForNextDay,
+        currentPeriodId: currentPeriod?.id,
+        hasInitialized
+      })
+      
       // Skip all updates if we're in manual closing mode (check ref for immediate value)
       if (manualClosingRef.current || isManualClosing) {
-        console.log('[Period Update] Skipping - manual closing is true')
+        console.log('[DEBUG Period Update] SKIPPING - manual closing is true')
         return
       }
       
       const current = getCurrentPeriod(testTime)
       const next = getNextPeriod(testTime)
       
-      console.log('[Period Update] Check:', {
-        currentTimeBasedPeriod: current?.id,
-        currentStatePeriod: currentPeriod?.id,
-        isManualClosing,
-        isWaitingForNextDay,
-        timestamp: new Date().toISOString()
+      console.log('[DEBUG Period Update] Got periods from workflow:', {
+        current: current ? { id: current.id, name: current.displayName } : null,
+        next: next ? { id: next.id, name: next.displayName } : null,
+        testTime: testTime?.toISOString() || 'real time'
       })
       
+      // IMPORTANT: Check waiting state FIRST before manual advance
       // If we're in waiting state, only exit if we've reached opening time
       if (isWaitingForNextDay) {
         if (current && current.id === 'opening') {
-          console.log('[Period Update] Exiting waiting state, entering opening period')
+          console.log('[DEBUG Period Update] Exiting waiting state, entering opening period')
+          console.log('[DEBUG Period Update] Setting isManualClosing to FALSE (from waiting state)')
           setIsWaitingForNextDay(false)
           setIsManualClosing(false)
           manualClosingRef.current = false
+          // Clear any lingering manual advance state
+          setManuallyAdvancedPeriod(null)
+          manualAdvanceRef.current = null
           setCurrentPeriod(current)
           setNextPeriod(next)
         }
@@ -357,9 +263,22 @@ export const ManagerDashboard: React.FC = () => {
         return
       }
       
+      // Check if we have a manually advanced period
+      if (manualAdvanceRef.current || manuallyAdvancedPeriod) {
+        // Check if actual time has caught up to the manually advanced period
+        if (current?.id === manualAdvanceRef.current || current?.id === manuallyAdvancedPeriod) {
+          console.log('[Period Update] Time caught up to manually advanced period, clearing manual advance')
+          setManuallyAdvancedPeriod(null)
+          manualAdvanceRef.current = null
+        } else {
+          console.log('[Period Update] Keeping manually advanced period:', manualAdvanceRef.current)
+          return // Don't update periods while manually advanced
+        }
+      }
+      
       // Normal automatic period updates
       if (current?.id !== currentPeriod?.id) {
-        console.log('[Period Update] Period changed from', currentPeriod?.id, 'to', current?.id)
+        // console.log('[Period Update] Period changed from', currentPeriod?.id, 'to', current?.id)
       }
       setCurrentPeriod(current)
       setNextPeriod(next)
@@ -376,12 +295,43 @@ export const ManagerDashboard: React.FC = () => {
         clearInterval(intervalId)
       }
     }
-  }, [testTime, isManualClosing, isWaitingForNextDay])
+  }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod])
   
-  // Sync ref with state
+  // Sync refs with state
   useEffect(() => {
     manualClosingRef.current = isManualClosing
   }, [isManualClosing])
+  
+  useEffect(() => {
+    manualAdvanceRef.current = manuallyAdvancedPeriod
+  }, [manuallyAdvancedPeriod])
+  
+  // Safety check: Clear invalid states
+  useEffect(() => {
+    // Only run this check after initialization
+    if (!hasInitialized) return
+    
+    // Check if isManualClosing is stuck without a valid currentPeriod
+    if (isManualClosing && !currentPeriod && !isWaitingForNextDay) {
+      console.log('[DEBUG Safety Check] INVALID STATE DETECTED - isManualClosing=true but no currentPeriod and not waiting')
+      console.log('[DEBUG Safety Check] Clearing isManualClosing to recover')
+      
+      // Clear the invalid state
+      setIsManualClosing(false)
+      manualClosingRef.current = false
+      
+      // Also clear manual advance state just in case
+      setManuallyAdvancedPeriod(null)
+      manualAdvanceRef.current = null
+    }
+    
+    // Check if we're stuck in manual closing but not in closing period
+    if (isManualClosing && currentPeriod && currentPeriod.id !== 'closing') {
+      console.log('[DEBUG Safety Check] INVALID STATE - isManualClosing=true but not in closing period')
+      console.log('[DEBUG Safety Check] Current period:', currentPeriod.id)
+      // This might be valid during transition, so just log for now
+    }
+  }, [hasInitialized, isManualClosing, currentPeriod, isWaitingForNextDay])
   
   // Task refresh at 10:00 AM
   useEffect(() => {
@@ -404,12 +354,13 @@ export const ManagerDashboard: React.FC = () => {
         setNoticeComments([])
         setMissingTasks([])
         
-        // If we're in waiting state, clear it
-        if (isWaitingForNextDay) {
-          setIsWaitingForNextDay(false)
-          setIsManualClosing(false)
-          manualClosingRef.current = false
-        }
+        // Always clear waiting state and manual advance state at daily reset
+        console.log('[DEBUG Daily Reset] Setting isManualClosing to FALSE')
+        setIsWaitingForNextDay(false)
+        setIsManualClosing(false)
+        manualClosingRef.current = false
+        setManuallyAdvancedPeriod(null)
+        manualAdvanceRef.current = null
         
         console.log('[Daily Reset] All tasks reset for new day')
       }
@@ -580,10 +531,10 @@ export const ManagerDashboard: React.FC = () => {
   }
   
   const handleLastCustomerLeft = () => {
-    console.log('=== handleLastCustomerLeft called ===')
-    console.log('Current period:', currentPeriod)
-    console.log('Current completedTaskIds:', completedTaskIds)
-    console.log('isManualClosing before:', isManualClosing)
+    console.log('[DEBUG handleLastCustomerLeft] === Called ===')
+    console.log('[DEBUG handleLastCustomerLeft] Current period:', currentPeriod)
+    console.log('[DEBUG handleLastCustomerLeft] Current completedTaskIds:', completedTaskIds)
+    console.log('[DEBUG handleLastCustomerLeft] isManualClosing before:', isManualClosing)
     
     // Force transition to closing period
     const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
@@ -634,7 +585,7 @@ export const ManagerDashboard: React.FC = () => {
       // This prevents the period update effect from running between state updates
       React.startTransition(() => {
         // Set manual closing flag FIRST
-        console.log('[handleLastCustomerLeft] Setting isManualClosing to true')
+        console.log('[DEBUG handleLastCustomerLeft] Setting isManualClosing to TRUE')
         setIsManualClosing(true)
         
         // Then update all other states
@@ -689,8 +640,12 @@ export const ManagerDashboard: React.FC = () => {
       setCompletedTaskIds([])
       setNoticeComments([])
       setMissingTasks([])
+      console.log('[DEBUG handleClosingComplete] Setting isManualClosing to FALSE')
       setIsManualClosing(false)
       manualClosingRef.current = false // Clear ref too
+      // Clear manual advance state to prevent conflicts
+      setManuallyAdvancedPeriod(null)
+      manualAdvanceRef.current = null
       setIsWaitingForNextDay(true) // Set waiting state BEFORE clearing period
       setCurrentPeriod(null) // Clear current period - should show waiting display
       
@@ -729,22 +684,29 @@ export const ManagerDashboard: React.FC = () => {
       setMissingTasks(prev => [...prev, ...uncompletedTasks])
     }
     
+    // Set manual advance flag BEFORE updating period
+    setManuallyAdvancedPeriod(nextPeriod.id)
+    manualAdvanceRef.current = nextPeriod.id
+    
     // Force transition to next period
     setCurrentPeriod(nextPeriod)
     setNextPeriod(getNextPeriod(testTime))
     
-    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id)
+    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id, '- manual advance set')
   }
   
   const currentTasks = currentPeriod?.tasks.manager || []
   
-  console.log('ManagerDashboard state:', {
-    currentPeriodId: currentPeriod?.id,
-    currentPeriodName: currentPeriod?.displayName,
+  // DEBUG: Log render conditions
+  const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
+  console.log('[DEBUG Render] Render conditions:', {
+    currentPeriod: currentPeriod ? { id: currentPeriod.id, name: currentPeriod.displayName } : null,
     isManualClosing,
     isWaitingForNextDay,
     taskCount: currentTasks.length,
-    shouldShowClosedDisplay: !currentPeriod || isWaitingForNextDay
+    shouldShowClosedDisplay,
+    willRenderTaskCountdown: currentPeriod && !isWaitingForNextDay,
+    willRenderClosedDisplay: shouldShowClosedDisplay
   })
   
   return (
