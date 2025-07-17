@@ -10,7 +10,7 @@ export const RoleSelection = () => {
   const handleRoleSelect = (role: 'manager' | 'chef') => {
     // Store role in localStorage for persistence
     localStorage.setItem('selectedRole', role)
-    navigate(`/dashboard/${role}`)
+    navigate(`/${role}`)
   }
 
   return (
