@@ -696,6 +696,20 @@ export const workflowPeriods: WorkflowPeriod[] = [
       chef: [
         {
           id: 'pre-closing-chef-1',
+          title: '食材下单',
+          description: '检查当日库存情况，制定第二天的食材用量',
+          isNotice: false,
+          timeSlot: 'pre-closing',
+          startTime: '21:30',
+          endTime: '22:00',
+          role: 'Chef',
+          department: '后厨',
+          requiresPhoto: true,
+          requiresVideo: false,
+          requiresText: true,
+        },
+        {
+          id: 'pre-closing-chef-2',
           title: '收市准备',
           description: '先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作',
           isNotice: false,
@@ -709,7 +723,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
           requiresText: true,
         },
         {
-          id: 'pre-closing-chef-2',
+          id: 'pre-closing-chef-3',
           title: '值班安排',
           description: '安排值班人员',
           isNotice: false,
@@ -723,7 +737,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
           requiresText: true,
         },
         {
-          id: 'pre-closing-chef-3',
+          id: 'pre-closing-chef-4',
           title: '用餐安排',
           description: '其他人员陆续进行晚餐就餐',
           isNotice: false,

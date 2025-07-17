@@ -1,5 +1,5 @@
 // Task Summary component - shows all tasks with completion status
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Paper,
   Typography,
@@ -10,7 +10,12 @@ import {
   ListItemIcon,
   Chip,
   Button,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField
 } from '@mui/material'
 import {
   CheckCircle,
@@ -57,6 +62,13 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   testTime,
   role = 'manager'
 }) => {
+  const [lateSubmitDialog, setLateSubmitDialog] = useState<{ open: boolean; taskId: string; taskTitle: string }>({
+    open: false,
+    taskId: '',
+    taskTitle: ''
+  })
+  const [lateSubmitExplanation, setLateSubmitExplanation] = useState('')
+  
   console.log('TaskSummary received props:', {
     tasksCount: tasks.length,
     missingTasksCount: missingTasks.length,
@@ -126,7 +138,31 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       : 100 // If no tasks due, show 100%
   }, [completedTaskIds, testTime, role])
   
+  const handleLateSubmitClick = (taskId: string, taskTitle: string) => {
+    setLateSubmitDialog({ open: true, taskId, taskTitle })
+    setLateSubmitExplanation('')
+  }
+  
+  const handleLateSubmitConfirm = () => {
+    if (lateSubmitExplanation.trim()) {
+      onLateSubmit(lateSubmitDialog.taskId)
+      // TODO: Send explanation to backend
+      console.log('Late submit with explanation:', {
+        taskId: lateSubmitDialog.taskId,
+        explanation: lateSubmitExplanation
+      })
+      setLateSubmitDialog({ open: false, taskId: '', taskTitle: '' })
+      setLateSubmitExplanation('')
+    }
+  }
+  
+  const handleLateSubmitCancel = () => {
+    setLateSubmitDialog({ open: false, taskId: '', taskTitle: '' })
+    setLateSubmitExplanation('')
+  }
+  
   return (
+    <>
     <Paper elevation={1} sx={{ p: 3 }}>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
         <Box display="flex" alignItems="center" gap={1}>
@@ -180,7 +216,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                     size="small"
                     variant="outlined"
                     color="error"
-                    onClick={() => onLateSubmit(task.id)}
+                    onClick={() => handleLateSubmitClick(task.id, task.title)}
                     sx={{ 
                       px: 2,
                       py: 1,
@@ -334,7 +370,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                     size="small"
                     variant="contained"
                     color="error"
-                    onClick={() => onLateSubmit(item.task.id)}
+                    onClick={() => handleLateSubmitClick(item.task.id, item.task.title)}
                     sx={{ 
                       px: 2,
                       py: 1,
@@ -359,5 +395,41 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         )}
       </List>
     </Paper>
+    
+    {/* Late Submit Dialog */}
+    <Dialog open={lateSubmitDialog.open} onClose={handleLateSubmitCancel} maxWidth="sm" fullWidth>
+      <DialogTitle>补交任务说明</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          任务：{lateSubmitDialog.taskTitle}
+        </Typography>
+        <TextField
+          autoFocus
+          margin="dense"
+          label="请说明未能按时完成的原因"
+          fullWidth
+          multiline
+          rows={4}
+          variant="outlined"
+          value={lateSubmitExplanation}
+          onChange={(e) => setLateSubmitExplanation(e.target.value)}
+          placeholder="请输入补交说明..."
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleLateSubmitCancel} color="inherit">
+          取消
+        </Button>
+        <Button 
+          onClick={handleLateSubmitConfirm} 
+          color="error" 
+          variant="contained"
+          disabled={!lateSubmitExplanation.trim()}
+        >
+          确认补交
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   )
 }

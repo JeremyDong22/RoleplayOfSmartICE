@@ -704,6 +704,38 @@ export const ManagerDashboard: React.FC = () => {
     console.log('[handleClosingComplete] Transitioned to waiting state')
   }
   
+  const handleAdvancePeriod = () => {
+    if (!currentPeriod) return
+    
+    // Find the next period in sequence
+    const currentIndex = workflowPeriods.findIndex(p => p.id === currentPeriod.id)
+    if (currentIndex === -1 || currentIndex >= workflowPeriods.length - 1) return
+    
+    const nextPeriod = workflowPeriods[currentIndex + 1]
+    
+    // Collect uncompleted tasks from current period
+    const uncompletedTasks: { task: TaskTemplate; periodName: string }[] = []
+    currentPeriod.tasks.manager.forEach(task => {
+      if (!task.isNotice && !completedTaskIds.includes(task.id)) {
+        uncompletedTasks.push({
+          task,
+          periodName: currentPeriod.displayName
+        })
+      }
+    })
+    
+    // Add to missing tasks
+    if (uncompletedTasks.length > 0) {
+      setMissingTasks(prev => [...prev, ...uncompletedTasks])
+    }
+    
+    // Force transition to next period
+    setCurrentPeriod(nextPeriod)
+    setNextPeriod(getNextPeriod(testTime))
+    
+    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id)
+  }
+  
   const currentTasks = currentPeriod?.tasks.manager || []
   
   console.log('ManagerDashboard state:', {
@@ -749,6 +781,7 @@ export const ManagerDashboard: React.FC = () => {
                 onComment={handleNoticeComment}
                 onLastCustomerLeft={handleLastCustomerLeft}
                 onClosingComplete={handleClosingComplete}
+                onAdvancePeriod={handleAdvancePeriod}
               />
             ) : (
               <ClosedPeriodDisplay nextPeriod={nextPeriod} testTime={testTime} />

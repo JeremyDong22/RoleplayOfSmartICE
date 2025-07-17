@@ -35,6 +35,7 @@ interface TaskCountdownProps {
   onComment: (noticeId: string, comment: string) => void
   onLastCustomerLeft?: () => void
   onClosingComplete?: () => void
+  onAdvancePeriod?: () => void
 }
 
 export const TaskCountdown: React.FC<TaskCountdownProps> = ({
@@ -45,7 +46,8 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   onComplete,
   onComment,
   onLastCustomerLeft,
-  onClosingComplete
+  onClosingComplete,
+  onAdvancePeriod
 }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const [showSwipeCard, setShowSwipeCard] = useState(true) // Always show for pre-closing
@@ -228,6 +230,23 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
               backgroundColor: theme => alpha(theme.palette.primary.main, 0.1)
             }}
           />
+          
+          {/* Advance Period Button - only show for non pre-closing/closing periods and when callback exists */}
+          {period.id !== 'pre-closing' && period.id !== 'closing' && onAdvancePeriod && (
+            <Button
+              variant="outlined"
+              color="primary"
+              size="small"
+              onClick={() => {
+                if (confirm('确定要提前进入下一阶段吗？')) {
+                  onAdvancePeriod()
+                }
+              }}
+              sx={{ mt: 2 }}
+            >
+              提前进入下一阶段
+            </Button>
+          )}
         </Box>
       </Paper>
       
@@ -242,59 +261,128 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           </Box>
           
           {!allTasksCompleted ? (
-            // Show current task only
-            currentTask && (
-              <Box>
-                <Typography variant="h5" gutterBottom fontWeight="bold">
-                  {currentTask.title}
-                </Typography>
-                <Typography variant="body1" color="text.secondary" paragraph>
-                  {currentTask.description}
-                </Typography>
-                
-                {/* Requirements */}
-                <Box display="flex" gap={1} mb={3} flexWrap="wrap">
-                  {currentTask.requiresPhoto && (
-                    <Chip
-                      icon={<PhotoCamera />}
-                      label="需要照片"
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                  {currentTask.requiresVideo && (
-                    <Chip
-                      icon={<Videocam />}
-                      label="需要视频"
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                  {currentTask.requiresText && (
-                    <Chip
-                      icon={<TextFields />}
-                      label="需要文字说明"
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
-                
-                <Button
-                  variant="contained"
-                  color="primary"
-                  fullWidth
-                  size="large"
-                  startIcon={<CheckCircleOutline />}
-                  onClick={() => onComplete(currentTask.id, {})}
-                >
-                  完成任务 Complete Task
-                </Button>
+            // Show all tasks in horizontal scroll view
+            <Box sx={{ position: 'relative' }}>
+              <Box 
+                sx={{ 
+                  display: 'flex',
+                  overflowX: 'auto',
+                  gap: 2,
+                  pb: 2,
+                  scrollSnapType: 'x mandatory',
+                  '&::-webkit-scrollbar': { height: 8 },
+                  '&::-webkit-scrollbar-track': { backgroundColor: 'action.hover' },
+                  '&::-webkit-scrollbar-thumb': { 
+                    backgroundColor: 'action.selected', 
+                    borderRadius: 4 
+                  }
+                }}
+              >
+                {regularTasks.map((task) => {
+                  const isCompleted = completedTaskIds.includes(task.id)
+                  const isCurrentTask = task.id === currentTask?.id
+                  
+                  return (
+                    <Box
+                      key={task.id}
+                      sx={{
+                        minWidth: '100%',
+                        scrollSnapAlign: 'start',
+                        opacity: isCompleted ? 0.6 : 1,
+                        transform: isCurrentTask ? 'scale(1)' : 'scale(0.95)',
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      <Box sx={{ 
+                        border: theme => isCurrentTask ? `2px solid ${theme.palette.primary.main}` : '1px solid',
+                        borderColor: isCompleted ? 'success.main' : 'divider',
+                        borderRadius: 2,
+                        p: 3,
+                        backgroundColor: isCompleted ? 'action.hover' : 'background.paper'
+                      }}>
+                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                          <Typography variant="h5" fontWeight="bold" sx={{ flex: 1 }}>
+                            {task.title}
+                          </Typography>
+                          {isCompleted && (
+                            <CheckCircle sx={{ color: 'success.main', ml: 1 }} />
+                          )}
+                        </Box>
+                        
+                        <Typography variant="body1" color="text.secondary" paragraph>
+                          {task.description}
+                        </Typography>
+                        
+                        {/* Requirements */}
+                        <Box display="flex" gap={1} mb={3} flexWrap="wrap">
+                          {task.requiresPhoto && (
+                            <Chip
+                              icon={<PhotoCamera />}
+                              label="需要照片"
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          )}
+                          {task.requiresVideo && (
+                            <Chip
+                              icon={<Videocam />}
+                              label="需要视频"
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          )}
+                          {task.requiresText && (
+                            <Chip
+                              icon={<TextFields />}
+                              label="需要文字说明"
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
+                        
+                        <Button
+                          variant="contained"
+                          color={isCompleted ? "success" : "primary"}
+                          fullWidth
+                          size="large"
+                          disabled={isCompleted}
+                          startIcon={isCompleted ? <CheckCircle /> : <CheckCircleOutline />}
+                          onClick={() => !isCompleted && onComplete(task.id, {})}
+                        >
+                          {isCompleted ? '已完成 Completed' : '完成任务 Complete Task'}
+                        </Button>
+                      </Box>
+                    </Box>
+                  )
+                })}
               </Box>
-            )
+              
+              {/* Task indicators */}
+              <Box display="flex" justifyContent="center" gap={1} mt={2}>
+                {regularTasks.map((task) => {
+                  const isCompleted = completedTaskIds.includes(task.id)
+                  const isCurrentTask = task.id === currentTask?.id
+                  
+                  return (
+                    <Box
+                      key={task.id}
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: isCompleted ? 'success.main' : 
+                                       isCurrentTask ? 'primary.main' : 'action.disabled',
+                        transition: 'all 0.3s ease'
+                      }}
+                    />
+                  )
+                })}
+              </Box>
+            </Box>
           ) : (
             // All tasks completed
             <Box textAlign="center" py={2}>

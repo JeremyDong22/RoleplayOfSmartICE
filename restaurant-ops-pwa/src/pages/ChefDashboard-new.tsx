@@ -107,9 +107,15 @@ const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
 4. **次日备货准备**：高峰日可提前在无出餐压力的情况下，进行第二天部分原材料备货工作
 
 ## 预打烊（晚市）（21:30起）
+### 前厅
 1. 收市准备：先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作
 2. 值班安排：安排值班人员
 3. 用餐安排：其他人员陆续进行晚餐就餐
+### 后厨
+1. 食材下单：检查当日库存情况，制定第二天的食材用量
+2. 收市准备：先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作
+3. 值班安排：安排值班人员
+4. 用餐安排：其他人员陆续进行晚餐就餐
 
 ## 闭店（最后一桌客人离店后）
 1. 收据清点保管：清点当日收据并存放至指定位置保管
@@ -621,6 +627,49 @@ export const ChefDashboard: React.FC = () => {
     console.log('[handleClosingComplete] Transitioned to waiting state')
   }
   
+  const handleAdvancePeriod = () => {
+    if (!currentPeriod) return
+    
+    // Find the next period in sequence
+    const currentIndex = workflowPeriods.findIndex(p => p.id === currentPeriod.id)
+    if (currentIndex === -1 || currentIndex >= workflowPeriods.length - 1) return
+    
+    const nextPeriod = workflowPeriods[currentIndex + 1]
+    
+    // Skip closing period for chef
+    if (nextPeriod.id === 'closing') {
+      const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
+      if (openingPeriod) {
+        setIsWaitingForNextDay(true)
+        setCurrentPeriod(null)
+        setNextPeriod(openingPeriod)
+        return
+      }
+    }
+    
+    // Collect uncompleted tasks from current period
+    const uncompletedTasks: { task: TaskTemplate; periodName: string }[] = []
+    currentPeriod.tasks.chef.forEach(task => {
+      if (!task.isNotice && !completedTaskIds.includes(task.id)) {
+        uncompletedTasks.push({
+          task,
+          periodName: currentPeriod.displayName
+        })
+      }
+    })
+    
+    // Add to missing tasks
+    if (uncompletedTasks.length > 0) {
+      setMissingTasks(prev => [...prev, ...uncompletedTasks])
+    }
+    
+    // Force transition to next period
+    setCurrentPeriod(nextPeriod)
+    setNextPeriod(getNextPeriod(testTime))
+    
+    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id)
+  }
+  
   const currentTasks = currentPeriod?.tasks.chef || []
   
   return (
@@ -658,6 +707,7 @@ export const ChefDashboard: React.FC = () => {
                   onComment={handleNoticeComment}
                   onLastCustomerLeft={undefined}
                   onClosingComplete={undefined} // Chef doesn't need closing button in TaskCountdown
+                  onAdvancePeriod={handleAdvancePeriod}
                 />
                 
                 {/* Show completion message and button for chef when pre-closing tasks are done */}
