@@ -1,7 +1,7 @@
 // Service Worker for Restaurant Operations PWA
 // This is a basic service worker that caches assets for offline use
 
-const CACHE_NAME = 'restaurant-ops-v1';
+const CACHE_NAME = 'restaurant-ops-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -18,6 +18,8 @@ self.addEventListener('install', event => {
         return cache.addAll(urlsToCache);
       })
   );
+  // Force immediate activation
+  self.skipWaiting();
 });
 
 // Fetch event - serve from cache when offline
@@ -43,10 +45,14 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      // Claim all clients to ensure the new service worker takes effect immediately
+      return self.clients.claim();
     })
   );
 });
