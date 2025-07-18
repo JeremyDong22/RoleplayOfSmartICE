@@ -19,6 +19,7 @@ import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPer
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
+import { PostUploadModal } from '../components/PostUploadModal/PostUploadModal'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -163,6 +164,7 @@ export const ManagerDashboard: React.FC = () => {
   const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
   const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
   const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const workflowPeriods = loadWorkflowPeriods()
   
   // DEBUG: Log component render state
@@ -787,6 +789,8 @@ export const ManagerDashboard: React.FC = () => {
                 onLastCustomerLeft={handleLastCustomerLeft}
                 onClosingComplete={handleClosingComplete}
                 onAdvancePeriod={handleAdvancePeriod}
+                role="manager"
+                onUploadPost={() => setUploadModalOpen(true)}
               />
             ) : (
               <ClosedPeriodDisplay nextPeriod={nextPeriod} testTime={testTime} />
@@ -810,6 +814,18 @@ export const ManagerDashboard: React.FC = () => {
           )}
         </Grid>
       </Container>
+
+      {/* Post Upload Modal */}
+      {currentPeriod && (
+        <PostUploadModal
+          open={uploadModalOpen}
+          onClose={() => setUploadModalOpen(false)}
+          tasks={currentTasks}
+          currentPeriodId={currentPeriod.id}
+          currentRole="manager"
+          department="前厅"
+        />
+      )}
     </>
   )
 }

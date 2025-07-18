@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { RoleSelection } from './pages/RoleSelection'
 import { ManagerDashboard } from './pages/ManagerDashboard-new'
 import { ChefDashboard } from './pages/ChefDashboard-new'
+import { EmployeeDashboard } from './pages/EmployeeDashboard'
 
 const theme = createTheme({
   palette: {
@@ -30,6 +31,14 @@ const router = createBrowserRouter([
   {
     path: '/chef',
     element: <ChefDashboard />,
+  },
+  {
+    path: '/front-employee',
+    element: <EmployeeDashboard department="前厅" />,
+  },
+  {
+    path: '/kitchen-employee',
+    element: <EmployeeDashboard department="后厨" />,
   },
 ])
 

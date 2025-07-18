@@ -36,6 +36,9 @@ import {
 } from '@mui/icons-material'
 import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
 import useEmblaCarousel from 'embla-carousel-react'
+import { NotificationDot } from '../NotificationDot/NotificationDot'
+import { getPendingCountForTask, subscribeToTaskPoolUpdates } from '../../utils/taskPoolManager'
+import { PostReviewPanel } from '../PostReviewPanel/PostReviewPanel'
 
 // Swipeable card component for last customer confirmation - iPhone-style slide to unlock
 const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => {
@@ -353,6 +356,8 @@ interface TaskCountdownProps {
   onLastCustomerLeft?: () => void
   onClosingComplete?: () => void
   onAdvancePeriod?: () => void
+  role?: 'manager' | 'chef'
+  onUploadPost?: () => void
 }
 
 export const TaskCountdown: React.FC<TaskCountdownProps> = ({
@@ -364,12 +369,17 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   onComment,
   onLastCustomerLeft,
   onClosingComplete,
-  onAdvancePeriod
+  onAdvancePeriod,
+  role = 'manager',
+  onUploadPost
 }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const [currentTime, setCurrentTime] = useState<Date>(testTime || new Date())
   const [selectedIndex, setSelectedIndex] = useState(0)
   const prevPeriodRef = React.useRef(period.id)
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({})
+  const [reviewPanelOpen, setReviewPanelOpen] = useState(false)
+  const [selectedTaskForReview, setSelectedTaskForReview] = useState<TaskTemplate | null>(null)
   
   // Initialize Embla Carousel with snap-to-center animation
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -394,6 +404,27 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const notices = tasks.filter(t => t.isNotice)
   
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => completedTaskIds.includes(task.id))
+  
+  // Update pending counts for tasks
+  useEffect(() => {
+    const updatePendingCounts = () => {
+      const counts: Record<string, number> = {}
+      regularTasks.forEach(task => {
+        counts[task.id] = getPendingCountForTask(task.id)
+      })
+      setPendingCounts(counts)
+    }
+    
+    // Initial update
+    updatePendingCounts()
+    
+    // Subscribe to task pool updates
+    const unsubscribe = subscribeToTaskPoolUpdates(() => {
+      updatePendingCounts()
+    })
+    
+    return () => unsubscribe()
+  }, [regularTasks])
   
   // Scroll to first uncompleted task on mount or when tasks change
   useEffect(() => {
@@ -665,9 +696,18 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                           <Typography variant="h5" fontWeight="bold" sx={{ flex: 1 }}>
                             {task.title}
                           </Typography>
-                          {isCompleted && (
-                            <CheckCircleOutline sx={{ color: 'success.main', fontSize: 30, ml: 1 }} />
-                          )}
+                          <Box display="flex" alignItems="center" gap={1}>
+                            {!isCompleted && pendingCounts[task.id] > 0 && (
+                              <NotificationDot 
+                                count={pendingCounts[task.id]} 
+                                size="medium"
+                                animate={true}
+                              />
+                            )}
+                            {isCompleted && (
+                              <CheckCircleOutline sx={{ color: 'success.main', fontSize: 30 }} />
+                            )}
+                          </Box>
                         </Box>
                         
                         {task.description && (
@@ -711,10 +751,13 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                             color="primary"
                             fullWidth
                             size="large"
-                            onClick={() => onComplete(task.id, {})}
+                            onClick={() => {
+                              setSelectedTaskForReview(task)
+                              setReviewPanelOpen(true)
+                            }}
                             sx={{ mt: 'auto' }}
                           >
-                            完成任务 Complete Task
+                            完成任务
                           </Button>
                         )}
                       </Box>
@@ -810,6 +853,28 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             ))}
           </List>
         </Paper>
+      )}
+
+      {/* Post Review Panel */}
+      {selectedTaskForReview && (
+        <PostReviewPanel
+          open={reviewPanelOpen}
+          taskId={selectedTaskForReview.id}
+          taskTitle={selectedTaskForReview.title}
+          currentRole={role}
+          onClose={() => {
+            setReviewPanelOpen(false)
+            setSelectedTaskForReview(null)
+          }}
+          onCompleteTask={() => {
+            if (selectedTaskForReview) {
+              onComplete(selectedTaskForReview.id, {})
+              setReviewPanelOpen(false)
+              setSelectedTaskForReview(null)
+            }
+          }}
+          onAddPost={onUploadPost}
+        />
       )}
     </>
   )
