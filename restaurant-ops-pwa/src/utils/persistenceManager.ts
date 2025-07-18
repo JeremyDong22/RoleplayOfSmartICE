@@ -8,6 +8,8 @@ interface PersistedState {
   missingTasks: any[]
   isManualClosing: boolean
   isWaitingForNextDay: boolean
+  manuallyAdvancedPeriod?: string | null // Track manually advanced period
+  testTime?: string | null // Store test time for development
   lastSaveDate: string // ISO date string to track when data was saved
 }
 
@@ -29,6 +31,8 @@ export const saveState = (role: 'manager' | 'chef', state: Partial<PersistedStat
       missingTasks: state.missingTasks ?? existingData?.missingTasks ?? [],
       isManualClosing: state.isManualClosing ?? existingData?.isManualClosing ?? false,
       isWaitingForNextDay: state.isWaitingForNextDay ?? existingData?.isWaitingForNextDay ?? false,
+      manuallyAdvancedPeriod: state.manuallyAdvancedPeriod ?? existingData?.manuallyAdvancedPeriod ?? null,
+      testTime: state.testTime ?? existingData?.testTime ?? null,
       lastSaveDate: new Date().toISOString()
     }
     

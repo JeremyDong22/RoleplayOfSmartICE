@@ -135,7 +135,21 @@ interface NoticeComment {
 }
 
 export const ManagerDashboard: React.FC = () => {
+  console.log('[ManagerDashboard] Component rendering')
+  
+  // Check if role is correct
+  const selectedRole = localStorage.getItem('selectedRole')
+  console.log('[ManagerDashboard] Selected role from localStorage:', selectedRole)
+  
   const navigate = useNavigate()
+  
+  // Redirect to role selection if no role is selected
+  useEffect(() => {
+    if (!selectedRole) {
+      console.log('[ManagerDashboard] No role selected, redirecting to role selection')
+      navigate('/')
+    }
+  }, [selectedRole, navigate])
   const [testTime, setTestTime] = useState<Date | undefined>(undefined)
   const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
   const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
@@ -174,7 +188,8 @@ export const ManagerDashboard: React.FC = () => {
           manuallyAdvancedPeriod: savedState.manuallyAdvancedPeriod,
           completedTaskIds: savedState.completedTaskIds?.length || 0,
           taskStatuses: savedState.taskStatuses?.length || 0,
-          missingTasks: savedState.missingTasks?.length || 0
+          missingTasks: savedState.missingTasks?.length || 0,
+          testTime: savedState.testTime
         })
         
         // Check for invalid stuck state BEFORE applying it
@@ -193,6 +208,10 @@ export const ManagerDashboard: React.FC = () => {
         manualClosingRef.current = savedState.isManualClosing
         setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
         manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
+        // Restore testTime if saved
+        if (savedState.testTime) {
+          setTestTime(new Date(savedState.testTime))
+        }
       } else {
         console.log('[DEBUG Persistence] No saved state found in localStorage')
       }
@@ -211,10 +230,11 @@ export const ManagerDashboard: React.FC = () => {
         missingTasks,
         isManualClosing,
         isWaitingForNextDay,
-        manuallyAdvancedPeriod
+        manuallyAdvancedPeriod,
+        testTime: testTime?.toISOString() || null
       })
     }
-  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, hasInitialized])
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, testTime, hasInitialized])
   
   // Period update effect
   useEffect(() => {
@@ -258,8 +278,12 @@ export const ManagerDashboard: React.FC = () => {
           manualAdvanceRef.current = null
           setCurrentPeriod(current)
           setNextPeriod(next)
+        } else {
+          // Update periods even in waiting state to reflect time changes
+          setCurrentPeriod(current)
+          setNextPeriod(next)
         }
-        // Still waiting, don't update anything
+        // Still waiting, don't update state flags
         return
       }
       
@@ -379,10 +403,10 @@ export const ManagerDashboard: React.FC = () => {
   useEffect(() => {
     if (!currentPeriod) return
     
-    // Don't update missing tasks if we're in manual closing mode
+    // Don't update missing tasks if we're in manual closing mode or have manually advanced
     // This prevents overwriting the missing tasks set during transition
-    if (isManualClosing || currentPeriod.id === 'closing') {
-      console.log('Skipping missing tasks update during manual closing/closing period')
+    if (isManualClosing || currentPeriod.id === 'closing' || manuallyAdvancedPeriod) {
+      console.log('Skipping missing tasks update during manual closing/closing period/manual advance')
       return
     }
 
@@ -415,11 +439,30 @@ export const ManagerDashboard: React.FC = () => {
       })
       
       setMissingTasks(prev => {
-        // Only update if the tasks have changed
-        const hasChanged = prev.length !== updatedMissingTasks.length || 
-          prev.some((item, index) => item.task.id !== updatedMissingTasks[index]?.task.id)
+        // Preserve manually added tasks and only update auto-detected ones
+        // Keep all tasks that were manually added (through handleAdvancePeriod)
+        const manuallyAddedTasks = prev.filter(item => {
+          // Check if this task's period has not ended naturally yet
+          const period = workflowPeriods.find(p => p.displayName === item.periodName)
+          if (!period) return true // Keep if period not found
+          
+          const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+          const periodEnd = new Date(now)
+          periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
+          
+          // Keep tasks from periods that haven't naturally ended yet
+          return now <= periodEnd || period.id === 'pre-closing'
+        })
         
-        return hasChanged ? updatedMissingTasks : prev
+        // Combine manually added tasks with auto-detected ones
+        const combined = [...manuallyAddedTasks, ...updatedMissingTasks]
+        
+        // Remove duplicates based on task ID
+        const uniqueTasks = combined.filter((item, index, self) =>
+          index === self.findIndex(t => t.task.id === item.task.id)
+        )
+        
+        return uniqueTasks
       })
     }
 

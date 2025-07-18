@@ -1,4 +1,5 @@
 // Configuration for Restaurant Operations PWA with service worker and manifest setup
+// Updated to use existing SVG icons instead of non-existent PNG files
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -10,7 +11,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['vite.svg', 'icon.svg', 'icon-192x192.svg'],
       injectRegister: 'auto',
       manifest: {
         name: 'Restaurant Operations Management',
@@ -22,19 +23,19 @@ export default defineConfig({
         orientation: 'portrait',
         icons: [
           {
-            src: '/icon-192x192.png',
+            src: '/icon-192x192.svg',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/svg+xml'
           },
           {
-            src: '/icon-512x512.png',
+            src: '/icon.svg',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/svg+xml'
           },
           {
-            src: '/icon-512x512.png',
+            src: '/icon.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any maskable'
           }
         ]

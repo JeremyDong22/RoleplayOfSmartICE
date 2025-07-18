@@ -930,7 +930,7 @@ export function getCurrentPeriod(testTime?: Date): WorkflowPeriod | null {
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
   const currentTimeInMinutes = currentHour * 60 + currentMinute
-
+  
   for (const period of workflowPeriods) {
     const [startHour, startMinute] = period.startTime.split(':').map(Number)
     const [endHour, endMinute] = period.endTime.split(':').map(Number)
@@ -1083,8 +1083,17 @@ function parseWorkflowFromMarkdown(content: string): WorkflowPeriod[] {
 */
 
 // Load workflow periods from markdown
+// Cache the workflow periods to avoid repeated processing
+let cachedWorkflowPeriods: WorkflowPeriod[] | null = null
+
 export function loadWorkflowPeriods(): WorkflowPeriod[] {
-  // Always use hardcoded periods for now as markdown parsing is incomplete
+  // Return cached version if already loaded
+  if (cachedWorkflowPeriods) {
+    return cachedWorkflowPeriods
+  }
+  
+  // Cache the periods for future calls
+  cachedWorkflowPeriods = workflowPeriods
   return workflowPeriods
 }
 

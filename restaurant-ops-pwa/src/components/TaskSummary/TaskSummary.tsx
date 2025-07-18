@@ -69,11 +69,11 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   })
   const [lateSubmitExplanation, setLateSubmitExplanation] = useState('')
   
-  console.log('TaskSummary received props:', {
-    tasksCount: tasks.length,
-    missingTasksCount: missingTasks.length,
-    missingTasks: missingTasks
-  })
+  // console.log('TaskSummary received props:', {
+  //   tasksCount: tasks.length,
+  //   missingTasksCount: missingTasks.length,
+  //   missingTasks: missingTasks
+  // })
   // Filter out notices
   const regularTasks = tasks.filter(t => !t.isNotice)
   
@@ -124,14 +124,14 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       }
     })
     
-    console.log('[Completion Rate]', {
-      totalTasksDue,
-      totalTasksCompleted,
-      completedTaskIds: completedTaskIds.length,
-      currentPeriod: currentPeriod?.id,
-      role,
-      rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 100
-    })
+    // console.log('[Completion Rate]', {
+    //   totalTasksDue,
+    //   totalTasksCompleted,
+    //   completedTaskIds: completedTaskIds.length,
+    //   currentPeriod: currentPeriod?.id,
+    //   role,
+    //   rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 100
+    // })
     
     return totalTasksDue > 0 
       ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
@@ -270,7 +270,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                     primary={task.title}
                     secondary={
                       status?.completedAt 
-                        ? `完成于 ${status.completedAt.toLocaleTimeString()}`
+                        ? `完成于 ${new Date(status.completedAt).toLocaleTimeString()}`
                         : task.description
                     }
                     secondaryTypographyProps={{ color: 'text.secondary' }}
@@ -314,10 +314,30 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         {/* Missing Tasks from Previous Periods */}
         {missingTasks.length > 0 && (
           <>
-            <Typography variant="overline" color="error" sx={{ px: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <History fontSize="small" />
-              缺失任务 ({missingTasks.length})
-            </Typography>
+            <Box sx={{ px: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="overline" color="error" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <History fontSize="small" />
+                缺失任务 ({missingTasks.length})
+              </Typography>
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                onClick={() => {
+                  // 一键补交所有缺失任务
+                  missingTasks.forEach(item => {
+                    onLateSubmit(item.task.id)
+                  })
+                }}
+                sx={{ 
+                  px: 2,
+                  py: 0.5,
+                  fontSize: '0.75rem'
+                }}
+              >
+                一键补交
+              </Button>
+            </Box>
             {missingTasks.map((item, index) => (
               <ListItem 
                 key={`missing-${index}`} 

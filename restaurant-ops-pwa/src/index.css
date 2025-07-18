@@ -15,3 +15,39 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Embla Carousel styles for smooth swiping */
+.embla {
+  overflow: hidden;
+}
+
+.embla__viewport {
+  overflow: hidden;
+  width: 100%;
+}
+
+.embla__container {
+  display: flex;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -khtml-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.embla__slide {
+  position: relative;
+  flex: 0 0 85%;
+  padding-right: 16px;
+}
+
+/* Prevent overscroll on iOS */
+.embla__viewport.is-dragging {
+  scroll-behavior: auto !important;
+}
+
+/* Ensure smooth scrolling physics on mobile */
+@supports (-webkit-touch-callout: none) {
+  .embla__viewport {
+    -webkit-overflow-scrolling: touch;
+  }
+}

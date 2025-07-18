@@ -1,5 +1,5 @@
-// Main App component with routing
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+// Main App component with routing - Updated for React Router v7 compatibility
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { RoleSelection } from './pages/RoleSelection'
@@ -17,17 +17,27 @@ const theme = createTheme({
   },
 })
 
+// Create router with React Router v7 syntax
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <RoleSelection />,
+  },
+  {
+    path: '/manager',
+    element: <ManagerDashboard />,
+  },
+  {
+    path: '/chef',
+    element: <ChefDashboard />,
+  },
+])
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <Routes>
-          <Route path="/" element={<RoleSelection />} />
-          <Route path="/manager" element={<ManagerDashboard />} />
-          <Route path="/chef" element={<ChefDashboard />} />
-        </Routes>
-      </Router>
+      <RouterProvider router={router} />
     </ThemeProvider>
   )
 }

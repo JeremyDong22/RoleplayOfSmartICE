@@ -8,9 +8,15 @@ export const RoleSelection = () => {
   const navigate = useNavigate()
 
   const handleRoleSelect = (role: 'manager' | 'chef') => {
+    console.log(`[Navigation] Attempting to navigate to: /${role}`)
+    
     // Store role in localStorage for persistence
     localStorage.setItem('selectedRole', role)
+    
+    // Navigate to the selected role page
     navigate(`/${role}`)
+    
+    console.log(`[Navigation] Navigation called for: /${role}`)
   }
 
   return (

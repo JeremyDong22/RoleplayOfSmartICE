@@ -144,14 +144,23 @@ interface NoticeComment {
 }
 
 export const ChefDashboard: React.FC = () => {
-  console.error('[ChefDashboard] Component render start')
+  console.log('[ChefDashboard] Component render start')
   
   // Check if role is correct
   const selectedRole = localStorage.getItem('selectedRole')
-  console.error('[ChefDashboard] Selected role from localStorage:', selectedRole)
+  console.log('[ChefDashboard] Selected role from localStorage:', selectedRole)
+  
+  const navigate = useNavigate()
+  
+  // Redirect to role selection if no role is selected
+  useEffect(() => {
+    if (!selectedRole) {
+      console.log('[ChefDashboard] No role selected, redirecting to role selection')
+      navigate('/')
+    }
+  }, [selectedRole, navigate])
   
   try {
-    const navigate = useNavigate()
     const [testTime, setTestTime] = useState<Date | undefined>(undefined)
     const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
     const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
@@ -167,18 +176,34 @@ export const ChefDashboard: React.FC = () => {
     const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
     const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
     
-    console.error('[ChefDashboard] About to load workflow periods')
+    console.log('[ChefDashboard] About to load workflow periods')
     const workflowPeriods = loadWorkflowPeriods()
-    console.error('[ChefDashboard] Workflow periods loaded:', workflowPeriods)
+    console.log('[ChefDashboard] Workflow periods loaded:', workflowPeriods)
   
   // Load state from localStorage on mount
   useEffect(() => {
-    console.error('[ChefDashboard] localStorage effect - hasInitialized:', hasInitialized)
+    console.log('[ChefDashboard] localStorage effect - hasInitialized:', hasInitialized)
     if (!hasInitialized) {
       const savedState = loadState('chef')
-      console.error('[ChefDashboard] Saved state from localStorage:', savedState)
+      console.log('[ChefDashboard] Saved state from localStorage:', savedState)
       if (savedState) {
-        console.log('[Persistence] Loading saved state from localStorage')
+        console.log('[DEBUG Persistence] Loading saved state from localStorage:', {
+          isManualClosing: savedState.isManualClosing,
+          isWaitingForNextDay: savedState.isWaitingForNextDay,
+          manuallyAdvancedPeriod: savedState.manuallyAdvancedPeriod,
+          completedTaskIds: savedState.completedTaskIds?.length || 0,
+          taskStatuses: savedState.taskStatuses?.length || 0,
+          missingTasks: savedState.missingTasks?.length || 0,
+          testTime: savedState.testTime
+        })
+        
+        // Check for invalid stuck state BEFORE applying it
+        if (savedState.isManualClosing && !savedState.isWaitingForNextDay) {
+          console.log('[DEBUG Persistence] RECOVERY - Found stuck isManualClosing=true without waiting state')
+          console.log('[DEBUG Persistence] Clearing isManualClosing to recover from stuck state')
+          savedState.isManualClosing = false
+        }
+        
         setCompletedTaskIds(savedState.completedTaskIds)
         setTaskStatuses(savedState.taskStatuses)
         setNoticeComments(savedState.noticeComments)
@@ -188,6 +213,12 @@ export const ChefDashboard: React.FC = () => {
         waitingRef.current = savedState.isWaitingForNextDay
         setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
         manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
+        // Restore testTime if saved
+        if (savedState.testTime) {
+          setTestTime(new Date(savedState.testTime))
+        }
+      } else {
+        console.log('[DEBUG Persistence] No saved state found in localStorage')
       }
       setHasInitialized(true)
     }
@@ -204,10 +235,11 @@ export const ChefDashboard: React.FC = () => {
         missingTasks,
         isManualClosing,
         isWaitingForNextDay,
-        manuallyAdvancedPeriod
+        manuallyAdvancedPeriod,
+        testTime: testTime?.toISOString() || null
       })
     }
-  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, hasInitialized])
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, testTime, hasInitialized])
   
   // Helper function to get next period for Chef (only special case for pre-closing)
   const getNextPeriodForChef = (currentTime?: Date) => {
@@ -226,9 +258,9 @@ export const ChefDashboard: React.FC = () => {
   
   // Period update effect
   useEffect(() => {
-    console.error('[ChefDashboard] Period update effect triggered')
+    console.log('[ChefDashboard] Period update effect triggered')
     const updatePeriods = () => {
-      console.error('[ChefDashboard] updatePeriods called - waitingRef:', waitingRef.current, 'isWaitingForNextDay:', isWaitingForNextDay)
+      console.log('[ChefDashboard] updatePeriods called - waitingRef:', waitingRef.current, 'isWaitingForNextDay:', isWaitingForNextDay)
       // IMPORTANT: Check waiting state FIRST before manual advance
       // Check waitingRef first for immediate feedback
       if (waitingRef.current || isWaitingForNextDay) {
@@ -244,8 +276,12 @@ export const ChefDashboard: React.FC = () => {
           manualAdvanceRef.current = null
           setCurrentPeriod(current)
           setNextPeriod(getNextPeriodForChef(testTime))
+        } else {
+          // Update periods even in waiting state to reflect time changes
+          setCurrentPeriod(getCurrentPeriod(testTime))
+          setNextPeriod(getNextPeriodForChef(testTime))
         }
-        // Still waiting, don't update anything
+        // Still waiting, don't update state flags
         return
       }
       
@@ -267,7 +303,7 @@ export const ChefDashboard: React.FC = () => {
       if (!isManualClosing) {
         const current = getCurrentPeriod(testTime)
         const next = getNextPeriodForChef(testTime)
-        console.error('[ChefDashboard] Normal period update - current:', current, 'next:', next)
+        console.log('[ChefDashboard] Normal period update - current:', current, 'next:', next)
         setCurrentPeriod(current)
         setNextPeriod(next)
       }
@@ -289,6 +325,32 @@ export const ChefDashboard: React.FC = () => {
   useEffect(() => {
     manualAdvanceRef.current = manuallyAdvancedPeriod
   }, [manuallyAdvancedPeriod])
+  
+  // Safety check: Clear invalid states
+  useEffect(() => {
+    // Only run this check after initialization
+    if (!hasInitialized) return
+    
+    // Check if isManualClosing is stuck without a valid currentPeriod
+    if (isManualClosing && !currentPeriod && !isWaitingForNextDay) {
+      console.log('[DEBUG Safety Check] INVALID STATE DETECTED - isManualClosing=true but no currentPeriod and not waiting')
+      console.log('[DEBUG Safety Check] Clearing isManualClosing to recover')
+      
+      // Clear the invalid state
+      setIsManualClosing(false)
+      
+      // Also clear manual advance state just in case
+      setManuallyAdvancedPeriod(null)
+      manualAdvanceRef.current = null
+    }
+    
+    // Check if we're stuck in manual closing but not in closing period
+    if (isManualClosing && currentPeriod && currentPeriod.id !== 'closing') {
+      console.log('[DEBUG Safety Check] INVALID STATE - isManualClosing=true but not in closing period')
+      console.log('[DEBUG Safety Check] Current period:', currentPeriod.id)
+      // This might be valid during transition, so just log for now
+    }
+  }, [hasInitialized, isManualClosing, currentPeriod, isWaitingForNextDay])
   
   // Task refresh at 10:00 AM
   useEffect(() => {
@@ -335,6 +397,13 @@ export const ChefDashboard: React.FC = () => {
   // Missing tasks update effect
   useEffect(() => {
     if (!currentPeriod) return
+    
+    // Don't update missing tasks if we're in manual closing mode or have manually advanced
+    // This prevents overwriting the missing tasks set during transition
+    if (isManualClosing || currentPeriod.id === 'closing' || manuallyAdvancedPeriod) {
+      console.log('Skipping missing tasks update during manual closing/closing period/manual advance')
+      return
+    }
 
     const updateMissingTasks = () => {
       const now = testTime || new Date()
@@ -365,11 +434,34 @@ export const ChefDashboard: React.FC = () => {
       })
       
       setMissingTasks(prev => {
-        // Only update if the tasks have changed
-        const hasChanged = prev.length !== updatedMissingTasks.length || 
-          prev.some((item, index) => item.task.id !== updatedMissingTasks[index]?.task.id)
+        // Preserve manually added tasks and only update auto-detected ones
+        // Keep all tasks that were manually added (through handleAdvancePeriod)
+        const manuallyAddedTasks = prev.filter(item => {
+          // Check if this task's period has not ended naturally yet
+          const period = workflowPeriods.find(p => p.displayName === item.periodName)
+          if (!period) return true // Keep if period not found
+          
+          const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+          const periodEnd = new Date(now)
+          periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
+          
+          // Keep tasks from periods that haven't naturally ended yet
+          return now <= periodEnd || period.id === 'pre-closing'
+        })
         
-        return hasChanged ? updatedMissingTasks : prev
+        // Combine manually added tasks with auto-detected ones
+        const combined = [...manuallyAddedTasks, ...updatedMissingTasks]
+        
+        // Remove duplicates based on task ID
+        const uniqueTasks = combined.filter((item, index, self) =>
+          index === self.findIndex(t => t.task.id === item.task.id)
+        )
+        
+        // Only update if the tasks have changed
+        const hasChanged = prev.length !== uniqueTasks.length || 
+          prev.some((item, index) => item.task.id !== uniqueTasks[index]?.task.id)
+        
+        return hasChanged ? uniqueTasks : prev
       })
     }
 
@@ -377,7 +469,7 @@ export const ChefDashboard: React.FC = () => {
     const interval = setInterval(updateMissingTasks, 5000) // Check every 5 seconds instead of every second
     
     return () => clearInterval(interval)
-  }, [testTime, currentPeriod?.id, workflowPeriods, completedTaskIds])
+  }, [testTime, currentPeriod?.id, workflowPeriods, completedTaskIds, isManualClosing, manuallyAdvancedPeriod])
   
   // Overdue status update effect
   useEffect(() => {
@@ -582,14 +674,14 @@ export const ChefDashboard: React.FC = () => {
   
   const currentTasks = currentPeriod?.tasks.chef || []
   
-  console.error('[ChefDashboard] Before render - currentPeriod:', currentPeriod)
-  console.error('[ChefDashboard] Before render - currentTasks:', currentTasks)
-  console.error('[ChefDashboard] Before render - isWaitingForNextDay:', isWaitingForNextDay)
-  console.error('[ChefDashboard] Before render - nextPeriod:', nextPeriod)
+  console.log('[ChefDashboard] Before render - currentPeriod:', currentPeriod)
+  console.log('[ChefDashboard] Before render - currentTasks:', currentTasks)
+  console.log('[ChefDashboard] Before render - isWaitingForNextDay:', isWaitingForNextDay)
+  console.log('[ChefDashboard] Before render - nextPeriod:', nextPeriod)
   
   // Check for early returns
   if (selectedRole !== 'chef') {
-    console.error('[ChefDashboard] WARNING: Selected role is not chef, but ChefDashboard is rendered!')
+    console.log('[ChefDashboard] WARNING: Selected role is not chef, but ChefDashboard is rendered!')
   }
   
   return (
@@ -685,6 +777,6 @@ export const ChefDashboard: React.FC = () => {
     console.error('[ChefDashboard] Error stack:', error instanceof Error ? error.stack : 'No stack')
     throw error // Re-throw to be caught by error boundary
   } finally {
-    console.error('[ChefDashboard] Component render completed (or failed)')
+    console.log('[ChefDashboard] Component render completed (or failed)')
   }
 }

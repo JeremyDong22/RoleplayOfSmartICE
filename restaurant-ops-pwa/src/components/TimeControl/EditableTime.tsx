@@ -10,7 +10,11 @@ import {
   DialogActions, 
   Button,
   Typography,
-  Chip
+  Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
@@ -26,8 +30,13 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
   const [editHour, setEditHour] = useState(currentTime.getHours().toString().padStart(2, '0'))
   const [editMinute, setEditMinute] = useState(currentTime.getMinutes().toString().padStart(2, '0'))
   const [editSecond, setEditSecond] = useState(currentTime.getSeconds().toString().padStart(2, '0'))
+  const [editYear, setEditYear] = useState(currentTime.getFullYear())
+  const [editMonth, setEditMonth] = useState(currentTime.getMonth())
+  const [editDay, setEditDay] = useState(currentTime.getDate())
   const [isTestMode, setIsTestMode] = useState(false)
   const [timeOffset, setTimeOffset] = useState(0) // Offset in milliseconds
+  
+  const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -58,11 +67,17 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
     setEditHour(currentTime.getHours().toString().padStart(2, '0'))
     setEditMinute(currentTime.getMinutes().toString().padStart(2, '0'))
     setEditSecond(currentTime.getSeconds().toString().padStart(2, '0'))
+    setEditYear(currentTime.getFullYear())
+    setEditMonth(currentTime.getMonth())
+    setEditDay(currentTime.getDate())
     setIsEditing(true)
   }
 
   const handleSave = () => {
     const testTime = new Date()
+    testTime.setFullYear(editYear)
+    testTime.setMonth(editMonth)
+    testTime.setDate(editDay)
     testTime.setHours(parseInt(editHour))
     testTime.setMinutes(parseInt(editMinute))
     testTime.setSeconds(parseInt(editSecond))
@@ -84,13 +99,21 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Typography variant="body1">
-        {currentTime.toLocaleString('zh-CN', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          second: '2-digit'
-        })}
-      </Typography>
+      <Box sx={{ textAlign: 'right' }}>
+        <Typography variant="body1">
+          {currentTime.toLocaleString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            second: '2-digit'
+          })}
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem' }}>
+          {currentTime.toLocaleDateString('zh-CN', { 
+            month: 'short',
+            day: 'numeric'
+          })}
+        </Typography>
+      </Box>
       
       {isTestMode && (
         <Chip 
@@ -120,7 +143,46 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 2 }}>日期设置</Typography>
+          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            <TextField
+              label="年份"
+              type="number"
+              value={editYear}
+              onChange={(e) => {
+                const val = Math.max(2020, Math.min(2030, parseInt(e.target.value) || 2024))
+                setEditYear(val)
+              }}
+              inputProps={{ min: 2020, max: 2030 }}
+              sx={{ width: 120 }}
+            />
+            <FormControl sx={{ width: 120 }}>
+              <InputLabel>月份</InputLabel>
+              <Select
+                value={editMonth}
+                onChange={(e) => setEditMonth(e.target.value as number)}
+                label="月份"
+              >
+                {months.map((month, index) => (
+                  <MenuItem key={index} value={index}>{month}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="日期"
+              type="number"
+              value={editDay}
+              onChange={(e) => {
+                const val = Math.max(1, Math.min(31, parseInt(e.target.value) || 1))
+                setEditDay(val)
+              }}
+              inputProps={{ min: 1, max: 31 }}
+              sx={{ width: 100 }}
+            />
+          </Box>
+          
+          <Typography variant="subtitle2" sx={{ mb: 2 }}>时间设置</Typography>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
             <TextField
               label="小时"
               type="number"
@@ -156,7 +218,7 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
             />
           </Box>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-            注意：这是测试功能，用于模拟不同时间查看任务状态
+            注意：这是测试功能，用于模拟不同日期和时间查看任务状态。
           </Typography>
         </DialogContent>
         <DialogActions>
