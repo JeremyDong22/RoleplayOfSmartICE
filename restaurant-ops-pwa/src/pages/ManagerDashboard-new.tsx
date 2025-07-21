@@ -727,8 +727,8 @@ export const ManagerDashboard: React.FC = () => {
   
   // When in closing period, concatenate pre-closing tasks with closing tasks
   const currentTasks = currentPeriod?.id === 'closing' && preClosingTasks.length > 0
-    ? [...preClosingTasks, ...(currentPeriod?.tasks.manager || [])]
-    : currentPeriod?.tasks.manager || []
+    ? [...preClosingTasks, ...(currentPeriod?.tasks?.manager || [])]
+    : currentPeriod?.tasks?.manager || []
   
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
   

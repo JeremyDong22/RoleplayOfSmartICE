@@ -456,8 +456,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     if (emblaApi) emblaApi.scrollTo(index)
   }, [emblaApi])
   
-  // Early return if period is undefined
-  if (!period) {
+  // Early return if period or tasks is undefined
+  if (!period || !tasks) {
+    console.warn('TaskCountdown: Missing required props', { period: !!period, tasks: !!tasks })
     return null
   }
   
