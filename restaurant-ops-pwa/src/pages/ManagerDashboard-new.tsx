@@ -566,20 +566,29 @@ export const ManagerDashboard: React.FC = () => {
     }
     
     // 添加审核任务到当前任务列表
-    if (currentPeriod && currentPeriod.tasks && currentPeriod.tasks.manager) {
-      const updatedPeriod = {
+    if (currentPeriod && currentPeriod.tasks && Array.isArray(currentPeriod.tasks.manager)) {
+      // Create a deep copy of the period to avoid mutation issues
+      const updatedPeriod: WorkflowPeriod = {
         ...currentPeriod,
         tasks: {
           ...currentPeriod.tasks,
           manager: [...currentPeriod.tasks.manager, reviewTask]
         }
       }
+      console.log('Adding review task to current period:', reviewTask)
       setCurrentPeriod(updatedPeriod)
+      
+      // Force update currentTasks by triggering a re-render
+      // This is a workaround for the state update issue
+      setTimeout(() => {
+        setCurrentPeriod(updatedPeriod)
+      }, 100)
     } else {
       console.error('Cannot add review task: currentPeriod or tasks is undefined', {
         currentPeriod: !!currentPeriod,
         tasks: !!currentPeriod?.tasks,
-        manager: !!currentPeriod?.tasks?.manager
+        manager: !!currentPeriod?.tasks?.manager,
+        managerIsArray: Array.isArray(currentPeriod?.tasks?.manager)
       })
     }
   }
