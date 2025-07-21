@@ -100,7 +100,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     const taskName = roleMatch ? cleanName.replace(roleMatch[0], '') : cleanName
     
     // Check if this is a chef-specific task even without prefix
-    const chefTasks = ['食品安全检查', '开始巡店验收', '巡店验收', '收市清洁检查', '收市准备', '食材下单']
+    const chefTasks = ['食品安全检查', '开始巡店验收', '巡店验收', '食材下单', '损耗称重']
     if (!roleMatch && chefTasks.includes(taskName)) {
       role = '后厨'
     }
@@ -147,7 +147,10 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
 
   // Load samples
   useEffect(() => {
-    if (open && taskName && taskId) {
+    console.log('=== SAMPLE LOADING EFFECT TRIGGERED ===')
+    console.log('open:', open, 'taskName:', taskName, 'taskId:', taskId)
+    
+    if (open && taskName) {
       const loadedSamples: Sample[] = []
       console.log('=== SAMPLE LOADING DEBUG ===')
       console.log('Task Name:', taskName)
@@ -155,14 +158,39 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       console.log('Is Floating Task:', isFloatingTask)
       
       // First try to get the sample directory from sampleLoader mapping
-      loadFullSampleContent(taskId).then(content => {
-        console.log('Sample content from sampleLoader:', content)
-      })
+      if (taskId) {
+        loadFullSampleContent(taskId).then(content => {
+          console.log('Sample content from sampleLoader:', content)
+        }).catch(err => {
+          console.error('Error loading from sampleLoader:', err)
+        })
+      }
       
       // For now, still use the old method for loading images
       const sampleDir = getSampleDir(taskName)
       console.log('Sample Directory:', sampleDir)
       console.log('Full Path:', `/task-samples/${sampleDir}/`)
+      
+      // Test with a direct fetch to verify the path
+      fetch('/task-samples/前厅/4-餐后收市午市-收市清洁检查/sample1.txt')
+        .then(res => {
+          console.log('Direct fetch test - status:', res.status, 'ok:', res.ok)
+          return res.text()
+        })
+        .then(text => {
+          console.log('Direct fetch test - content:', text)
+          // If direct fetch works, manually add a sample for testing
+          if (text && !text.includes('<!doctype html>')) {
+            console.log('Direct fetch successful, manually adding sample for testing')
+            setSamples([{
+              text: text.trim(),
+              images: ['/task-samples/前厅/4-餐后收市午市-收市清洁检查/sample1.jpg']
+            }])
+          }
+        })
+        .catch(err => {
+          console.error('Direct fetch test - error:', err)
+        })
       
       // Dynamically check for samples (no limit)
       const checkSamples = async () => {
@@ -180,13 +208,19 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             const textResponse = await fetch(textPath)
             const contentType = textResponse.headers.get('content-type')
             console.log('Text response:', textResponse.ok, 'content-type:', contentType)
-            if (textResponse.ok && (contentType?.includes('text/plain') || contentType?.includes('text/html'))) {
+            if (textResponse.ok) {
               const textContent = await textResponse.text()
+              console.log('Text content loaded:', textContent.substring(0, 50) + '...')
               // Check if it's HTML (error page) or actual text content
               if (!textContent.includes('<!doctype html>') && !textContent.includes('<html')) {
-                sample.text = textContent
+                sample.text = textContent.trim()
                 hasContent = true
+                console.log('Sample text accepted:', sample.text)
+              } else {
+                console.log('Text content was HTML, skipping')
               }
+            } else {
+              console.log('Text response not ok:', textResponse.status)
             }
           } catch (err) {
             console.error('Error loading text:', err)
@@ -228,14 +262,16 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
               if (imagePath) {
                 sample.images.push(imagePath)
                 hasContent = true
-                imgIdx++
+                console.log(`Added image ${imgIdx} to sample ${sampleIndex}`)
               } else {
                 foundImage = false
               }
-            } catch {
-              // Silent fail - not all samples need multiple images
+            } catch (err) {
+              console.log(`No image found for sample${sampleIndex}-${imgIdx}.jpg`)
               foundImage = false
             }
+            
+            imgIdx++ // Always increment to avoid infinite loop
             
             // Safety limit to prevent infinite loops
             if (imgIdx > 50) {
@@ -271,7 +307,11 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         setSamples(loadedSamples)
       }
       
-      checkSamples()
+      checkSamples().catch(err => {
+        console.error('Error in checkSamples:', err)
+      })
+    } else {
+      console.log('Conditions not met for loading samples')
     }
   }, [open, taskName, taskId])
 
@@ -440,6 +480,10 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       clearTimeout(cleanupTimeoutRef.current)
     }
     
+    // Reset samples
+    setSamples([])
+    setShowOverview(true)
+    
     onClose()
   }
 
@@ -480,6 +524,12 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             </Typography>
             
             <Grid container spacing={2} sx={{ mb: 3 }}>
+              {console.log('Rendering samples:', samples.length, samples)}
+              {samples.length === 0 && (
+                <Grid size={12}>
+                  <Typography color="text.secondary">No samples loaded yet...</Typography>
+                </Grid>
+              )}
               {samples.map((sample, index) => (
                 <Grid size={{ xs: 12, sm: 6 }} key={index}>
                   <Paper sx={{ p: 2, minHeight: 320, display: 'flex', flexDirection: 'column' }}>

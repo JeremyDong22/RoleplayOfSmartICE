@@ -359,10 +359,10 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   })
   
   // Separate tasks and notices
-  const regularTasks = tasks.filter(t => !t.isNotice)
-  const notices = tasks.filter(t => t.isNotice)
+  const regularTasks = tasks?.filter(t => !t.isNotice) || []
+  const notices = tasks?.filter(t => t.isNotice) || []
   
-  const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => completedTaskIds.includes(task.id))
+  const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => (completedTaskIds || []).includes(task.id))
   
   // Free swiping mode - removed automatic scrolling to first uncompleted task
   // Users can now freely swipe between all tasks like browsing a photo album
@@ -601,7 +601,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                 }}
               >
                 {regularTasks.map((task, index) => {
-                  const isCompleted = completedTaskIds.includes(task.id)
+                  const isCompleted = (completedTaskIds || []).includes(task.id)
                   const isCurrentSlide = index === selectedIndex
                   
                   return (
