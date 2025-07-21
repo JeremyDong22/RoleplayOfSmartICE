@@ -1,5 +1,9 @@
 // Editable time component for testing purposes
-import { useState, useEffect } from 'react'
+// Fixed input handling for number fields to allow users to clear and type new values
+// Added onBlur handlers to ensure valid values when focus is lost
+// Fixed date refresh bug: dialog fields now use current time snapshot when opened to prevent continuous updates
+// Added global test time support for cross-role testing
+import React, { useState, useEffect, useMemo } from 'react'
 import { 
   Box, 
   IconButton, 
@@ -18,25 +22,62 @@ import {
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import { 
+  getGlobalTestTime, 
+  setGlobalTestTime, 
+  clearGlobalTestTime, 
+  getCurrentTestTime,
+  useGlobalTestTime 
+} from '../../utils/globalTestTime'
 
 interface EditableTimeProps {
   testTime?: Date
   onTimeChange: (date: Date | undefined) => void
+  onResetTasks?: () => void  // 新增：重置任务的回调函数
 }
 
-export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
+const EditableTimeComponent: React.FC<EditableTimeProps> = ({ testTime, onTimeChange, onResetTasks }) => {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isEditing, setIsEditing] = useState(false)
-  const [editHour, setEditHour] = useState(currentTime.getHours().toString().padStart(2, '0'))
-  const [editMinute, setEditMinute] = useState(currentTime.getMinutes().toString().padStart(2, '0'))
-  const [editSecond, setEditSecond] = useState(currentTime.getSeconds().toString().padStart(2, '0'))
-  const [editYear, setEditYear] = useState(currentTime.getFullYear())
-  const [editMonth, setEditMonth] = useState(currentTime.getMonth())
-  const [editDay, setEditDay] = useState(currentTime.getDate())
+  const [editHour, setEditHour] = useState<string>('')
+  const [editMinute, setEditMinute] = useState<string>('')
+  const [editSecond, setEditSecond] = useState<string>('')
+  const [editYear, setEditYear] = useState<string>('')
+  const [editMonth, setEditMonth] = useState(0)
+  const [editDay, setEditDay] = useState<string>('')
+  // Store the time when dialog was opened to prevent updates
+  const [dialogOpenTime, setDialogOpenTime] = useState<Date | null>(null)
   const [isTestMode, setIsTestMode] = useState(false)
   const [timeOffset, setTimeOffset] = useState(0) // Offset in milliseconds
   
   const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
+  
+  // Initialize from global test time on mount
+  useEffect(() => {
+    const globalTestTime = getGlobalTestTime()
+    if (globalTestTime && globalTestTime.enabled) {
+      setIsTestMode(true)
+      setTimeOffset(globalTestTime.offset)
+    }
+  }, [])
+  
+  // Subscribe to global test time changes
+  useEffect(() => {
+    const cleanup = useGlobalTestTime((testTime) => {
+      if (testTime) {
+        const globalTestTime = getGlobalTestTime()
+        if (globalTestTime) {
+          setIsTestMode(true)
+          setTimeOffset(globalTestTime.offset)
+        }
+      } else {
+        setIsTestMode(false)
+        setTimeOffset(0)
+      }
+    })
+    
+    return cleanup
+  }, [])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -64,27 +105,34 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
   }, [isTestMode, timeOffset, onTimeChange])
 
   const handleEdit = () => {
-    setEditHour(currentTime.getHours().toString().padStart(2, '0'))
-    setEditMinute(currentTime.getMinutes().toString().padStart(2, '0'))
-    setEditSecond(currentTime.getSeconds().toString().padStart(2, '0'))
-    setEditYear(currentTime.getFullYear())
-    setEditMonth(currentTime.getMonth())
-    setEditDay(currentTime.getDate())
+    // Use the current time snapshot when opening the dialog
+    const now = new Date(currentTime)  // Create a copy
+    console.log('Opening dialog with time:', now.toLocaleString())
+    setEditHour(now.getHours().toString().padStart(2, '0'))
+    setEditMinute(now.getMinutes().toString().padStart(2, '0'))
+    setEditSecond(now.getSeconds().toString().padStart(2, '0'))
+    setEditYear(now.getFullYear().toString())
+    setEditMonth(now.getMonth())
+    setEditDay(now.getDate().toString())
+    setDialogOpenTime(now)  // Store the time when dialog opened
     setIsEditing(true)
   }
 
   const handleSave = () => {
     const testTime = new Date()
-    testTime.setFullYear(editYear)
+    testTime.setFullYear(parseInt(editYear) || new Date().getFullYear())
     testTime.setMonth(editMonth)
-    testTime.setDate(editDay)
-    testTime.setHours(parseInt(editHour))
-    testTime.setMinutes(parseInt(editMinute))
-    testTime.setSeconds(parseInt(editSecond))
+    testTime.setDate(parseInt(editDay) || 1)
+    testTime.setHours(parseInt(editHour) || 0)
+    testTime.setMinutes(parseInt(editMinute) || 0)
+    testTime.setSeconds(parseInt(editSecond) || 0)
     
     // Calculate offset between test time and current real time
     const realTime = new Date()
     const offset = testTime.getTime() - realTime.getTime()
+    
+    // Save to global test time
+    setGlobalTestTime(offset)
     
     setTimeOffset(offset)
     setIsTestMode(true)
@@ -95,6 +143,16 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
     setIsTestMode(false)
     setTimeOffset(0)
     onTimeChange(undefined)
+    
+    // Clear global test time
+    clearGlobalTestTime()
+  }
+
+  const handleResetTasks = () => {
+    if (confirm('确定要重置所有任务状态吗？这将清空今天所有已完成的任务记录。')) {
+      onResetTasks?.()
+      setIsEditing(false)
+    }
   }
 
   return (
@@ -135,7 +193,12 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
         <EditIcon fontSize="small" />
       </IconButton>
 
-      <Dialog open={isEditing} onClose={() => setIsEditing(false)}>
+      <Dialog 
+        open={isEditing} 
+        onClose={() => setIsEditing(false)}
+        // Prevent dialog from re-rendering when parent updates
+        disableRestoreFocus
+      >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <AccessTimeIcon />
@@ -150,8 +213,18 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
               type="number"
               value={editYear}
               onChange={(e) => {
-                const val = Math.max(2020, Math.min(2030, parseInt(e.target.value) || 2024))
-                setEditYear(val)
+                const inputValue = e.target.value
+                // Allow any input including empty string
+                setEditYear(inputValue)
+              }}
+              onBlur={(e) => {
+                const inputValue = e.target.value
+                const val = parseInt(inputValue)
+                if (isNaN(val) || val < 2020 || val > 2030) {
+                  setEditYear(new Date().getFullYear().toString())
+                } else {
+                  setEditYear(val.toString())
+                }
               }}
               inputProps={{ min: 2020, max: 2030 }}
               sx={{ width: 120 }}
@@ -173,8 +246,19 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
               type="number"
               value={editDay}
               onChange={(e) => {
-                const val = Math.max(1, Math.min(31, parseInt(e.target.value) || 1))
-                setEditDay(val)
+                const inputValue = e.target.value
+                // Allow any input including empty string
+                setEditDay(inputValue)
+              }}
+              onBlur={(e) => {
+                // On blur, ensure we have a valid value
+                const inputValue = e.target.value
+                const val = parseInt(inputValue)
+                if (isNaN(val) || val < 1 || val > 31) {
+                  setEditDay(new Date().getDate().toString())
+                } else {
+                  setEditDay(Math.max(1, Math.min(31, val)).toString())
+                }
               }}
               inputProps={{ min: 1, max: 31 }}
               sx={{ width: 100 }}
@@ -188,8 +272,22 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
               type="number"
               value={editHour}
               onChange={(e) => {
-                const val = Math.max(0, Math.min(23, parseInt(e.target.value) || 0))
-                setEditHour(val.toString().padStart(2, '0'))
+                const inputValue = e.target.value
+                if (inputValue === '') {
+                  setEditHour('')
+                  return
+                }
+                const val = parseInt(inputValue)
+                if (!isNaN(val)) {
+                  const bounded = Math.max(0, Math.min(23, val))
+                  setEditHour(bounded.toString().padStart(2, '0'))
+                }
+              }}
+              onBlur={(e) => {
+                const inputValue = e.target.value
+                if (inputValue === '' || isNaN(parseInt(inputValue))) {
+                  setEditHour('00')
+                }
               }}
               inputProps={{ min: 0, max: 23 }}
               sx={{ width: 100 }}
@@ -199,8 +297,22 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
               type="number"
               value={editMinute}
               onChange={(e) => {
-                const val = Math.max(0, Math.min(59, parseInt(e.target.value) || 0))
-                setEditMinute(val.toString().padStart(2, '0'))
+                const inputValue = e.target.value
+                if (inputValue === '') {
+                  setEditMinute('')
+                  return
+                }
+                const val = parseInt(inputValue)
+                if (!isNaN(val)) {
+                  const bounded = Math.max(0, Math.min(59, val))
+                  setEditMinute(bounded.toString().padStart(2, '0'))
+                }
+              }}
+              onBlur={(e) => {
+                const inputValue = e.target.value
+                if (inputValue === '' || isNaN(parseInt(inputValue))) {
+                  setEditMinute('00')
+                }
               }}
               inputProps={{ min: 0, max: 59 }}
               sx={{ width: 100 }}
@@ -210,8 +322,22 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
               type="number"
               value={editSecond}
               onChange={(e) => {
-                const val = Math.max(0, Math.min(59, parseInt(e.target.value) || 0))
-                setEditSecond(val.toString().padStart(2, '0'))
+                const inputValue = e.target.value
+                if (inputValue === '') {
+                  setEditSecond('')
+                  return
+                }
+                const val = parseInt(inputValue)
+                if (!isNaN(val)) {
+                  const bounded = Math.max(0, Math.min(59, val))
+                  setEditSecond(bounded.toString().padStart(2, '0'))
+                }
+              }}
+              onBlur={(e) => {
+                const inputValue = e.target.value
+                if (inputValue === '' || isNaN(parseInt(inputValue))) {
+                  setEditSecond('00')
+                }
               }}
               inputProps={{ min: 0, max: 59 }}
               sx={{ width: 100 }}
@@ -221,13 +347,26 @@ export const EditableTime: React.FC<EditableTimeProps> = ({ onTimeChange }) => {
             注意：这是测试功能，用于模拟不同日期和时间查看任务状态。
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsEditing(false)}>取消</Button>
-          <Button onClick={handleSave} variant="contained">
-            设置时间
+        <DialogActions sx={{ justifyContent: 'space-between', px: 3 }}>
+          <Button 
+            onClick={handleResetTasks} 
+            color="error"
+            disabled={!onResetTasks}
+            sx={{ mr: 'auto' }}
+          >
+            重置任务
           </Button>
+          <Box>
+            <Button onClick={() => setIsEditing(false)}>取消</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ ml: 1 }}>
+              设置时间
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>
   )
 }
+
+// Memoize the component to prevent re-renders when parent updates
+export const EditableTime = React.memo(EditableTimeComponent)

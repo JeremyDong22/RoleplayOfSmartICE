@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material'
 import type { TaskTemplate } from '../../utils/workflowParser'
 import { loadWorkflowPeriods, getCurrentPeriod } from '../../utils/workflowParser'
+import TaskSubmissionDialog from '../TaskSubmissionDialog'
 
 interface TaskStatus {
   taskId: string
@@ -47,7 +48,7 @@ interface TaskSummaryProps {
   completedTaskIds: string[]  // Add this for accurate completion tracking
   missingTasks?: { task: TaskTemplate; periodName: string }[]
   noticeComments: NoticeComment[]
-  onLateSubmit: (taskId: string) => void
+  onLateSubmit: (taskId: string, data?: any) => void
   testTime?: Date
   role?: 'manager' | 'chef'
 }
@@ -62,12 +63,10 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   testTime,
   role = 'manager'
 }) => {
-  const [lateSubmitDialog, setLateSubmitDialog] = useState<{ open: boolean; taskId: string; taskTitle: string }>({
-    open: false,
-    taskId: '',
-    taskTitle: ''
-  })
-  const [lateSubmitExplanation, setLateSubmitExplanation] = useState('')
+  const [selectedTask, setSelectedTask] = useState<TaskTemplate | null>(null)
+  const [taskSubmissionOpen, setTaskSubmissionOpen] = useState(false)
+  const [batchSubmitIndex, setBatchSubmitIndex] = useState<number>(-1)
+  const [batchSubmitTasks, setBatchSubmitTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
   
   // console.log('TaskSummary received props:', {
   //   tasksCount: tasks.length,
@@ -112,7 +111,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       if ((now >= periodStart || period.id === currentPeriod?.id) && 
           !(role === 'chef' && period.id === 'closing')) {
         
-        const periodTasks = period.tasks[role].filter(t => !t.isNotice)
+        const periodTasks = period.tasks[role].filter(t => !t.isNotice && !t.isFloating)
         totalTasksDue += periodTasks.length
         
         // Count how many are completed
@@ -121,6 +120,15 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
             totalTasksCompleted++
           }
         })
+      }
+    })
+    
+    // Also count floating tasks (they're always due)
+    const floatingTasks = tasks.filter(t => t.isFloating && !t.isNotice)
+    totalTasksDue += floatingTasks.length
+    floatingTasks.forEach(task => {
+      if (completedTaskIds.includes(task.id)) {
+        totalTasksCompleted++
       }
     })
     
@@ -138,27 +146,61 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       : 100 // If no tasks due, show 100%
   }, [completedTaskIds, testTime, role])
   
-  const handleLateSubmitClick = (taskId: string, taskTitle: string) => {
-    setLateSubmitDialog({ open: true, taskId, taskTitle })
-    setLateSubmitExplanation('')
+  const handleLateSubmitClick = (task: TaskTemplate) => {
+    setSelectedTask(task)
+    setTaskSubmissionOpen(true)
   }
   
-  const handleLateSubmitConfirm = () => {
-    if (lateSubmitExplanation.trim()) {
-      onLateSubmit(lateSubmitDialog.taskId)
-      // TODO: Send explanation to backend
-      console.log('Late submit with explanation:', {
-        taskId: lateSubmitDialog.taskId,
-        explanation: lateSubmitExplanation
-      })
-      setLateSubmitDialog({ open: false, taskId: '', taskTitle: '' })
-      setLateSubmitExplanation('')
+  const handleTaskSubmit = (taskId: string, data: any) => {
+    onLateSubmit(taskId, data)
+    
+    // Check if this is part of batch submission
+    if (batchSubmitIndex >= 0 && batchSubmitIndex < batchSubmitTasks.length - 1) {
+      // Move to next task in batch
+      const nextIndex = batchSubmitIndex + 1
+      setBatchSubmitIndex(nextIndex)
+      setSelectedTask(batchSubmitTasks[nextIndex].task)
+    } else {
+      // All tasks completed or single task submission
+      setSelectedTask(null)
+      setTaskSubmissionOpen(false)
+      setBatchSubmitIndex(-1)
+      setBatchSubmitTasks([])
     }
   }
   
-  const handleLateSubmitCancel = () => {
-    setLateSubmitDialog({ open: false, taskId: '', taskTitle: '' })
-    setLateSubmitExplanation('')
+  const handleDialogClose = () => {
+    setSelectedTask(null)
+    setTaskSubmissionOpen(false)
+    setBatchSubmitIndex(-1)
+    setBatchSubmitTasks([])
+  }
+  
+  const handleBatchSubmit = () => {
+    // Filter tasks that require submission (not already completed)
+    const tasksToSubmit = missingTasks.filter(item => 
+      !completedTaskIds.includes(item.task.id)
+    )
+    
+    if (tasksToSubmit.length === 0) return
+    
+    // Check if any tasks require special submission
+    const requiresSpecialSubmission = tasksToSubmit.some(item => 
+      item.task.uploadRequirement !== null
+    )
+    
+    if (requiresSpecialSubmission) {
+      // Start batch submission process
+      setBatchSubmitTasks(tasksToSubmit)
+      setBatchSubmitIndex(0)
+      setSelectedTask(tasksToSubmit[0].task)
+      setTaskSubmissionOpen(true)
+    } else {
+      // All tasks can be submitted directly
+      tasksToSubmit.forEach(item => {
+        onLateSubmit(item.task.id)
+      })
+    }
   }
   
   return (
@@ -216,7 +258,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                     size="small"
                     variant="outlined"
                     color="error"
-                    onClick={() => handleLateSubmitClick(task.id, task.title)}
+                    onClick={() => handleLateSubmitClick(task)}
                     sx={{ 
                       px: 2,
                       py: 1,
@@ -323,12 +365,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                 size="small"
                 variant="contained"
                 color="error"
-                onClick={() => {
-                  // 一键补交所有缺失任务
-                  missingTasks.forEach(item => {
-                    onLateSubmit(item.task.id)
-                  })
-                }}
+                onClick={handleBatchSubmit}
                 sx={{ 
                   px: 2,
                   py: 0.5,
@@ -390,7 +427,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                     size="small"
                     variant="contained"
                     color="error"
-                    onClick={() => handleLateSubmitClick(item.task.id, item.task.title)}
+                    onClick={() => handleLateSubmitClick(item.task)}
                     sx={{ 
                       px: 2,
                       py: 1,
@@ -416,40 +453,14 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       </List>
     </Paper>
     
-    {/* Late Submit Dialog */}
-    <Dialog open={lateSubmitDialog.open} onClose={handleLateSubmitCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>补交任务说明</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          任务：{lateSubmitDialog.taskTitle}
-        </Typography>
-        <TextField
-          autoFocus
-          margin="dense"
-          label="请说明未能按时完成的原因"
-          fullWidth
-          multiline
-          rows={4}
-          variant="outlined"
-          value={lateSubmitExplanation}
-          onChange={(e) => setLateSubmitExplanation(e.target.value)}
-          placeholder="请输入补交说明..."
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleLateSubmitCancel} color="inherit">
-          取消
-        </Button>
-        <Button 
-          onClick={handleLateSubmitConfirm} 
-          color="error" 
-          variant="contained"
-          disabled={!lateSubmitExplanation.trim()}
-        >
-          确认补交
-        </Button>
-      </DialogActions>
-    </Dialog>
+    {/* Task Submission Dialog */}
+    <TaskSubmissionDialog
+      open={taskSubmissionOpen}
+      task={selectedTask}
+      isLateSubmission={true}
+      onClose={handleDialogClose}
+      onSubmit={handleTaskSubmit}
+    />
     </>
   )
 }

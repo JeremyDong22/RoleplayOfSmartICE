@@ -152,3 +152,82 @@ Use `size` prop instead of `xs/sm/md/lg` props.
 4. **Time Not Updating in Pre-closing**: The EditableTime component provides continuous time updates via `onTimeChange` callback.
 
 5. **Swipe Transition Reverting**: Fixed by using a ref (`manualClosingRef`) alongside state to prevent race conditions. The period update effect checks the ref for immediate feedback since React state updates are asynchronous.
+
+## Task Requirements Synchronization
+
+When modifying task requirements (photo, audio, text input), you MUST keep these three files synchronized:
+
+1. **`src/utils/workflowParser.ts`** - The source of truth for task definitions
+   - Update the `uploadRequirement` field ('拍照' | '录音' | '记录' | null)
+
+2. **`public/task-samples/任务与文件夹对照表.md`** - Documentation for sample file mappings
+   - Update the sample files column to reflect changes
+   - Note if folders are deleted due to removed requirements
+
+3. **`门店日常工作.md`** - The human-readable workflow documentation
+   - Remove or add the requirement suffix (- 拍照, - 录音, - 记录) from task descriptions
+
+Example: If removing photo requirement from "开店准备与设备检查":
+- workflowParser.ts: Change `uploadRequirement: '拍照'` to `uploadRequirement: null`
+- 任务与文件夹对照表.md: Update to show "(已删除 - 无需拍照)"
+- 门店日常工作.md: Remove "- 拍照" from the task description
+
+## Supabase Database Schema
+
+The application is connected to a Supabase database with the following structure:
+
+### Project Information
+- **Project ID**: wdpeoyugsxqnpwwtkqsl
+- **Region**: us-east-1
+- **Database Host**: db.wdpeoyugsxqnpwwtkqsl.supabase.co
+
+### Database Tables (7 tables created with prefix `roleplay_`)
+
+1. **roleplay_restaurants** - Multi-restaurant support (currently has "野百灵")
+2. **roleplay_roles** - User roles (CEO, Manager, Chef, Staff)
+3. **roleplay_users** - User accounts linked to auth.users
+4. **roleplay_period_transitions** - Tracks period entry/exit times
+5. **roleplay_tasks** - Task definitions (59 tasks pre-loaded)
+6. **roleplay_task_records** - Task instances with submission content
+7. **roleplay_notice_responses** - Responses to notice tasks
+
+### Storage Configuration
+- **Bucket**: `restaurant-tasks` (public, 50MB limit)
+- **Structure**: `restaurant-tasks/{restaurant_id}/{date}/{task_record_id}/`
+- **Supported**: JPEG, PNG, WebP images; MP3, WAV, WebM audio
+
+### Key Design Features
+- Task records combine status and submission content in one table
+- Photos/audio stored in Storage, URLs in database
+- Support for makeup tasks with reason tracking
+- Floating tasks (like 收货验货) independent of time periods
+- All tables indexed for performance
+
+For detailed schema information, see `SUPABASE_SCHEMA.md`
+
+## Task Sample File Standards
+
+### Checklist JSON Format
+When creating checklist.json files for tasks with `uploadRequirement: '列表'`, use this standard format:
+
+```json
+{
+  "items": [
+    "检查项目名称 - 具体描述",
+    "设备名称 - 检查要点"
+  ]
+}
+```
+
+Example:
+```json
+{
+  "items": [
+    "插座 - 检查所有电磁炉插座是否正常通电",
+    "冰箱 - 检查制冷温度",
+    "空调 - 检查制冷温度"
+  ]
+}
+```
+
+This format is used for all checklist-type tasks including equipment checks and material preparation

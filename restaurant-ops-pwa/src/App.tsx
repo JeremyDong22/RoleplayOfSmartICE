@@ -5,6 +5,9 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { RoleSelection } from './pages/RoleSelection'
 import { ManagerDashboard } from './pages/ManagerDashboard-new'
 import { ChefDashboard } from './pages/ChefDashboard-new'
+import DutyManagerDashboard from './pages/DutyManagerDashboard'
+import TestFloatingCamera from './pages/TestFloatingCamera'
+import { DutyManagerProvider } from './contexts/DutyManagerContext'
 
 const theme = createTheme({
   palette: {
@@ -31,13 +34,23 @@ const router = createBrowserRouter([
     path: '/chef',
     element: <ChefDashboard />,
   },
+  {
+    path: '/duty-manager',
+    element: <DutyManagerDashboard />,
+  },
+  {
+    path: '/test-camera',
+    element: <TestFloatingCamera />,
+  },
 ])
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <RouterProvider router={router} />
+      <DutyManagerProvider>
+        <RouterProvider router={router} />
+      </DutyManagerProvider>
     </ThemeProvider>
   )
 }

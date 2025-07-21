@@ -1,6 +1,6 @@
 // Manager Dashboard with status island and new timer display
 // Updated: Added debug logs for isManualClosing state tracking and recovery mechanism for stuck states
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   Container, 
@@ -19,6 +19,8 @@ import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPer
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
+import { useDutyManager } from '../contexts/DutyManagerContext'
+import { getCurrentTestTime } from '../utils/globalTestTime'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -27,7 +29,7 @@ const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
 
 ### 前厅
 1. 开店准备与设备检查：更换工作服、佩戴工牌检查门店设备运转情况并查看能源余额情况（水电气）
-2. 召开晨会：召集门店伙伴开展早会, 清点到岗人数, 对各岗位每日工作流程遇漏的问题进行总结强调，当日需要对该问题点进行复查, 安排今日各岗位人员分工并提醒要点与容易出现疏漏的地方
+2. 召开午会：召集门店伙伴开展早会, 清点到岗人数, 对各岗位每日工作流程遇漏的问题进行总结强调，当日需要对该问题点进行复查, 安排今日各岗位人员分工并提醒要点与容易出现疏漏的地方
 3. 员工早餐：早餐准备
 
 ### 后厨
@@ -135,18 +137,15 @@ interface NoticeComment {
 }
 
 export const ManagerDashboard: React.FC = () => {
-  console.log('[ManagerDashboard] Component rendering')
-  
   // Check if role is correct
   const selectedRole = localStorage.getItem('selectedRole')
-  console.log('[ManagerDashboard] Selected role from localStorage:', selectedRole)
   
   const navigate = useNavigate()
+  const { setTrigger, submissions, updateReviewStatus } = useDutyManager()
   
   // Redirect to role selection if no role is selected
   useEffect(() => {
     if (!selectedRole) {
-      console.log('[ManagerDashboard] No role selected, redirecting to role selection')
       navigate('/')
     }
   }, [selectedRole, navigate])
@@ -160,42 +159,21 @@ export const ManagerDashboard: React.FC = () => {
   const [isManualClosing, setIsManualClosing] = useState(false)
   const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
   const manualClosingRef = useRef(false) // Ref to prevent race conditions
+  const waitingRef = useRef(false) // Ref for waiting state
   const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
   const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
   const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
+  const [preClosingTasks, setPreClosingTasks] = useState<TaskTemplate[]>([]) // Store pre-closing tasks when transitioning to closing
   const workflowPeriods = loadWorkflowPeriods()
   
-  // DEBUG: Log component render state
-  console.log('[DEBUG ManagerDashboard] Component render state:', {
-    currentPeriod: currentPeriod ? { id: currentPeriod.id, name: currentPeriod.displayName } : null,
-    nextPeriod: nextPeriod ? { id: nextPeriod.id, name: nextPeriod.displayName } : null,
-    isManualClosing,
-    isWaitingForNextDay,
-    hasInitialized,
-    manuallyAdvancedPeriod,
-    completedTaskIds: completedTaskIds.length,
-    timestamp: new Date().toISOString()
-  })
   
   // Load state from localStorage on mount
   useEffect(() => {
     if (!hasInitialized) {
       const savedState = loadState('manager')
       if (savedState) {
-        console.log('[DEBUG Persistence] Loading saved state from localStorage:', {
-          isManualClosing: savedState.isManualClosing,
-          isWaitingForNextDay: savedState.isWaitingForNextDay,
-          manuallyAdvancedPeriod: savedState.manuallyAdvancedPeriod,
-          completedTaskIds: savedState.completedTaskIds?.length || 0,
-          taskStatuses: savedState.taskStatuses?.length || 0,
-          missingTasks: savedState.missingTasks?.length || 0,
-          testTime: savedState.testTime
-        })
-        
         // Check for invalid stuck state BEFORE applying it
         if (savedState.isManualClosing && !savedState.isWaitingForNextDay) {
-          console.log('[DEBUG Persistence] RECOVERY - Found stuck isManualClosing=true without waiting state')
-          console.log('[DEBUG Persistence] Clearing isManualClosing to recover from stuck state')
           savedState.isManualClosing = false
         }
         
@@ -208,13 +186,19 @@ export const ManagerDashboard: React.FC = () => {
         manualClosingRef.current = savedState.isManualClosing
         setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
         manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
+        setPreClosingTasks(savedState.preClosingTasks || [])
         // Restore testTime if saved
         if (savedState.testTime) {
           setTestTime(new Date(savedState.testTime))
         }
-      } else {
-        console.log('[DEBUG Persistence] No saved state found in localStorage')
       }
+      
+      // Also check for global test time
+      const globalTestTime = getCurrentTestTime()
+      if (globalTestTime && !savedState?.testTime) {
+        setTestTime(globalTestTime)
+      }
+      
       setHasInitialized(true)
     }
   }, [hasInitialized])
@@ -222,7 +206,6 @@ export const ManagerDashboard: React.FC = () => {
   // Save state to localStorage whenever key states change
   useEffect(() => {
     if (hasInitialized) {
-      console.log('[Persistence] Saving state to localStorage')
       saveState('manager', {
         completedTaskIds,
         taskStatuses,
@@ -231,45 +214,29 @@ export const ManagerDashboard: React.FC = () => {
         isManualClosing,
         isWaitingForNextDay,
         manuallyAdvancedPeriod,
+        preClosingTasks,
         testTime: testTime?.toISOString() || null
       })
     }
-  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, testTime, hasInitialized])
+  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, preClosingTasks, testTime, hasInitialized])
   
   // Period update effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null
     
     const updatePeriods = () => {
-      console.log('[DEBUG Period Update] Starting update check:', {
-        isManualClosing,
-        manualClosingRef: manualClosingRef.current,
-        isWaitingForNextDay,
-        currentPeriodId: currentPeriod?.id,
-        hasInitialized
-      })
-      
       // Skip all updates if we're in manual closing mode (check ref for immediate value)
       if (manualClosingRef.current || isManualClosing) {
-        console.log('[DEBUG Period Update] SKIPPING - manual closing is true')
         return
       }
       
       const current = getCurrentPeriod(testTime)
       const next = getNextPeriod(testTime)
       
-      console.log('[DEBUG Period Update] Got periods from workflow:', {
-        current: current ? { id: current.id, name: current.displayName } : null,
-        next: next ? { id: next.id, name: next.displayName } : null,
-        testTime: testTime?.toISOString() || 'real time'
-      })
-      
       // IMPORTANT: Check waiting state FIRST before manual advance
       // If we're in waiting state, only exit if we've reached opening time
       if (isWaitingForNextDay) {
         if (current && current.id === 'opening') {
-          console.log('[DEBUG Period Update] Exiting waiting state, entering opening period')
-          console.log('[DEBUG Period Update] Setting isManualClosing to FALSE (from waiting state)')
           setIsWaitingForNextDay(false)
           setIsManualClosing(false)
           manualClosingRef.current = false
@@ -291,19 +258,14 @@ export const ManagerDashboard: React.FC = () => {
       if (manualAdvanceRef.current || manuallyAdvancedPeriod) {
         // Check if actual time has caught up to the manually advanced period
         if (current?.id === manualAdvanceRef.current || current?.id === manuallyAdvancedPeriod) {
-          console.log('[Period Update] Time caught up to manually advanced period, clearing manual advance')
           setManuallyAdvancedPeriod(null)
           manualAdvanceRef.current = null
         } else {
-          console.log('[Period Update] Keeping manually advanced period:', manualAdvanceRef.current)
           return // Don't update periods while manually advanced
         }
       }
       
       // Normal automatic period updates
-      if (current?.id !== currentPeriod?.id) {
-        // console.log('[Period Update] Period changed from', currentPeriod?.id, 'to', current?.id)
-      }
       setCurrentPeriod(current)
       setNextPeriod(next)
     }
@@ -329,6 +291,10 @@ export const ManagerDashboard: React.FC = () => {
   useEffect(() => {
     manualAdvanceRef.current = manuallyAdvancedPeriod
   }, [manuallyAdvancedPeriod])
+
+  useEffect(() => {
+    waitingRef.current = isWaitingForNextDay
+  }, [isWaitingForNextDay])
   
   // Safety check: Clear invalid states
   useEffect(() => {
@@ -337,9 +303,6 @@ export const ManagerDashboard: React.FC = () => {
     
     // Check if isManualClosing is stuck without a valid currentPeriod
     if (isManualClosing && !currentPeriod && !isWaitingForNextDay) {
-      console.log('[DEBUG Safety Check] INVALID STATE DETECTED - isManualClosing=true but no currentPeriod and not waiting')
-      console.log('[DEBUG Safety Check] Clearing isManualClosing to recover')
-      
       // Clear the invalid state
       setIsManualClosing(false)
       manualClosingRef.current = false
@@ -351,8 +314,6 @@ export const ManagerDashboard: React.FC = () => {
     
     // Check if we're stuck in manual closing but not in closing period
     if (isManualClosing && currentPeriod && currentPeriod.id !== 'closing') {
-      console.log('[DEBUG Safety Check] INVALID STATE - isManualClosing=true but not in closing period')
-      console.log('[DEBUG Safety Check] Current period:', currentPeriod.id)
       // This might be valid during transition, so just log for now
     }
   }, [hasInitialized, isManualClosing, currentPeriod, isWaitingForNextDay])
@@ -367,8 +328,6 @@ export const ManagerDashboard: React.FC = () => {
       
       // Check if we just crossed 10:00 AM (from 9:xx to 10:xx)
       if (lastCheckedHour !== 10 && currentHour === 10) {
-        console.log('[Daily Reset] Crossing 10:00 AM - resetting all tasks')
-        
         // Clear localStorage
         clearState('manager')
         
@@ -377,16 +336,14 @@ export const ManagerDashboard: React.FC = () => {
         setCompletedTaskIds([])
         setNoticeComments([])
         setMissingTasks([])
+        setPreClosingTasks([])
         
         // Always clear waiting state and manual advance state at daily reset
-        console.log('[DEBUG Daily Reset] Setting isManualClosing to FALSE')
         setIsWaitingForNextDay(false)
         setIsManualClosing(false)
         manualClosingRef.current = false
         setManuallyAdvancedPeriod(null)
         manualAdvanceRef.current = null
-        
-        console.log('[Daily Reset] All tasks reset for new day')
       }
       
       lastCheckedHour = currentHour
@@ -406,7 +363,6 @@ export const ManagerDashboard: React.FC = () => {
     // Don't update missing tasks if we're in manual closing mode or have manually advanced
     // This prevents overwriting the missing tasks set during transition
     if (isManualClosing || currentPeriod.id === 'closing' || manuallyAdvancedPeriod) {
-      console.log('Skipping missing tasks update during manual closing/closing period/manual advance')
       return
     }
 
@@ -524,14 +480,14 @@ export const ManagerDashboard: React.FC = () => {
         taskId,
         completed: true,
         completedAt: now,
-        overdue: false
+        overdue: false,
+        evidence: data // Store evidence data with task status
       }
     ])
     
     setCompletedTaskIds(prev => [...prev, taskId])
     
     // TODO: Submit task data to backend
-    console.log('Task completed:', taskId, data)
   }
   
   const handleNoticeComment = (noticeId: string, comment: string) => {
@@ -543,10 +499,9 @@ export const ManagerDashboard: React.FC = () => {
     setNoticeComments(prev => [...prev, newComment])
     
     // TODO: Send comment to backend
-    console.log('Notice comment:', noticeId, comment)
   }
   
-  const handleLateSubmit = (taskId: string) => {
+  const handleLateSubmit = (taskId: string, data?: any) => {
     // Remove the task from missing tasks
     setMissingTasks(prev => prev.filter(item => item.task.id !== taskId))
     
@@ -558,14 +513,17 @@ export const ManagerDashboard: React.FC = () => {
         taskId,
         completed: true,
         completedAt: now,
-        overdue: false
+        overdue: false,
+        evidence: data // Store submission data if provided
       }
     ])
     
     setCompletedTaskIds(prev => [...prev, taskId])
     
-    // TODO: Open submission dialog for late task
-    console.log('Late submit:', taskId)
+    // TODO: Submit late task data to backend
+    if (data) {
+      console.log('Late task submission:', { taskId, data })
+    }
   }
   
   const handleBack = () => {
@@ -573,53 +531,59 @@ export const ManagerDashboard: React.FC = () => {
     navigate('/')
   }
   
-  const handleLastCustomerLeft = () => {
-    console.log('[DEBUG handleLastCustomerLeft] === Called ===')
-    console.log('[DEBUG handleLastCustomerLeft] Current period:', currentPeriod)
-    console.log('[DEBUG handleLastCustomerLeft] Current completedTaskIds:', completedTaskIds)
-    console.log('[DEBUG handleLastCustomerLeft] isManualClosing before:', isManualClosing)
+  const handleLastCustomerLeftLunch = () => {
+    // 触发值班经理的午市任务
+    console.log('午市最后一桌客人离开，触发值班经理任务')
     
+    // 使用Context设置触发状态
+    setTrigger({
+      type: 'last-customer-left-lunch',
+      triggeredAt: new Date(),
+      triggeredBy: 'manager-001' // 在实际应用中应该是真实的管理员ID
+    })
+    
+    // 创建审核任务并添加到当前任务中
+    const reviewTask: TaskTemplate = {
+      id: 'review-lunch-duty-tasks',
+      title: '值班经理任务审核',
+      description: '审核午市值班记录',
+      role: 'Manager',
+      department: '前厅',
+      uploadRequirement: '审核',
+      linkedTasks: ['lunch-duty-manager-1', 'lunch-duty-manager-2'],
+      autoGenerated: true,
+      timeSlot: 'lunch-closing',
+    }
+    
+    // 添加审核任务到当前任务列表
+    if (currentPeriod) {
+      const updatedPeriod = {
+        ...currentPeriod,
+        tasks: {
+          ...currentPeriod.tasks,
+          manager: [...currentPeriod.tasks.manager, reviewTask]
+        }
+      }
+      setCurrentPeriod(updatedPeriod)
+    }
+  }
+  
+  const handleLastCustomerLeft = () => {
     // Force transition to closing period
     const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
-    console.log('Found closing period:', closingPeriod)
     
     if (closingPeriod) {
-      // First, collect all missing tasks from ALL previous periods, not just pre-closing
-      const allMissingTasks: { task: TaskTemplate; periodName: string }[] = []
-      
-      // Add existing missing tasks
-      allMissingTasks.push(...missingTasks)
-      
-      // Add uncompleted pre-closing tasks
+      // Store pre-closing tasks to display them along with closing tasks
       if (currentPeriod?.id === 'pre-closing') {
-        console.log('Processing pre-closing tasks:', currentPeriod.tasks.manager)
-        currentPeriod.tasks.manager.forEach(task => {
-          console.log('Checking task:', {
-            id: task.id,
-            title: task.title,
-            isNotice: task.isNotice,
-            isCompleted: completedTaskIds.includes(task.id)
-          })
-          
-          if (task.isNotice) {
-            console.log('Skipping notice:', task.title)
-            return // Skip notices
-          }
-          
-          // Check if task is completed using completedTaskIds
-          if (!completedTaskIds.includes(task.id)) {
-            allMissingTasks.push({
-              task,
-              periodName: currentPeriod.displayName
-            })
-            console.log('Adding uncompleted pre-closing task:', task.title)
-          } else {
-            console.log('Task already completed:', task.title)
-          }
-        })
+        setPreClosingTasks(currentPeriod.tasks.manager)
       }
       
-      console.log('All missing tasks to be set:', allMissingTasks)
+      // Only add missing tasks from periods BEFORE pre-closing
+      // Pre-closing tasks will remain visible in the current task view
+      const allMissingTasks: { task: TaskTemplate; periodName: string }[] = []
+      
+      // Add existing missing tasks (from periods before pre-closing)
+      allMissingTasks.push(...missingTasks)
       
       // Set ref immediately to prevent race conditions
       manualClosingRef.current = true
@@ -628,29 +592,31 @@ export const ManagerDashboard: React.FC = () => {
       // This prevents the period update effect from running between state updates
       React.startTransition(() => {
         // Set manual closing flag FIRST
-        console.log('[DEBUG handleLastCustomerLeft] Setting isManualClosing to TRUE')
         setIsManualClosing(true)
         
         // Then update all other states
-        console.log('[handleLastCustomerLeft] Setting currentPeriod to closing period')
         setCurrentPeriod(closingPeriod)
         setNextPeriod(null) // No next period during closing
         
-        // Set all missing tasks
+        // Set all missing tasks (excluding pre-closing tasks)
         setMissingTasks(allMissingTasks)
         
         // Don't clear completed tasks - they track ALL periods
-        console.log('[handleLastCustomerLeft] Keeping completed tasks from all periods')
         
         // Clear any existing task statuses for a fresh start
-        console.log('[handleLastCustomerLeft] Clearing task statuses')
         setTaskStatuses([])
       })
       
-      console.log('=== handleLastCustomerLeft completed ===')
-    } else {
-      console.log('ERROR: Could not find closing period!')
     }
+  }
+  
+  const handleReviewReject = (taskId: string, reason: string) => {
+    // 更新审核状态为驳回
+    updateReviewStatus(taskId, 'rejected', reason)
+    
+    // 审核任务保持未完成状态
+    // 值班经理可以通过Context看到驳回状态并重新提交
+    console.log(`审核任务 ${taskId} 被驳回，原因：${reason}`)
   }
   
   const handleClosingComplete = () => {
@@ -683,7 +649,7 @@ export const ManagerDashboard: React.FC = () => {
       setCompletedTaskIds([])
       setNoticeComments([])
       setMissingTasks([])
-      console.log('[DEBUG handleClosingComplete] Setting isManualClosing to FALSE')
+      setPreClosingTasks([])
       setIsManualClosing(false)
       manualClosingRef.current = false // Clear ref too
       // Clear manual advance state to prevent conflicts
@@ -699,7 +665,6 @@ export const ManagerDashboard: React.FC = () => {
       }
     })
     
-    console.log('[handleClosingComplete] Transitioned to waiting state')
   }
   
   const handleAdvancePeriod = () => {
@@ -734,23 +699,38 @@ export const ManagerDashboard: React.FC = () => {
     // Force transition to next period
     setCurrentPeriod(nextPeriod)
     setNextPeriod(getNextPeriod(testTime))
-    
-    console.log('[handleAdvancePeriod] Advanced from', currentPeriod.id, 'to', nextPeriod.id, '- manual advance set')
   }
+
+  // 添加重置任务功能（用于测试）
+  const handleResetTasks = useCallback(() => {
+    // 清空所有任务相关状态
+    setTaskStatuses([])
+    setCompletedTaskIds([])
+    setNoticeComments([])
+    setMissingTasks([])
+    setPreClosingTasks([])
+    setIsManualClosing(false)
+    setManuallyAdvancedPeriod(null)
+    manualAdvanceRef.current = null
+    setIsWaitingForNextDay(false)
+    waitingRef.current = false
+    
+    // 清除本地存储
+    clearState('manager')
+    
+    // 保持当前时段不变，但重新初始化
+    const now = testTime || new Date()
+    const newPeriod = getCurrentPeriod(now)
+    setCurrentPeriod(newPeriod)
+    setNextPeriod(getNextPeriod(now))
+  }, [testTime])
   
-  const currentTasks = currentPeriod?.tasks.manager || []
+  // When in closing period, concatenate pre-closing tasks with closing tasks
+  const currentTasks = currentPeriod?.id === 'closing' && preClosingTasks.length > 0
+    ? [...preClosingTasks, ...(currentPeriod?.tasks.manager || [])]
+    : currentPeriod?.tasks.manager || []
   
-  // DEBUG: Log render conditions
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
-  console.log('[DEBUG Render] Render conditions:', {
-    currentPeriod: currentPeriod ? { id: currentPeriod.id, name: currentPeriod.displayName } : null,
-    isManualClosing,
-    isWaitingForNextDay,
-    taskCount: currentTasks.length,
-    shouldShowClosedDisplay,
-    willRenderTaskCountdown: currentPeriod && !isWaitingForNextDay,
-    willRenderClosedDisplay: shouldShowClosedDisplay
-  })
   
   return (
     <>
@@ -768,7 +748,7 @@ export const ManagerDashboard: React.FC = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             前厅管理
           </Typography>
-          <EditableTime testTime={testTime} onTimeChange={setTestTime} />
+          <EditableTime testTime={testTime} onTimeChange={setTestTime} onResetTasks={handleResetTasks} />
         </Toolbar>
       </AppBar>
       
@@ -781,12 +761,15 @@ export const ManagerDashboard: React.FC = () => {
                 period={currentPeriod}
                 tasks={currentTasks}
                 completedTaskIds={completedTaskIds}
+                noticeComments={noticeComments}
                 testTime={testTime}
                 onComplete={handleTaskComplete}
                 onComment={handleNoticeComment}
                 onLastCustomerLeft={handleLastCustomerLeft}
+                onLastCustomerLeftLunch={handleLastCustomerLeftLunch}
                 onClosingComplete={handleClosingComplete}
                 onAdvancePeriod={handleAdvancePeriod}
+                onReviewReject={handleReviewReject}
               />
             ) : (
               <ClosedPeriodDisplay nextPeriod={nextPeriod} testTime={testTime} />

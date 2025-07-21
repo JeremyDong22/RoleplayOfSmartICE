@@ -1,13 +1,14 @@
-// Role selection page for choosing between Manager and Chef
+// Role selection page for choosing between Manager, Chef and Duty Manager
 import { useNavigate } from 'react-router-dom'
 import { Box, Container, Typography, Paper, Button } from '@mui/material'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
+import NightlightIcon from '@mui/icons-material/Nightlight'
 
 export const RoleSelection = () => {
   const navigate = useNavigate()
 
-  const handleRoleSelect = (role: 'manager' | 'chef') => {
+  const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager') => {
     console.log(`[Navigation] Attempting to navigate to: /${role}`)
     
     // Store role in localStorage for persistence
@@ -76,7 +77,7 @@ export const RoleSelection = () => {
             display: 'flex', 
             flexDirection: { xs: 'column', md: 'row' },
             gap: { xs: 2, sm: 3, md: 4 },
-            maxWidth: 800,
+            maxWidth: 1200,
             width: '100%',
             flex: 1,
             overflow: 'hidden'
@@ -184,6 +185,61 @@ export const RoleSelection = () => {
                 onClick={(e) => {
                   e.stopPropagation()
                   handleRoleSelect('chef')
+                }}
+              >
+                选择此角色 / Select
+              </Button>
+            </Paper>
+          </Box>
+
+          <Box sx={{ flex: 1 }}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: { xs: 2, sm: 3, md: 4 },
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: 6,
+                  backgroundColor: 'info.light',
+                  color: 'white',
+                },
+              }}
+              onClick={() => handleRoleSelect('duty-manager')}
+            >
+              <NightlightIcon sx={{ fontSize: { xs: 48, sm: 64, md: 80 }, mb: 1 }} />
+              <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: '1.25rem', sm: '1.75rem', md: '2.125rem' } }}>
+                值班经理
+              </Typography>
+              <Typography variant="h6" color="inherit" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '1.25rem' } }}>
+                Duty Manager
+              </Typography>
+              <Typography variant="body1" sx={{ mt: 1, opacity: 0.8, fontSize: { xs: '0.75rem', sm: '0.875rem', md: '1rem' }, display: { xs: 'none', sm: 'block' } }}>
+                负责午晚市值班管理
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.7, fontSize: { xs: '0.625rem', sm: '0.75rem', md: '0.875rem' }, display: { xs: 'none', sm: 'block' } }}>
+                Shift management
+              </Typography>
+              <Button
+                variant="contained"
+                color="info"
+                size="large"
+                sx={{ 
+                  mt: { xs: 2, sm: 3 },
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
+                  py: { xs: 1, sm: 1.5 },
+                  px: { xs: 2, sm: 3 }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleRoleSelect('duty-manager')
                 }}
               >
                 选择此角色 / Select

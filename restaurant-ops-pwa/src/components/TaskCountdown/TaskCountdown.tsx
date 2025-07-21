@@ -10,6 +10,10 @@
 // Updated: Implemented snap-to-center animation with magnetic effect. Cards now automatically
 // center themselves when swiping ends, with smooth elastic animations and scale transitions
 // for a premium feel. Adjusted Embla settings: align center, trimSnaps, and custom easing.
+// Updated: Removed automatic scrolling to first uncompleted task to enable free swiping
+// like a photo album. Users can now freely browse all tasks without being forced back.
+// Updated: Added automatic reset to first task card when period changes. Now when transitioning
+// between periods, the carousel automatically scrolls back to the first task for better UX.
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Paper,
@@ -32,29 +36,35 @@ import {
   Comment,
   Assignment,
   CheckCircle,
-  Announcement
+  Announcement,
+  Checklist
 } from '@mui/icons-material'
 import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
+import type { NoticeComment } from '../../types'
 import useEmblaCarousel from 'embla-carousel-react'
+import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
+import AudioRecordingDialog from '../AudioRecordingDialog'
+import TextInputDialog from '../TextInputDialog'
+import NoticeCommentDialog from '../NoticeCommentDialog'
+import ListSubmissionDialog from '../ListSubmissionDialog'
+import { ReviewTaskDialog } from '../ReviewTaskDialog/ReviewTaskDialog'
 
 // Swipeable card component for last customer confirmation - iPhone-style slide to unlock
 const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
-  const sliderRef = React.useRef<HTMLDivElement>(null)
-  const trackRef = React.useRef<HTMLDivElement>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
   const startXRef = React.useRef(0)
   
-  const SLIDER_WIDTH = 60 // Width of the sliding button
-  const TRACK_PADDING = 4 // Padding inside the track
-  const [maxDrag, setMaxDrag] = useState(300) // Will be calculated based on track width
+  const [containerWidth, setContainerWidth] = useState(300)
+  const SWIPE_THRESHOLD = 0.4 // Swipe 40% to confirm
   
-  // Calculate the actual maximum drag distance based on track width
+  // Calculate container width
   useEffect(() => {
-    if (trackRef.current) {
-      const trackWidth = trackRef.current.offsetWidth
-      setMaxDrag(trackWidth - SLIDER_WIDTH - (TRACK_PADDING * 2))
+    if (containerRef.current) {
+      const width = containerRef.current.offsetWidth
+      setContainerWidth(width)
     }
   }, [])
   
@@ -67,9 +77,9 @@ const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConf
   const handleMove = (clientX: number) => {
     if (!isDragging || isConfirmed) return
     const newX = clientX - startXRef.current
-    // Only allow dragging to the right, up to the maximum
+    // Only allow dragging to the right
     if (newX >= 0) {
-      setDragX(Math.min(newX, maxDrag))
+      setDragX(Math.min(newX, containerWidth))
     }
   }
   
@@ -77,17 +87,17 @@ const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConf
     if (!isDragging || isConfirmed) return
     setIsDragging(false)
     
-    // Check if we've reached the end
-    if (dragX >= maxDrag - 10) { // 10px tolerance
+    // Check if we've swiped enough
+    if (dragX >= containerWidth * SWIPE_THRESHOLD) {
       // Trigger confirmation
       setIsConfirmed(true)
-      setDragX(maxDrag)
+      setDragX(containerWidth)
       // Add a small delay before calling onConfirm for visual feedback
       setTimeout(() => {
         onConfirm()
-      }, 500)
+      }, 400)
     } else {
-      // Snap back with spring animation
+      // Snap back
       setDragX(0)
     }
   }
@@ -121,225 +131,168 @@ const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConf
     }
   }, [isDragging, dragX])
   
-  const progress = dragX / maxDrag
+  const progress = dragX / containerWidth
   
   return (
-    <Paper 
-      elevation={3} 
-      sx={{ 
+    <Box
+      ref={containerRef}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      sx={{
         mb: 3,
         position: 'relative',
         overflow: 'hidden',
-        background: theme => `linear-gradient(135deg, ${theme.palette.success.light}15, ${theme.palette.success.main}15)`,
-        border: theme => `1px solid ${alpha(theme.palette.success.main, 0.3)}`,
+        borderRadius: 2,
+        cursor: isConfirmed ? 'default' : 'grab',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        touchAction: 'pan-y',
+        '&:active': {
+          cursor: isConfirmed ? 'default' : 'grabbing'
+        }
       }}
     >
-      <Box sx={{ p: 3 }}>
-        {/* Title */}
-        <Typography 
-          variant="h6" 
-          gutterBottom 
-          sx={{ 
-            fontWeight: 'bold',
-            color: 'text.primary',
-            mb: 1
-          }}
-        >
-          最后一位客人离店
-        </Typography>
-        
-        {/* Subtitle */}
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            color: 'text.secondary',
-            mb: 3
-          }}
-        >
-          确认所有客人已离开餐厅
-        </Typography>
-        
-        {/* Slide Track */}
+      {/* Background layer */}
+      <Paper 
+        elevation={2}
+        sx={{
+          position: 'relative',
+          height: 80,
+          display: 'flex',
+          alignItems: 'center',
+          overflow: 'hidden',
+          background: theme => isConfirmed 
+            ? theme.palette.success.main
+            : `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.08)}, ${alpha(theme.palette.success.main, 0.15)})`,
+          border: theme => `1px solid ${alpha(theme.palette.success.main, isConfirmed ? 0.5 : 0.2)}`,
+          transition: 'all 0.3s ease',
+        }}
+      >
+        {/* Progress fill */}
         <Box
-          ref={trackRef}
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: theme => alpha(theme.palette.success.main, 0.1),
+            transform: `translateX(${-100 + progress * 100}%)`,
+            transition: isDragging ? 'none' : 'transform 0.3s ease',
+          }}
+        />
+        
+        {/* Content container */}
+        <Box
           sx={{
             position: 'relative',
-            height: 68,
-            borderRadius: 34,
-            background: theme => alpha(theme.palette.success.main, 0.1),
-            border: theme => `2px solid ${alpha(theme.palette.success.main, 0.2)}`,
-            overflow: 'hidden',
-            cursor: 'default',
+            width: '100%',
+            px: 3,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transform: `translateX(${dragX}px)`,
+            transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
           }}
         >
-          {/* Shimmer/Glow effect */}
-          {!isConfirmed && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: '-100%',
-                width: '100%',
-                height: '100%',
-                background: theme => `linear-gradient(90deg, 
-                  transparent 0%, 
-                  ${alpha(theme.palette.success.light, 0.3)} 50%, 
-                  transparent 100%)`,
-                animation: 'shimmer 2.5s ease-in-out infinite',
-                '@keyframes shimmer': {
-                  '0%': { left: '-100%' },
-                  '100%': { left: '100%' }
-                }
-              }}
-            />
-          )}
-          
-          {/* Progress fill */}
+          {/* Text content */}
           <Box
             sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: `${progress * 100}%`,
-              height: '100%',
-              background: theme => alpha(theme.palette.success.main, 0.15),
-              transition: isDragging ? 'none' : 'width 0.3s ease',
-            }}
-          />
-          
-          {/* Center text */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
-              opacity: isConfirmed ? 0 : 1 - progress,
+              gap: 2,
+              opacity: isConfirmed ? 0 : 1,
               transition: 'opacity 0.3s ease',
-              pointerEvents: 'none',
-              userSelect: 'none',
             }}
           >
             <Typography
-              variant="body1"
+              variant="h6"
               sx={{
-                color: theme => theme.palette.success.main,
-                fontWeight: 500,
-                letterSpacing: '0.02em',
+                color: theme => isConfirmed ? 'white' : theme.palette.success.main,
+                fontWeight: 600,
+                fontSize: '1.1rem',
               }}
             >
-              滑动确认
+              最后一位客人离店
             </Typography>
             <Box
-              component="span"
               sx={{
-                color: theme => theme.palette.success.main,
-                fontSize: 20,
                 display: 'flex',
                 alignItems: 'center',
+                gap: 0.5,
+                color: theme => alpha(theme.palette.success.main, 0.7),
               }}
             >
-              »
+              <Typography variant="body2">
+                滑动确认
+              </Typography>
+              <Box
+                component="span"
+                sx={{
+                  fontSize: 18,
+                  animation: 'slideArrow 1.5s ease-in-out infinite',
+                  '@keyframes slideArrow': {
+                    '0%, 100%': { transform: 'translateX(0)' },
+                    '50%': { transform: 'translateX(4px)' }
+                  }
+                }}
+              >
+                →
+              </Box>
             </Box>
           </Box>
           
-          {/* Success message */}
+          {/* Success state */}
           {isConfirmed && (
             <Box
               sx={{
                 position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
-                opacity: 1,
-                animation: 'fadeInScale 0.5s ease-out',
-                '@keyframes fadeInScale': {
-                  '0%': { 
-                    opacity: 0,
-                    transform: 'translate(-50%, -50%) scale(0.8)'
-                  },
-                  '100%': { 
-                    opacity: 1,
-                    transform: 'translate(-50%, -50%) scale(1)'
-                  }
-                },
-                pointerEvents: 'none',
+                color: 'white',
+                animation: 'fadeIn 0.3s ease-out',
+                '@keyframes fadeIn': {
+                  '0%': { opacity: 0 },
+                  '100%': { opacity: 1 }
+                }
               }}
             >
-              <CheckCircle sx={{ color: 'success.main', fontSize: 24 }} />
-              <Typography
-                variant="body1"
-                sx={{
-                  color: 'success.main',
-                  fontWeight: 600,
-                }}
-              >
+              <CheckCircle sx={{ fontSize: 24 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 已确认
               </Typography>
             </Box>
           )}
-          
-          {/* Sliding button */}
+        </Box>
+        
+        {/* Visual hint arrow on the right */}
+        {!isConfirmed && !isDragging && (
           <Box
-            ref={sliderRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
             sx={{
               position: 'absolute',
-              top: TRACK_PADDING,
-              left: TRACK_PADDING,
-              width: SLIDER_WIDTH,
-              height: 60,
-              borderRadius: 30,
-              background: theme => isConfirmed 
-                ? theme.palette.success.main 
-                : `linear-gradient(135deg, ${theme.palette.success.light}, ${theme.palette.success.main})`,
-              boxShadow: theme => isConfirmed
-                ? `0 2px 8px ${alpha(theme.palette.success.main, 0.4)}`
-                : `0 2px 12px ${alpha(theme.palette.success.main, 0.3)}, 0 4px 20px ${alpha(theme.palette.success.main, 0.2)}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: isConfirmed ? 'default' : 'grab',
-              transform: `translateX(${dragX}px)`,
-              transition: isDragging 
-                ? 'box-shadow 0.2s ease' 
-                : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              touchAction: 'none',
-              '&:active': {
-                cursor: isConfirmed ? 'default' : 'grabbing'
+              right: 20,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: theme => alpha(theme.palette.success.main, 0.3),
+              fontSize: 24,
+              animation: 'pulse 2s ease-in-out infinite',
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 0.3 },
+                '50%': { opacity: 0.6 }
               }
             }}
           >
-            <Box
-              sx={{
-                color: 'white',
-                fontSize: 24,
-                display: 'flex',
-                alignItems: 'center',
-                transform: isConfirmed ? 'none' : `translateX(${Math.min(dragX * 0.1, 5)}px)`,
-                transition: 'transform 0.2s ease',
-              }}
-            >
-              {isConfirmed ? '✓' : '›'}
-            </Box>
+            →
           </Box>
-        </Box>
-      </Box>
-    </Paper>
+        )}
+      </Paper>
+    </Box>
   )
 }
 
@@ -347,29 +300,45 @@ interface TaskCountdownProps {
   period: WorkflowPeriod
   tasks: TaskTemplate[]
   completedTaskIds: string[]
+  noticeComments: NoticeComment[]
   testTime?: Date
   onComplete: (taskId: string, data: any) => void
   onComment: (noticeId: string, comment: string) => void
   onLastCustomerLeft?: () => void
+  onLastCustomerLeftLunch?: () => void
   onClosingComplete?: () => void
   onAdvancePeriod?: () => void
+  onReviewReject?: (taskId: string, reason: string) => void
 }
 
 export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   period,
   tasks,
   completedTaskIds,
+  noticeComments,
   testTime,
   onComplete,
   onComment,
   onLastCustomerLeft,
+  onLastCustomerLeftLunch,
   onClosingComplete,
-  onAdvancePeriod
+  onAdvancePeriod,
+  onReviewReject
 }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const [currentTime, setCurrentTime] = useState<Date>(testTime || new Date())
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const prevPeriodRef = React.useRef(period.id)
+  const prevPeriodRef = React.useRef(period?.id)
+  
+  // Dialog states
+  const [photoDialogOpen, setPhotoDialogOpen] = useState(false)
+  const [audioDialogOpen, setAudioDialogOpen] = useState(false)
+  const [textDialogOpen, setTextDialogOpen] = useState(false)
+  const [listDialogOpen, setListDialogOpen] = useState(false)
+  const [noticeCommentDialogOpen, setNoticeCommentDialogOpen] = useState(false)
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
+  const [activeTask, setActiveTask] = useState<TaskTemplate | null>(null)
+  const [activeNotice, setActiveNotice] = useState<TaskTemplate | null>(null)
   
   // Initialize Embla Carousel with snap-to-center animation
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -395,20 +364,12 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => completedTaskIds.includes(task.id))
   
-  // Scroll to first uncompleted task on mount or when tasks change
+  // Free swiping mode - removed automatic scrolling to first uncompleted task
+  // Users can now freely swipe between all tasks like browsing a photo album
   useEffect(() => {
     if (!emblaApi) return
-    
-    // Allow carousel to settle before scrolling
-    const timer = setTimeout(() => {
-      const firstUncompletedIndex = regularTasks.findIndex(task => !completedTaskIds.includes(task.id))
-      if (firstUncompletedIndex !== -1 && emblaApi.canScrollTo(firstUncompletedIndex)) {
-        emblaApi.scrollTo(firstUncompletedIndex, false) // false = no animation on initial load
-      }
-    }, 100)
-    
-    return () => clearTimeout(timer)
-  }, [emblaApi, regularTasks, period.id]) // Add period.id to reset on period change
+    // Simply ensure the carousel is ready without forcing any specific position
+  }, [emblaApi])
   
   // Update selected index when carousel scrolls
   const onSelect = useCallback(() => {
@@ -427,24 +388,28 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     }
   }, [emblaApi, onSelect])
   
-  // Reset swipe card when entering pre-closing from another period
+  // Reset carousel to first slide when period changes
   useEffect(() => {
-    prevPeriodRef.current = period.id
-  }, [period.id])
+    if (period?.id !== prevPeriodRef.current && emblaApi) {
+      setSelectedIndex(0)
+      emblaApi.scrollTo(0)
+    }
+    prevPeriodRef.current = period?.id
+  }, [period?.id, emblaApi])
   
   // Update currentTime for pre-closing/closing periods
   useEffect(() => {
-    if (period.id === 'pre-closing' || period.id === 'closing') {
+    if (period?.id === 'pre-closing' || period?.id === 'closing') {
       setCurrentTime(testTime || new Date())
     }
-  }, [period.id, testTime])
+  }, [period?.id, testTime])
   
   // Calculate time remaining for countdown periods
   useEffect(() => {
     const calculateTime = () => {
       const now = testTime || new Date()
       
-      if (period.id === 'pre-closing' || period.id === 'closing') {
+      if (!period || period.id === 'pre-closing' || period.id === 'closing') {
         setCurrentTime(now)
         return
       }
@@ -470,11 +435,11 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     calculateTime()
     const interval = setInterval(calculateTime, 1000)
     return () => clearInterval(interval)
-  }, [period.id, period.endTime, testTime])
+  }, [period?.id, period?.endTime, testTime])
   
   // Get urgency level
   const getUrgencyLevel = () => {
-    if (period.id === 'pre-closing' || period.id === 'closing') return 'normal'
+    if (!period || period.id === 'pre-closing' || period.id === 'closing') return 'normal'
     
     const totalMinutes = timeRemaining.hours * 60 + timeRemaining.minutes
     const totalSeconds = totalMinutes * 60 + timeRemaining.seconds
@@ -490,6 +455,11 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const scrollTo = useCallback((index: number) => {
     if (emblaApi) emblaApi.scrollTo(index)
   }, [emblaApi])
+  
+  // Early return if period is undefined
+  if (!period) {
+    return null
+  }
   
   return (
     <>
@@ -532,7 +502,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                        'text.primary'
               }}
             >
-              {period.id === 'pre-closing' || period.id === 'closing' ? (
+              {period?.id === 'pre-closing' || period?.id === 'closing' ? (
                 currentTime.toLocaleTimeString('zh-CN', { 
                   hour: '2-digit', 
                   minute: '2-digit',
@@ -556,8 +526,8 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             </Typography>
           )}
           
-          {/* Advance Period Button */}
-          {onAdvancePeriod && !allTasksCompleted && period.id !== 'pre-closing' && (
+          {/* Advance Period Button - Hide during in-service, pre-closing and closing */}
+          {onAdvancePeriod && !allTasksCompleted && period?.id !== 'lunch-service' && period?.id !== 'dinner-service' && period?.id !== 'pre-closing' && period?.id !== 'closing' && (
             <Box mt={2}>
               <Button
                 variant="outlined"
@@ -647,8 +617,12 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                       }}
                     >
                       <Box sx={{ 
-                        border: theme => isCurrentSlide ? `2px solid ${theme.palette.primary.main}` : '1px solid',
-                        borderColor: isCompleted ? 'success.main' : 'divider',
+                        border: theme => task.isFloating 
+                          ? `2px solid ${theme.palette.warning.main}` // Orange border for floating tasks
+                          : isCurrentSlide ? `2px solid ${theme.palette.primary.main}` : '1px solid',
+                        borderColor: task.isFloating 
+                          ? 'warning.main' // Orange for floating tasks
+                          : isCompleted ? 'success.main' : 'divider',
                         borderRadius: 2,
                         p: 3,
                         backgroundColor: isCompleted ? 'action.hover' : 'background.paper',
@@ -662,9 +636,19 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                         touchAction: 'manipulation'  // Better touch handling
                       }}>
                         <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                          <Typography variant="h5" fontWeight="bold" sx={{ flex: 1 }}>
-                            {task.title}
-                          </Typography>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="h5" fontWeight="bold">
+                              {task.title}
+                            </Typography>
+                            {task.isFloating && (
+                              <Chip 
+                                label="特殊任务" 
+                                size="small" 
+                                color="warning"
+                                sx={{ mt: 1 }}
+                              />
+                            )}
+                          </Box>
                           {isCompleted && (
                             <CheckCircleOutline sx={{ color: 'success.main', fontSize: 30, ml: 1 }} />
                           )}
@@ -677,30 +661,24 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                         )}
                         
                         {/* Required Evidence */}
-                        {task.requiredEvidence && task.requiredEvidence.length > 0 && (
+                        {task.uploadRequirement && (
                           <Box mb={2}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                               需要提交 Required:
                             </Typography>
                             <Box display="flex" gap={1} flexWrap="wrap">
-                              {task.requiredEvidence.map((evidence, idx) => (
-                                <Chip
-                                  key={idx}
-                                  size="small"
-                                  icon={
-                                    evidence === 'photo' ? <PhotoCamera /> :
-                                    evidence === 'video' ? <Videocam /> :
-                                    evidence === 'text' ? <TextFields /> :
-                                    <Comment />
-                                  }
-                                  label={
-                                    evidence === 'photo' ? '照片' :
-                                    evidence === 'video' ? '视频' :
-                                    evidence === 'text' ? '文字' :
-                                    '备注'
-                                  }
-                                />
-                              ))}
+                              <Chip
+                                size="small"
+                                icon={
+                                  task.uploadRequirement === '拍照' ? <PhotoCamera /> :
+                                  task.uploadRequirement === '录音' ? <Videocam /> :
+                                  task.uploadRequirement === '记录' ? <TextFields /> :
+                                  task.uploadRequirement === '列表' ? <Checklist /> :
+                                  task.uploadRequirement === '审核' ? <Assignment /> :
+                                  <Comment />
+                                }
+                                label={task.uploadRequirement}
+                              />
                             </Box>
                           </Box>
                         )}
@@ -711,10 +689,30 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                             color="primary"
                             fullWidth
                             size="large"
-                            onClick={() => onComplete(task.id, {})}
+                            onClick={() => {
+                              // Check if task requires photo or audio evidence
+                              if (task.uploadRequirement === '拍照') {
+                                setActiveTask(task)
+                                setPhotoDialogOpen(true)
+                              } else if (task.uploadRequirement === '录音') {
+                                setActiveTask(task)
+                                setAudioDialogOpen(true)
+                              } else if (task.uploadRequirement === '记录') {
+                                setActiveTask(task)
+                                setTextDialogOpen(true)
+                              } else if (task.uploadRequirement === '列表') {
+                                setActiveTask(task)
+                                setListDialogOpen(true)
+                              } else if (task.uploadRequirement === '审核') {
+                                setActiveTask(task)
+                                setReviewDialogOpen(true)
+                              } else {
+                                onComplete(task.id, {})
+                              }
+                            }}
                             sx={{ mt: 'auto' }}
                           >
-                            完成任务 Complete Task
+                            完成任务
                           </Button>
                         )}
                       </Box>
@@ -762,16 +760,50 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
         </Paper>
       )}
 
+      {/* Swipe Card for Lunch Closing Period (Manager Only) */}
+      {period?.id === 'lunch-closing' && onLastCustomerLeftLunch && (
+        <Paper 
+          elevation={2}
+          sx={{
+            p: 3,
+            mb: 3,
+            textAlign: 'center',
+            background: theme => `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.08)}, ${alpha(theme.palette.success.main, 0.15)})`,
+            border: theme => `1px solid ${alpha(theme.palette.success.main, 0.2)}`
+          }}
+        >
+          <Typography variant="h6" gutterBottom sx={{ color: 'success.dark', fontWeight: 600 }}>
+            确认最后一桌客人离开
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            滑动确认后将触发值班经理的午市任务
+          </Typography>
+          <SwipeableLastCustomerCard onConfirm={onLastCustomerLeftLunch} />
+        </Paper>
+      )}
+      
       {/* Swipe Card for Pre-closing Period (Manager Only) */}
-      {period.id === 'pre-closing' && onLastCustomerLeft && (
+      {period?.id === 'pre-closing' && onLastCustomerLeft && (
         <SwipeableLastCustomerCard onConfirm={onLastCustomerLeft} />
       )}
 
-      {/* Closing Complete Button */}
-      {period.id === 'closing' && onClosingComplete && allTasksCompleted && (
-        <Paper elevation={3} sx={{ p: 3, mb: 3, textAlign: 'center' }}>
-          <Typography variant="h6" gutterBottom>
-            所有闭店任务已完成
+      {/* Closing Complete Button - Shows in same position as swipe card */}
+      {period?.id === 'closing' && onClosingComplete && (
+        <Paper 
+          elevation={2}
+          sx={{
+            p: 3,
+            mb: 3,
+            textAlign: 'center',
+            background: theme => `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.08)}, ${alpha(theme.palette.error.main, 0.15)})`,
+            border: theme => `1px solid ${alpha(theme.palette.error.main, 0.2)}`
+          }}
+        >
+          <Typography variant="h6" gutterBottom sx={{ color: 'error.main', fontWeight: 600 }}>
+            结束今天营业
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            {allTasksCompleted ? '所有任务已完成，可以安全闭店' : '请先完成所有任务'}
           </Typography>
           <Button
             variant="contained"
@@ -779,7 +811,11 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             size="large"
             fullWidth
             onClick={onClosingComplete}
-            sx={{ mt: 2 }}
+            sx={{ 
+              py: 2,
+              fontSize: '1.1rem',
+              fontWeight: 'bold'
+            }}
           >
             确认闭店
           </Button>
@@ -796,20 +832,170 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             </Typography>
           </Box>
           <List disablePadding>
-            {notices.map((notice, index) => (
-              <React.Fragment key={notice.id}>
-                {index > 0 && <Divider />}
-                <ListItem sx={{ px: 0 }}>
-                  <ListItemText
-                    primary={notice.title}
-                    secondary={notice.description}
-                    primaryTypographyProps={{ fontWeight: 'medium' }}
-                  />
-                </ListItem>
-              </React.Fragment>
-            ))}
+            {notices.map((notice, index) => {
+              // Get comments for this notice
+              const noticeCommentList = noticeComments.filter(c => c.noticeId === notice.id)
+              const isInService = period?.id === 'lunch-service' || period?.id === 'dinner-service'
+              
+              return (
+                <React.Fragment key={notice.id}>
+                  {index > 0 && <Divider />}
+                  <ListItem 
+                    sx={{ 
+                      px: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'stretch'
+                    }}
+                  >
+                    <Box>
+                      <ListItemText
+                        primary={notice.title}
+                        secondary={notice.description}
+                        primaryTypographyProps={{ fontWeight: 'medium' }}
+                      />
+                      
+                      {/* Add comment button for in-service periods */}
+                      {isInService && (
+                        <Box sx={{ mt: 1 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Comment />}
+                            onClick={() => {
+                              setActiveNotice(notice)
+                              setNoticeCommentDialogOpen(true)
+                            }}
+                          >
+                            留言 ({noticeCommentList.length})
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  </ListItem>
+                </React.Fragment>
+              )
+            })}
           </List>
         </Paper>
+      )}
+      
+      {/* Photo Submission Dialog */}
+      {activeTask && (
+        <PhotoSubmissionDialog
+          open={photoDialogOpen}
+          taskName={activeTask.title}
+          taskId={activeTask.id}
+          onClose={() => {
+            setPhotoDialogOpen(false)
+            setActiveTask(null)
+          }}
+          onSubmit={(evidence) => {
+            onComplete(activeTask.id, { evidence, type: 'photo' })
+            setPhotoDialogOpen(false)
+            setActiveTask(null)
+          }}
+        />
+      )}
+      
+      {/* Audio Recording Dialog */}
+      {activeTask && (
+        <AudioRecordingDialog
+          open={audioDialogOpen}
+          taskName={activeTask.title}
+          taskId={activeTask.id}
+          onClose={() => {
+            setAudioDialogOpen(false)
+            setActiveTask(null)
+          }}
+          onSubmit={(transcription, audioBlob) => {
+            onComplete(activeTask.id, { transcription, audioBlob, type: 'audio' })
+            setAudioDialogOpen(false)
+            setActiveTask(null)
+          }}
+        />
+      )}
+      
+      {/* Text Input Dialog */}
+      {activeTask && (
+        <TextInputDialog
+          open={textDialogOpen}
+          taskName={activeTask.title}
+          taskId={activeTask.id}
+          onClose={() => {
+            setTextDialogOpen(false)
+            setActiveTask(null)
+          }}
+          onSubmit={(textInput) => {
+            onComplete(activeTask.id, { textInput, type: 'text' })
+            setTextDialogOpen(false)
+            setActiveTask(null)
+          }}
+        />
+      )}
+      
+      {/* List Submission Dialog */}
+      {activeTask && (
+        <ListSubmissionDialog
+          open={listDialogOpen}
+          taskName={activeTask.title}
+          sampleDir={activeTask.role === 'Manager' ? '前厅/1-开店-开店准备与设备检查' : '后厨/1-开店-开店准备与设备检查'}
+          onClose={() => {
+            setListDialogOpen(false)
+            setActiveTask(null)
+          }}
+          onSubmit={(data) => {
+            onComplete(activeTask.id, { items: data.items, type: 'list' })
+            setListDialogOpen(false)
+            setActiveTask(null)
+          }}
+        />
+      )}
+      
+      {/* Notice Comment Dialog */}
+      <NoticeCommentDialog
+        open={noticeCommentDialogOpen && !!activeNotice}
+        noticeTitle={activeNotice?.title || ''}
+        noticeId={activeNotice?.id || ''}
+        existingComments={activeNotice ? noticeComments.filter(c => c.noticeId === activeNotice.id) : []}
+        onClose={() => {
+          setNoticeCommentDialogOpen(false)
+          setActiveNotice(null)
+        }}
+        onSubmit={(comment) => {
+          if (activeNotice) {
+            onComment(activeNotice.id, comment)
+            // Don't close dialog after submit to allow multiple comments
+          }
+        }}
+      />
+      
+      {/* Review Task Dialog */}
+      {activeTask && (
+        <ReviewTaskDialog
+          open={reviewDialogOpen}
+          task={activeTask}
+          onClose={() => {
+            setReviewDialogOpen(false)
+            setActiveTask(null)
+          }}
+          onApprove={(taskId, data) => {
+            onComplete(taskId, { ...data, type: 'review' })
+            setReviewDialogOpen(false)
+            setActiveTask(null)
+          }}
+          onReject={(taskId, reason) => {
+            // 处理驳回逻辑
+            console.log('任务被驳回:', taskId, reason)
+            // 任务保持未完成状态，不调用onComplete
+            // 通过回调函数处理驳回
+            if (onReviewReject) {
+              onReviewReject(taskId, reason)
+            }
+            setReviewDialogOpen(false)
+            setActiveTask(null)
+          }}
+        />
       )}
     </>
   )
