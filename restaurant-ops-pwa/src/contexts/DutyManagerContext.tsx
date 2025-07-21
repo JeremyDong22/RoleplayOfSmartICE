@@ -1,6 +1,7 @@
 // 值班经理任务触发上下文 - 用于管理前厅和值班经理之间的通信
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import type { TaskTemplate } from '../utils/workflowParser'
+import { broadcastService } from '../services/broadcastService'
 
 export interface DutyManagerSubmission {
   taskId: string
@@ -65,6 +66,22 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       reason?: string
     }
   }>({})
+
+  // Subscribe to broadcast messages
+  useEffect(() => {
+    const unsubscribe = broadcastService.subscribe('STATE_SYNC', (message) => {
+      if (message.data?.type === 'DUTY_MANAGER_TRIGGER' && message.data.trigger) {
+        const trigger = message.data.trigger
+        trigger.triggeredAt = new Date(trigger.triggeredAt)
+        setCurrentTrigger(trigger)
+        console.log('DutyManagerContext received trigger via broadcast:', trigger)
+      }
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [])
 
   // 从localStorage恢复状态
   useEffect(() => {
@@ -135,6 +152,11 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
 
   const setTrigger = (trigger: DutyManagerTrigger) => {
     setCurrentTrigger(trigger)
+    // Broadcast the trigger to other tabs
+    broadcastService.send('STATE_SYNC', {
+      type: 'DUTY_MANAGER_TRIGGER',
+      trigger
+    })
   }
 
   const clearTrigger = () => {
