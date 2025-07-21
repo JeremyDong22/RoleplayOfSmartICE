@@ -20,6 +20,7 @@ import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/w
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
 import { useDutyManager } from '../contexts/DutyManagerContext'
+import { broadcastService } from '../services/broadcastService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 
 // Pre-load workflow markdown content for browser
@@ -535,6 +536,12 @@ export const ManagerDashboard: React.FC = () => {
     // 触发值班经理的午市任务
     console.log('午市最后一桌客人离开，触发值班经理任务')
     
+    // 发送广播消息通知其他标签页
+    broadcastService.send('LAST_CUSTOMER_LEFT_LUNCH', {
+      period: currentPeriod?.id,
+      timestamp: Date.now()
+    }, 'manager')
+    
     // 使用Context设置触发状态
     setTrigger({
       type: 'last-customer-left-lunch',
@@ -578,6 +585,12 @@ export const ManagerDashboard: React.FC = () => {
   }
   
   const handleLastCustomerLeft = () => {
+    // Send broadcast message
+    broadcastService.send('LAST_CUSTOMER_LEFT_DINNER', {
+      period: currentPeriod?.id,
+      timestamp: Date.now()
+    }, 'manager')
+    
     // Force transition to closing period
     const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
     

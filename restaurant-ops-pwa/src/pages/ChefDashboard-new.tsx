@@ -23,6 +23,7 @@ import { FloatingTaskCard } from '../components/FloatingTaskCard'
 import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods, getFloatingTasks } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
+import { broadcastService } from '../services/broadcastService'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -307,6 +308,27 @@ export const ChefDashboard: React.FC = () => {
   useEffect(() => {
     manualAdvanceRef.current = manuallyAdvancedPeriod
   }, [manuallyAdvancedPeriod])
+
+  // Subscribe to broadcast messages
+  useEffect(() => {
+    const unsubscribe = broadcastService.subscribe('*', (message) => {
+      console.log('Chef dashboard received broadcast:', message)
+      
+      // Handle lunch customer left message
+      if (message.type === 'LAST_CUSTOMER_LEFT_LUNCH') {
+        console.log('Received notification: Last customer left at lunch')
+        // Force refresh the current period to ensure we have the latest state
+        const now = testTime || new Date()
+        const newPeriod = getCurrentPeriod(now)
+        setCurrentPeriod(newPeriod)
+        setNextPeriod(getNextPeriodForChef(now))
+      }
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [testTime])
   
   // Safety check: Clear invalid states
   useEffect(() => {
