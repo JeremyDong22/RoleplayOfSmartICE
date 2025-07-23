@@ -10,17 +10,7 @@
  * Created: 2025-01-23
  */
 
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from './supabase';
 
 // Constants
 const BUCKET_NAME = 'duty-manager-photos';
@@ -79,7 +69,7 @@ export async function uploadPhoto(
   metadata?: Record<string, any>
 ): Promise<{ publicUrl: string; filePath: string } | null> {
   try {
-    console.log(`Starting photo upload for user: ${userId}, task: ${taskId}`);
+    console.log(`[StorageService] Starting photo upload for user: ${userId}, task: ${taskId}`);
     
     // Validate inputs
     if (!base64Image || !userId || !taskId) {
@@ -88,6 +78,7 @@ export async function uploadPhoto(
     
     // Convert base64 to blob
     const blob = base64ToBlob(base64Image);
+    console.log(`[StorageService] Blob created, size: ${(blob.size / 1024).toFixed(2)}KB`);
     
     // Check file size
     if (blob.size > MAX_FILE_SIZE) {
@@ -96,8 +87,10 @@ export async function uploadPhoto(
     
     // Generate unique file path
     const filePath = generateFilePath(userId, taskId);
+    console.log(`[StorageService] Generated file path: ${filePath}`);
     
     // Upload to Supabase Storage
+    console.log(`[StorageService] Uploading to bucket: ${BUCKET_NAME}`);
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, blob, {
@@ -113,8 +106,14 @@ export async function uploadPhoto(
       });
     
     if (error) {
-      console.error('Error uploading photo:', error);
-      throw error;
+      console.error('[StorageService] Upload error:', error);
+      console.error('[StorageService] Error details:', {
+        message: error.message,
+        statusCode: (error as any).statusCode,
+        error: error
+      });
+      // Don't throw, just return null so the app can continue with base64
+      return null;
     }
     
     // Get public URL for the uploaded file
@@ -122,7 +121,7 @@ export async function uploadPhoto(
       .from(BUCKET_NAME)
       .getPublicUrl(filePath);
     
-    console.log(`Photo uploaded successfully: ${publicUrl}`);
+    console.log(`[StorageService] Photo uploaded successfully: ${publicUrl}`);
     
     return {
       publicUrl,

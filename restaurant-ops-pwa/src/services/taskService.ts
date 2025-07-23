@@ -10,22 +10,24 @@ import type { TaskTemplate, WorkflowPeriod } from '../utils/workflowParser'
 
 export interface DatabaseTask {
   id: string
-  task_code: string
-  task_name: string
-  task_description: string
+  title: string
+  description: string
   role_code: string
-  department: string
-  period_id: string
-  upload_requirement: string | null
-  is_notice: boolean
+  period_id: string | null
+  submission_type: string | null
+  required_photos: number | null
   is_floating: boolean
+  is_notice: boolean
   floating_type: 'daily' | 'anytime' | null
+  prerequisite_periods: string[] | null
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
   prerequisite_trigger: string | null
   linked_tasks: string[] | null
   auto_generated: boolean
-  sort_order: number
-  created_at: string
-  updated_at: string
+  prerequisite_for: string[] | null
 }
 
 export interface DatabasePeriod {
@@ -51,14 +53,23 @@ class TaskService {
    * 初始化服务并订阅实时更新
    */
   async initialize() {
+    console.log('\n🚀 ========== TaskService.initialize START ==========')
+    
     // 加载初始数据
+    console.log('📋 Loading periods...')
     await this.loadPeriods()
+    console.log(`✅ Periods loaded: ${this.periodsCache.length}`)
+    
+    console.log('📋 Loading tasks...')
     await this.loadAllTasks()
+    console.log(`✅ Tasks loaded into ${this.tasksCache.size} groups`)
     
     // 暂时禁用实时订阅，排查问题
     // setTimeout(() => {
     //   this.subscribeToChanges()
     // }, 1000)
+    
+    console.log('🎉 ========== TaskService.initialize COMPLETE ==========\n')
   }
 
   /**
@@ -82,9 +93,11 @@ class TaskService {
    * 加载所有任务
    */
   private async loadAllTasks() {
+    console.log('\n========== TaskService.loadAllTasks START ==========')
+    
     // 先检查用户认证状态
     const { data: { user } } = await supabase.auth.getUser()
-    // console.log('Current user:', user?.email, user?.id)
+    console.log('1. Current user:', user?.email)
     
     const { data, error } = await supabase
       .from('roleplay_tasks')
@@ -92,38 +105,41 @@ class TaskService {
       .order('sort_order')
 
     if (error) {
-      console.error('Error loading tasks:', error)
+      console.error('2. ERROR loading tasks:', error)
       return
     }
     
-    console.log('=== Raw tasks from database ===')
-    console.log('Total tasks loaded:', data?.length)
-    console.log('Tasks with is_floating=true:', data?.filter(t => t.is_floating === true))
-    console.log('Tasks with is_floating="true" (string):', data?.filter(t => t.is_floating === "true"))
-    console.log('All is_floating values:', data?.map(t => ({ id: t.id, is_floating: t.is_floating, type: typeof t.is_floating })).filter(t => t.id.includes('floating')))
+    console.log('2. Database query successful')
+    console.log('   - Total tasks:', data?.length)
+    console.log('   - Floating tasks:', data?.filter(t => t.is_floating === true).map(t => ({
+      id: t.id,
+      title: t.title,
+      is_floating: t.is_floating,
+      period_id: t.period_id
+    })))
 
     // 按期间组织任务
     const tasksByPeriod = new Map<string, DatabaseTask[]>()
     
-    data?.forEach(task => {
-      // 临时修复：手动识别浮动任务
-      if (task.id && task.id.startsWith('floating-')) {
-        task.is_floating = true
-        task.period_id = null
-        console.log('Manually fixing floating task:', task.id)
-      }
+    console.log('3. Organizing tasks by period...')
+    let floatingCount = 0
+    let periodCount = 0
+    
+    data?.forEach((task, index) => {
+      // 根据is_floating字段决定任务分组
+      let periodId: string
       
-      const periodId = task.period_id || 'floating'
-      
-      // Debug individual task processing
-      if (task.is_floating || !task.period_id) {
-        console.log('Processing potential floating task:', {
-          id: task.id,
-          title: task.title,
-          is_floating: task.is_floating,
-          period_id: task.period_id,
-          assigned_to: periodId
-        })
+      if (task.is_floating === true) {
+        periodId = 'floating'
+        floatingCount++
+        console.log(`   - Task ${index}: ${task.id} -> floating (is_floating=${task.is_floating})`)
+      } else if (task.period_id) {
+        periodId = task.period_id
+        periodCount++
+      } else {
+        // 如果没有period_id且不是floating，可能是数据问题
+        console.warn(`   - Task ${index}: ${task.id} -> SKIPPED (no period_id and not floating)`)
+        return // 跳过此任务
       }
       
       if (!tasksByPeriod.has(periodId)) {
@@ -132,14 +148,20 @@ class TaskService {
       tasksByPeriod.get(periodId)!.push(task)
     })
 
-    // Debug: 打印浮动任务
-    console.log('=== TaskService loadAllTasks Debug ===')
-    console.log('Total tasks loaded:', data?.length)
-    console.log('Floating tasks in data:', data?.filter(t => t.is_floating))
-    console.log('Floating tasks in cache:', tasksByPeriod.get('floating'))
-    console.log('All cache keys:', Array.from(tasksByPeriod.keys()))
+    console.log('4. Task organization complete:')
+    console.log(`   - Floating tasks: ${floatingCount}`)
+    console.log(`   - Period tasks: ${periodCount}`)
+    console.log(`   - Cache keys: ${Array.from(tasksByPeriod.keys()).join(', ')}`)
+    
+    // 详细打印floating组的内容
+    const floatingGroup = tasksByPeriod.get('floating') || []
+    console.log(`5. Floating group details (${floatingGroup.length} tasks):`)
+    floatingGroup.forEach(task => {
+      console.log(`   - ${task.id}: ${task.title} (role: ${task.role_code})`)
+    })
 
     this.tasksCache = tasksByPeriod
+    console.log('========== TaskService.loadAllTasks END ==========\n')
   }
 
   /**
@@ -232,20 +254,23 @@ class TaskService {
    * 转换数据库任务到应用格式
    */
   private convertTask(dbTask: DatabaseTask): TaskTemplate {
+    // 根据role_code确定部门
+    const department = dbTask.role_code === 'chef' ? '后厨' : '前厅'
+    
     return {
-      id: dbTask.task_code,
-      title: dbTask.task_name,
-      description: dbTask.task_description,
+      id: dbTask.id,
+      title: dbTask.title,
+      description: dbTask.description || '',
       role: dbTask.role_code === 'manager' ? 'Manager' : 
             dbTask.role_code === 'chef' ? 'Chef' : 'DutyManager',
-      department: dbTask.department as '前厅' | '后厨',
-      isNotice: dbTask.is_notice,
-      uploadRequirement: dbTask.upload_requirement as any,
-      isFloating: dbTask.is_floating,
+      department: department as '前厅' | '后厨',
+      isNotice: dbTask.is_notice || false,
+      uploadRequirement: dbTask.submission_type as any,
+      isFloating: dbTask.is_floating || false,
       floatingType: dbTask.floating_type as any,
       prerequisiteTrigger: dbTask.prerequisite_trigger as any,
       linkedTasks: dbTask.linked_tasks,
-      autoGenerated: dbTask.auto_generated
+      autoGenerated: dbTask.auto_generated || false
     }
   }
 
@@ -289,18 +314,36 @@ class TaskService {
    * 获取浮动任务
    */
   getFloatingTasks(role?: string): TaskTemplate[] {
+    console.log('\n========== TaskService.getFloatingTasks START ==========')
+    console.log('1. Role filter:', role)
+    console.log('2. Cache status:')
+    console.log(`   - Total cache keys: ${this.tasksCache.size}`)
+    console.log(`   - Has 'floating' key: ${this.tasksCache.has('floating')}`)
+    
     const floatingTasks = this.tasksCache.get('floating') || []
+    console.log(`3. Floating tasks from cache: ${floatingTasks.length} tasks`)
     
-    console.log('=== getFloatingTasks Debug ===')
-    console.log('Role filter:', role)
-    console.log('Raw floating tasks from cache:', floatingTasks)
-    console.log('Filtered by role:', floatingTasks.filter(t => !role || t.role_code === role.toLowerCase()))
+    if (floatingTasks.length > 0) {
+      console.log('4. Raw floating tasks:')
+      floatingTasks.forEach(task => {
+        console.log(`   - ${task.id}: ${task.title} (role: ${task.role_code}, is_floating: ${task.is_floating})`)
+      })
+    }
     
-    const result = floatingTasks
-      .filter(t => !role || t.role_code === role.toLowerCase())
-      .map(t => this.convertTask(t))
+    const filteredTasks = floatingTasks.filter(t => !role || t.role_code === role.toLowerCase())
+    console.log(`5. After role filter: ${filteredTasks.length} tasks`)
     
-    console.log('Converted floating tasks:', result)
+    const result = filteredTasks.map(t => this.convertTask(t))
+    console.log(`6. After conversion: ${result.length} tasks`)
+    
+    if (result.length > 0) {
+      console.log('7. Converted tasks:')
+      result.forEach(task => {
+        console.log(`   - ${task.id}: ${task.title} (role: ${task.role}, isFloating: ${task.isFloating})`)
+      })
+    }
+    
+    console.log('========== TaskService.getFloatingTasks END ==========\n')
     return result
   }
 

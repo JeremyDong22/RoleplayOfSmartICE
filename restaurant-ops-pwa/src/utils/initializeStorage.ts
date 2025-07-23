@@ -3,14 +3,12 @@ import { createBucketIfNotExists } from '../services/storageService'
 
 export async function initializeStorage() {
   try {
-    console.log('Initializing Supabase Storage bucket...')
-    const result = await createBucketIfNotExists()
-    if (result) {
-      console.log('Storage bucket initialized successfully')
-    } else {
-      console.log('Storage bucket already exists or initialization failed')
-    }
+    console.log('Checking Supabase Storage bucket...')
+    // Skip bucket creation for now - it should be created via SQL
+    // Just log a message
+    console.log('Note: Ensure duty-manager-photos bucket exists in Supabase Storage')
+    console.log('Run the SQL script in scripts/create-duty-manager-photos-bucket.sql if needed')
   } catch (error) {
-    console.error('Failed to initialize storage:', error)
+    console.error('Storage check error:', error)
   }
 }

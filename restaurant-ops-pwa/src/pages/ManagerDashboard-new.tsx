@@ -183,12 +183,25 @@ export const ManagerDashboard: React.FC = () => {
   
   // Debug: 打印浮动任务信息
   useEffect(() => {
-    console.log('=== Manager Dashboard Debug ===')
-    console.log('All floating tasks from context:', allFloatingTasks)
-    console.log('Manager floating tasks after filter:', floatingTasks)
-    console.log('Current period:', currentPeriod?.id)
-    console.log('Is loading:', isLoading)
-    console.log('Error:', error)
+    console.log('\n========== ManagerDashboard Floating Tasks ==========')
+    console.log('1. Loading state:', isLoading)
+    console.log('2. Error state:', error)
+    console.log('3. All floating tasks from context:', allFloatingTasks.length)
+    if (allFloatingTasks.length > 0) {
+      console.log('4. All floating tasks details:')
+      allFloatingTasks.forEach(task => {
+        console.log(`   - ${task.id}: ${task.title} (role: ${task.role})`)
+      })
+    }
+    console.log('5. Manager floating tasks after filter:', floatingTasks.length)
+    if (floatingTasks.length > 0) {
+      console.log('6. Manager floating tasks details:')
+      floatingTasks.forEach(task => {
+        console.log(`   - ${task.id}: ${task.title}`)
+      })
+    }
+    console.log('7. Current period:', currentPeriod?.id)
+    console.log('===================================================\n')
   }, [allFloatingTasks, floatingTasks, currentPeriod?.id, isLoading, error])
   
   // Load state from localStorage on mount

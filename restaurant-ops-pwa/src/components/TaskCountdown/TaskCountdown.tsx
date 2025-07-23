@@ -392,11 +392,20 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   
   // Debug: Log received tasks
   useEffect(() => {
-    console.log('=== TaskCountdown Debug ===')
-    console.log('All tasks received:', tasks)
-    console.log('Regular tasks:', regularTasks)
-    console.log('Floating tasks:', tasks?.filter(t => t.isFloating))
-  }, [tasks])
+    console.log('\n========== TaskCountdown Props ==========')
+    console.log('1. All tasks count:', tasks?.length || 0)
+    console.log('2. Regular tasks:', regularTasks.length)
+    console.log('3. Notices:', notices.length)
+    const floatingInTasks = tasks?.filter(t => t.isFloating) || []
+    console.log('4. Floating tasks in current tasks:', floatingInTasks.length)
+    if (floatingInTasks.length > 0) {
+      console.log('5. Floating tasks details:')
+      floatingInTasks.forEach(task => {
+        console.log(`   - ${task.id}: ${task.title} (isFloating: ${task.isFloating})`)
+      })
+    }
+    console.log('=========================================\n')
+  }, [tasks, regularTasks.length, notices.length])
   
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => (completedTaskIds || []).includes(task.id))
   

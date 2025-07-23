@@ -38,9 +38,18 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
   
   // Debug state changes
   useEffect(() => {
-    console.log('=== TaskDataContext State Update ===')
-    console.log('floatingTasks state:', floatingTasks)
-    console.log('isLoading:', isLoading)
+    if (floatingTasks.length > 0 || !isLoading) {
+      console.log('\n========== TaskDataContext State Update ==========')
+      console.log('1. isLoading:', isLoading)
+      console.log('2. floatingTasks count:', floatingTasks.length)
+      if (floatingTasks.length > 0) {
+        console.log('3. floatingTasks details:')
+        floatingTasks.forEach(task => {
+          console.log(`   - ${task.id}: ${task.title} (role: ${task.role})`)
+        })
+      }
+      console.log('=================================================\n')
+    }
   }, [floatingTasks, isLoading])
 
   const loadData = useCallback(async () => {
@@ -52,16 +61,24 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       await taskService.initialize()
       
       // 获取数据
+      console.log('\n========== TaskDataContext.loadData START ==========')
+      
       const periods = taskService.getWorkflowPeriods()
+      console.log('1. Loaded periods:', periods.length)
+      
       const floating = taskService.getFloatingTasks()
+      console.log('2. Loaded floating tasks:', floating.length)
+      if (floating.length > 0) {
+        console.log('3. Floating task details:')
+        floating.forEach(task => {
+          console.log(`   - ${task.id}: ${task.title} (role: ${task.role})`)
+        })
+      }
       
-      console.log('=== TaskDataContext Debug ===')
-      console.log('Loaded periods:', periods.length)
-      console.log('Loaded floating tasks:', floating)
-      console.log('Floating tasks count:', floating.length)
-      
+      console.log('4. Setting state...')
       setWorkflowPeriods(periods)
       setFloatingTasks(floating)
+      console.log('========== TaskDataContext.loadData END ==========\n')
       
       // 订阅更新
       const unsubscribeTasks = taskService.subscribe('tasks', (data) => {
