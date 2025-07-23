@@ -16,6 +16,7 @@ import { taskService } from './services/taskService'
 import { Snackbar, Alert } from '@mui/material'
 import { TestRealtime } from './pages/TestRealtime'
 import { TestDatabase } from './pages/TestDatabase'
+import TestFloatingTasks from './pages/TestFloatingTasks'
 import { initializeStorage } from './utils/initializeStorage'
 
 const theme = createTheme({
@@ -58,6 +59,10 @@ const router = createBrowserRouter([
   {
     path: '/test-database',
     element: <TestDatabase />,
+  },
+  {
+    path: '/test-floating',
+    element: <TestFloatingTasks />,
   },
 ])
 

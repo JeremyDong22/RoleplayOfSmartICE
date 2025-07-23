@@ -112,8 +112,7 @@ export async function uploadPhoto(
         statusCode: (error as any).statusCode,
         error: error
       });
-      // Don't throw, just return null so the app can continue with base64
-      return null;
+      throw new Error(`Failed to upload photo: ${error.message}`);
     }
     
     // Get public URL for the uploaded file

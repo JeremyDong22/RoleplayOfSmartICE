@@ -107,24 +107,25 @@ const DutyManagerDashboard: React.FC = () => {
 
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {
-    // 如果是重新提交，清除之前的驳回状态
-    const isResubmit = reviewStatus[taskId]?.status === 'rejected'
-    
-    setState(prev => ({
-      ...prev,
-      // 如果是重新提交，先移除之前的完成记录
-      completedTaskIds: isResubmit 
-        ? [...prev.completedTaskIds.filter(id => id !== taskId), taskId]
-        : [...prev.completedTaskIds, taskId],
-      taskStatuses: {
-        ...prev.taskStatuses,
-        [taskId]: { completedAt: new Date(), overdue: false, evidence: data },
-      },
-    }))
-    
-    // 立即提交到Context，任务进入待审核状态
-    const task = state.activeTasks.find(t => t.id === taskId)
-    if (task) {
+    try {
+      // 如果是重新提交，清除之前的驳回状态
+      const isResubmit = reviewStatus[taskId]?.status === 'rejected'
+      
+      setState(prev => ({
+        ...prev,
+        // 如果是重新提交，先移除之前的完成记录
+        completedTaskIds: isResubmit 
+          ? [...prev.completedTaskIds.filter(id => id !== taskId), taskId]
+          : [...prev.completedTaskIds, taskId],
+        taskStatuses: {
+          ...prev.taskStatuses,
+          [taskId]: { completedAt: new Date(), overdue: false, evidence: data },
+        },
+      }))
+      
+      // 立即提交到Context，任务进入待审核状态
+      const task = state.activeTasks.find(t => t.id === taskId)
+      if (task) {
       // console.log('DutyManager submitting task:', taskId, 'with data:', data)
       // console.log('Is resubmit?', isResubmit)
       
@@ -149,8 +150,8 @@ const DutyManagerDashboard: React.FC = () => {
               if (result) {
                 uploadedUrls.push(result.publicUrl)
               } else {
-                console.error('Failed to upload photo')
-                uploadedUrls.push(photo) // 失败时保留原始base64
+                console.error('Failed to upload photo to Storage')
+                throw new Error('Photo upload failed')
               }
             } else {
               uploadedUrls.push(photo) // 如果已经是URL，直接使用
@@ -187,7 +188,8 @@ const DutyManagerDashboard: React.FC = () => {
               if (result) {
                 uploadedUrls.push(result.publicUrl)
               } else {
-                uploadedUrls.push(photoData)
+                console.error('Failed to upload photo to Storage')
+                throw new Error('Photo upload failed')
               }
             } else {
               uploadedUrls.push(photoData)
@@ -232,7 +234,11 @@ const DutyManagerDashboard: React.FC = () => {
         for (const photo of data.photos) {
           if (photo && photo.startsWith('data:')) {
             const result = await uploadPhoto(photo, userId, taskId)
-            uploadedUrls.push(result ? result.publicUrl : photo)
+            if (result) {
+              uploadedUrls.push(result.publicUrl)
+            } else {
+              throw new Error('Photo upload failed')
+            }
           } else {
             uploadedUrls.push(photo)
           }
@@ -262,6 +268,19 @@ const DutyManagerDashboard: React.FC = () => {
       // console.log('Calling addSubmission...')
       addSubmission(submission)
       // console.log('addSubmission called')
+      }
+    } catch (error) {
+      console.error('Error in handleTaskComplete:', error)
+      alert('照片上传失败，请检查网络连接并重试')
+      // 回滚状态
+      setState(prev => ({
+        ...prev,
+        completedTaskIds: prev.completedTaskIds.filter(id => id !== taskId),
+        taskStatuses: {
+          ...prev.taskStatuses,
+          [taskId]: undefined
+        }
+      }))
     }
   }
 

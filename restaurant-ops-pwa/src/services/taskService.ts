@@ -48,6 +48,10 @@ class TaskService {
   private tasksCache: Map<string, DatabaseTask[]> = new Map()
   private periodsCache: DatabasePeriod[] = []
   private listeners: Map<string, (data: any) => void> = new Map()
+  
+  constructor() {
+    console.log('🏗️ TaskService instance created')
+  }
 
   /**
    * 初始化服务并订阅实时更新

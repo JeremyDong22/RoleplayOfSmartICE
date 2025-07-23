@@ -959,8 +959,22 @@ export const ManagerDashboard: React.FC = () => {
   
   // Debug log for current tasks
   useEffect(() => {
-    console.log('=== Current Tasks Debug ===')
-    console.log('Current period:', currentPeriod?.id)
+    console.log('\n========== Current Tasks Composition ==========')
+    console.log('1. Current period:', currentPeriod?.id)
+    console.log('2. Base tasks count:', baseTasks.length)
+    console.log('3. Floating tasks count:', floatingTasks.length)
+    console.log('4. Total current tasks:', currentTasks.length)
+    if (floatingTasks.length > 0) {
+      console.log('5. Floating tasks being added:')
+      floatingTasks.forEach(task => {
+        console.log(`   - ${task.id}: ${task.title} (isFloating: ${task.isFloating})`)
+      })
+    }
+    console.log('6. Final currentTasks array:')
+    currentTasks.forEach((task, index) => {
+      console.log(`   [${index}] ${task.id}: ${task.title} (isFloating: ${task.isFloating || false})`)
+    })
+    console.log('==============================================\n')
     console.log('Base tasks:', baseTasks)
     console.log('Floating tasks to add:', floatingTasks)
     console.log('Current tasks (combined):', currentTasks)

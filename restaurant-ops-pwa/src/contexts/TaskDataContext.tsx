@@ -57,17 +57,20 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       setIsLoading(true)
       setError(null)
       
+      console.log('\n🔄 ========== TaskDataContext.loadData START ==========')
+      console.log('1. Initializing task service...')
+      
       // 初始化任务服务
       await taskService.initialize()
       
-      // 获取数据
-      console.log('\n========== TaskDataContext.loadData START ==========')
+      console.log('2. Task service initialized, fetching data...')
       
+      // 获取数据
       const periods = taskService.getWorkflowPeriods()
-      console.log('1. Loaded periods:', periods.length)
+      console.log(`3. Loaded ${periods.length} periods`)
       
       const floating = taskService.getFloatingTasks()
-      console.log('2. Loaded floating tasks:', floating.length)
+      console.log(`4. Loaded ${floating.length} floating tasks`)
       if (floating.length > 0) {
         console.log('3. Floating task details:')
         floating.forEach(task => {
