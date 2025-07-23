@@ -110,9 +110,11 @@ class TaskService {
     })
 
     // Debug: 打印浮动任务
-    // console.log('=== TaskService Debug ===')
-    // console.log('Floating tasks in cache:', tasksByPeriod.get('floating'))
-    // console.log('All cache keys:', Array.from(tasksByPeriod.keys()))
+    console.log('=== TaskService loadAllTasks Debug ===')
+    console.log('Total tasks loaded:', data?.length)
+    console.log('Floating tasks in data:', data?.filter(t => t.is_floating))
+    console.log('Floating tasks in cache:', tasksByPeriod.get('floating'))
+    console.log('All cache keys:', Array.from(tasksByPeriod.keys()))
 
     this.tasksCache = tasksByPeriod
   }
@@ -266,14 +268,17 @@ class TaskService {
   getFloatingTasks(role?: string): TaskTemplate[] {
     const floatingTasks = this.tasksCache.get('floating') || []
     
-    // console.log('=== getFloatingTasks Debug ===')
-    // console.log('Role filter:', role)
-    // console.log('Raw floating tasks:', floatingTasks)
-    // console.log('After role filter:', floatingTasks.filter(t => !role || t.role_code === role.toLowerCase()))
+    console.log('=== getFloatingTasks Debug ===')
+    console.log('Role filter:', role)
+    console.log('Raw floating tasks from cache:', floatingTasks)
+    console.log('Filtered by role:', floatingTasks.filter(t => !role || t.role_code === role.toLowerCase()))
     
-    return floatingTasks
+    const result = floatingTasks
       .filter(t => !role || t.role_code === role.toLowerCase())
       .map(t => this.convertTask(t))
+    
+    console.log('Converted floating tasks:', result)
+    return result
   }
 
   /**

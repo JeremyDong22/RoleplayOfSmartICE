@@ -182,12 +182,14 @@ export const ManagerDashboard: React.FC = () => {
   const floatingTasks = allFloatingTasks.filter(task => task.role === 'Manager')
   
   // Debug: 打印浮动任务信息
-  // useEffect(() => {
-  //   console.log('=== Manager Dashboard Debug ===')
-  //   console.log('All floating tasks:', allFloatingTasks)
-  //   console.log('Manager floating tasks:', floatingTasks)
-  //   console.log('Current period:', currentPeriod?.id)
-  // }, [allFloatingTasks, floatingTasks, currentPeriod?.id])
+  useEffect(() => {
+    console.log('=== Manager Dashboard Debug ===')
+    console.log('All floating tasks from context:', allFloatingTasks)
+    console.log('Manager floating tasks after filter:', floatingTasks)
+    console.log('Current period:', currentPeriod?.id)
+    console.log('Is loading:', isLoading)
+    console.log('Error:', error)
+  }, [allFloatingTasks, floatingTasks, currentPeriod?.id, isLoading, error])
   
   // Load state from localStorage on mount
   useEffect(() => {
@@ -943,12 +945,19 @@ export const ManagerDashboard: React.FC = () => {
   const currentTasks = [...baseTasks, ...floatingTasks]
   
   // Debug log for current tasks
-  // useEffect(() => {
-  //   console.log('Current period:', currentPeriod?.id)
-  //   console.log('Current tasks:', currentTasks.map(t => ({ id: t.id, title: t.title, uploadRequirement: t.uploadRequirement })))
-  //   console.log('Base tasks count:', baseTasks.length)
-  //   console.log('Floating tasks count:', floatingTasks.length)
-  // }, [currentPeriod?.id, currentTasks.length])
+  useEffect(() => {
+    console.log('=== Current Tasks Debug ===')
+    console.log('Current period:', currentPeriod?.id)
+    console.log('Base tasks:', baseTasks)
+    console.log('Floating tasks to add:', floatingTasks)
+    console.log('Current tasks (combined):', currentTasks)
+    console.log('Current tasks details:', currentTasks.map(t => ({ 
+      id: t.id, 
+      title: t.title, 
+      isFloating: t.isFloating,
+      floatingType: t.floatingType 
+    })))
+  }, [currentPeriod?.id, currentTasks.length])
   
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
   

@@ -48,9 +48,10 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       const periods = taskService.getWorkflowPeriods()
       const floating = taskService.getFloatingTasks()
       
-      // console.log('=== TaskDataContext Debug ===')
-      // console.log('Loaded periods:', periods)
-      // console.log('Loaded floating tasks:', floating)
+      console.log('=== TaskDataContext Debug ===')
+      console.log('Loaded periods:', periods.length)
+      console.log('Loaded floating tasks:', floating)
+      console.log('Floating tasks count:', floating.length)
       
       setWorkflowPeriods(periods)
       setFloatingTasks(floating)

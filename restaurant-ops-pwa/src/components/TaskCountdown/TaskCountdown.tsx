@@ -390,6 +390,14 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const regularTasks = Array.isArray(tasks) ? tasks.filter(t => t && !t.isNotice) : []
   const notices = Array.isArray(tasks) ? tasks.filter(t => t && t.isNotice) : []
   
+  // Debug: Log received tasks
+  useEffect(() => {
+    console.log('=== TaskCountdown Debug ===')
+    console.log('All tasks received:', tasks)
+    console.log('Regular tasks:', regularTasks)
+    console.log('Floating tasks:', tasks?.filter(t => t.isFloating))
+  }, [tasks])
+  
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => (completedTaskIds || []).includes(task.id))
   
   // Free swiping mode - removed automatic scrolling to first uncompleted task
