@@ -55,8 +55,10 @@ class TaskService {
     await this.loadPeriods()
     await this.loadAllTasks()
     
-    // 设置实时订阅
-    this.subscribeToChanges()
+    // 延迟设置实时订阅，避免立即触发更新
+    setTimeout(() => {
+      this.subscribeToChanges()
+    }, 1000)
   }
 
   /**
@@ -94,15 +96,29 @@ class TaskService {
       return
     }
     
-    // console.log('=== Raw tasks from database ===')
-    // console.log('Total tasks loaded:', data?.length)
-    // console.log('Floating tasks:', data?.filter(t => t.is_floating))
+    console.log('=== Raw tasks from database ===')
+    console.log('Total tasks loaded:', data?.length)
+    console.log('Tasks with is_floating=true:', data?.filter(t => t.is_floating === true))
+    console.log('Tasks with is_floating="true" (string):', data?.filter(t => t.is_floating === "true"))
+    console.log('All is_floating values:', data?.map(t => ({ id: t.id, is_floating: t.is_floating, type: typeof t.is_floating })).filter(t => t.id.includes('floating')))
 
     // 按期间组织任务
     const tasksByPeriod = new Map<string, DatabaseTask[]>()
     
     data?.forEach(task => {
       const periodId = task.period_id || 'floating'
+      
+      // Debug individual task processing
+      if (task.is_floating || !task.period_id) {
+        console.log('Processing potential floating task:', {
+          id: task.id,
+          title: task.title,
+          is_floating: task.is_floating,
+          period_id: task.period_id,
+          assigned_to: periodId
+        })
+      }
+      
       if (!tasksByPeriod.has(periodId)) {
         tasksByPeriod.set(periodId, [])
       }

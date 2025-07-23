@@ -35,6 +35,13 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
   const [floatingTasks, setFloatingTasks] = useState<TaskTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Debug state changes
+  useEffect(() => {
+    console.log('=== TaskDataContext State Update ===')
+    console.log('floatingTasks state:', floatingTasks)
+    console.log('isLoading:', isLoading)
+  }, [floatingTasks, isLoading])
 
   const loadData = useCallback(async () => {
     try {
@@ -58,13 +65,27 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       
       // 订阅更新
       const unsubscribeTasks = taskService.subscribe('tasks', (data) => {
-        setWorkflowPeriods(data)
-        // 更新浮动任务
-        const newFloating = taskService.getFloatingTasks()
-        setFloatingTasks(newFloating)
+        console.log('Tasks subscription update received:', data)
+        // 当任务更新时，重新获取所有数据
+        const updatedPeriods = taskService.getWorkflowPeriods()
+        const updatedFloating = taskService.getFloatingTasks()
+        
+        // 防止空数据覆盖有效数据
+        setFloatingTasks(prev => {
+          if (updatedFloating.length > 0 || prev.length === 0) {
+            console.log('Updating floating tasks from subscription:', updatedFloating)
+            return updatedFloating
+          } else {
+            console.log('Skipping empty floating tasks update to preserve existing data')
+            return prev
+          }
+        })
+        
+        setWorkflowPeriods(updatedPeriods)
       })
       
       const unsubscribePeriods = taskService.subscribe('periods', (data) => {
+        console.log('Periods subscription update received:', data)
         setWorkflowPeriods(data)
       })
       
