@@ -1,10 +1,12 @@
 // Parse and organize workflow tasks from the markdown
+// Last updated: 2025-07-23 - Changed front office manager lunch meeting task (dinner-prep-manager-1) upload requirement from '记录' to '录音'
 export interface WorkflowPeriod {
   id: string
   name: string
   displayName: string
   startTime: string
   endTime: string
+  isEventDriven?: boolean  // 标记是否为事件驱动的时段
   tasks: {
     manager: TaskTemplate[]
     chef: TaskTemplate[]
@@ -262,8 +264,19 @@ export const workflowPeriods: WorkflowPeriod[] = [
         },
         {
           id: 'lunch-closing-manager-2',
+          title: '营业款核对',
+          description: '核对午市营业额，确认收款记录，打印交接单',
+          timeSlot: 'lunch-closing',
+          startTime: '14:00',
+          endTime: '14:30',
+          role: 'Manager',
+          department: '前厅',
+          uploadRequirement: '拍照',
+        },
+        {
+          id: 'lunch-closing-manager-3',
           title: '能源管理',
-          description: '关闭非必要电器与能源，减少消耗',
+          description: '关闭所有灯光只留门牌灯，空调只留一个开启',
           timeSlot: 'lunch-closing',
           startTime: '14:00',
           endTime: '14:30',
@@ -272,15 +285,15 @@ export const workflowPeriods: WorkflowPeriod[] = [
           uploadRequirement: null,
         },
         {
-          id: 'lunch-closing-manager-3',
-          title: '营业款核对',
-          description: '确保收银区域结清最后一桌客人的账款',
+          id: 'lunch-closing-manager-4',
+          title: '安排值班人员',
+          description: '安排值班人员',
           timeSlot: 'lunch-closing',
           startTime: '14:00',
           endTime: '14:30',
           role: 'Manager',
           department: '前厅',
-          uploadRequirement: null,
+          uploadRequirement: '记录',
         },
       ],
       chef: [
@@ -318,32 +331,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
           uploadRequirement: null,
         },
       ],
-      dutyManager: [
-        {
-          id: 'lunch-duty-manager-1',
-          title: '能源管理',
-          description: '检查空调设置，调整照明系统',
-          timeSlot: 'lunch-closing',
-          startTime: '14:00',
-          endTime: '14:30',
-          role: 'DutyManager',
-          department: '前厅',
-          uploadRequirement: '拍照',
-          prerequisiteTrigger: 'last-customer-left-lunch',
-        },
-        {
-          id: 'lunch-duty-manager-2',
-          title: '营业款核对',
-          description: '核对午市营业额，确认收款记录',
-          timeSlot: 'lunch-closing',
-          startTime: '14:00',
-          endTime: '14:30',
-          role: 'DutyManager',
-          department: '前厅',
-          uploadRequirement: '拍照',
-          prerequisiteTrigger: 'last-customer-left-lunch',
-        },
-      ],
+      dutyManager: [],
     },
   },
   {
@@ -363,7 +351,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
           endTime: '16:35',
           role: 'Manager',
           department: '前厅',
-          uploadRequirement: '记录',
+          uploadRequirement: '录音',
         },
         {
           id: 'dinner-prep-manager-2',
@@ -536,11 +524,12 @@ export const workflowPeriods: WorkflowPeriod[] = [
     displayName: '预打烊（晚市）',
     startTime: '21:30',
     endTime: '22:00',
+    isEventDriven: true,  // 由晚市服务结束触发，而非固定时间
     tasks: {
       manager: [
         {
           id: 'pre-closing-manager-1',
-          title: '收市准备',
+          title: '收市清洁检查',
           description: '先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作',
           isNotice: false,
           timeSlot: 'pre-closing',
@@ -578,7 +567,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
         },
         {
           id: 'pre-closing-chef-2',
-          title: '收市准备',
+          title: '收市清洁检查',
           description: '先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作',
           isNotice: false,
           timeSlot: 'pre-closing',
@@ -590,18 +579,6 @@ export const workflowPeriods: WorkflowPeriod[] = [
         },
         {
           id: 'pre-closing-chef-3',
-          title: '值班安排',
-          description: '安排值班人员',
-          isNotice: false,
-          timeSlot: 'pre-closing',
-          startTime: '21:30',
-          endTime: '22:00',
-          role: 'Chef',
-          department: '后厨',
-          uploadRequirement: '记录',
-        },
-        {
-          id: 'pre-closing-chef-4',
           title: '损耗称重',
           description: '记录每份食材损耗重量',
           isNotice: false,
@@ -613,7 +590,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
           uploadRequirement: '拍照',
         },
         {
-          id: 'pre-closing-chef-5',
+          id: 'pre-closing-chef-4',
           title: '用餐安排',
           description: '其他人员陆续进行晚餐就餐',
           isNotice: false,
@@ -631,8 +608,9 @@ export const workflowPeriods: WorkflowPeriod[] = [
     id: 'closing',
     name: 'closing',
     displayName: '闭店',
-    startTime: '22:00',
-    endTime: '23:00',
+    startTime: '00:00',
+    endTime: '01:00',
+    isEventDriven: true,  // 由最后一位客人离店触发，而非固定时间
     tasks: {
       manager: [
         {
@@ -645,17 +623,6 @@ export const workflowPeriods: WorkflowPeriod[] = [
           role: 'Manager',
           department: '前厅',
           uploadRequirement: null,
-        },
-        {
-          id: 'closing-manager-2',
-          title: '营业数据记录',
-          description: '打印交班单并填写日营业报表数据',
-          timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
-          role: 'Manager',
-          department: '前厅',
-          uploadRequirement: '拍照',
         },
         {
           id: 'closing-manager-3',
@@ -678,28 +645,6 @@ export const workflowPeriods: WorkflowPeriod[] = [
           role: 'Manager',
           department: '前厅',
           uploadRequirement: '录音',
-        },
-        {
-          id: 'closing-manager-5',
-          title: '能源安全检查',
-          description: '关闭并检查门店水电气能源，确保门店能源安全',
-          timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
-          role: 'Manager',
-          department: '前厅',
-          uploadRequirement: '拍照',
-        },
-        {
-          id: 'closing-manager-6',
-          title: '安防闭店检查',
-          description: '锁好抽屉、门窗进行闭店上报，确保无明火，安防系统开启',
-          timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
-          role: 'Manager',
-          department: '前厅',
-          uploadRequirement: '拍照',
         },
       ],
       chef: [],
@@ -728,19 +673,38 @@ export const workflowPeriods: WorkflowPeriod[] = [
           uploadRequirement: '拍照',
           prerequisiteTrigger: 'last-customer-left-dinner',
         },
+        {
+          id: 'closing-duty-manager-3',
+          title: '营业数据记录',
+          description: '打印交班单并填写日营业报表数据',
+          timeSlot: 'closing',
+          startTime: '22:00',
+          endTime: '23:00',
+          role: 'DutyManager',
+          department: '前厅',
+          uploadRequirement: '拍照',
+          prerequisiteTrigger: 'last-customer-left-dinner',
+        },
       ],
     },
   },
 ]
 
 // Get current workflow period based on time
-export function getCurrentPeriod(testTime?: Date): WorkflowPeriod | null {
+// Note: This function doesn't handle event-driven periods (pre-closing, closing)
+// Those should be managed by the application state based on user actions
+export function getCurrentPeriod(testTime?: Date, excludeEventDriven: boolean = false): WorkflowPeriod | null {
   const now = testTime || new Date()
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
   const currentTimeInMinutes = currentHour * 60 + currentMinute
   
   for (const period of workflowPeriods) {
+    // Skip event-driven periods if requested
+    if (excludeEventDriven && period.isEventDriven) {
+      continue
+    }
+    
     const [startHour, startMinute] = period.startTime.split(':').map(Number)
     const [endHour, endMinute] = period.endTime.split(':').map(Number)
     const startInMinutes = startHour * 60 + startMinute
@@ -799,6 +763,17 @@ export const floatingTasks: TaskTemplate[] = [
     description: '收货验货后，对肉类进行交割处理（去除淋巴等），并称重记录损耗率',
     role: 'Chef',
     department: '后厨',
+    uploadRequirement: '拍照',
+    isFloating: true,
+    floatingType: 'daily',
+    prerequisiteFor: ['opening', 'lunch-prep', 'lunch-service', 'lunch-closing', 'dinner-prep', 'dinner-service', 'pre-closing']
+  },
+  {
+    id: 'floating-receiving-manager',
+    title: '收货验货',
+    description: '每种原材料上称称重、和送货单核对，误差在±2%以内，同时检查原材料质量情况',
+    role: 'Manager',
+    department: '前厅',
     uploadRequirement: '拍照',
     isFloating: true,
     floatingType: 'daily',

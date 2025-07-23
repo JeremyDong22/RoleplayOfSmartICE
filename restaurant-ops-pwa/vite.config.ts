@@ -7,6 +7,12 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 export default defineConfig({
   base: '/',
+  server: {
+    hmr: {
+      port: 5173,
+      host: 'localhost'
+    }
+  },
   plugins: [
     react(),
     VitePWA({

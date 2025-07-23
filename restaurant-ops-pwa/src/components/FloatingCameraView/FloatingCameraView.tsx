@@ -117,13 +117,35 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
     }
     
     const cleanName = name.replace(' - 拍照', '').replace(' - 录音', '')
-    const roleMatch = cleanName.match(/^(前厅|后厨)\s*-\s*/)
+    const roleMatch = cleanName.match(/^(前厅|后厨|值班经理)\s*-\s*/)
     let role = roleMatch ? roleMatch[1] : '前厅'
     const taskName = roleMatch ? cleanName.replace(roleMatch[0], '') : cleanName
+    
+    // Check if this is a duty manager task based on task ID
+    if (taskId?.includes('duty-manager')) {
+      role = '值班经理'
+    }
     
     const chefTasks = ['食品安全检查', '开始巡店验收', '巡店验收', '收市清洁检查', '收市准备', '食材下单']
     if (!roleMatch && chefTasks.includes(taskName)) {
       role = '后厨'
+    }
+    
+    // Map task names to new folder structure
+    const taskFolderMap: { [key: string]: { [key: string]: string } } = {
+      '值班经理': {
+        '滞留客人的餐后清洁': '4-餐后收市午市-滞留客人的餐后清洁',
+        '员工餐后清洁': '4-餐后收市午市-员工餐后清洁',
+        '营业款核对': '4-餐后收市午市-营业款核对',
+        '能源管理': '4-餐后收市午市-能源管理',
+        '能源安全检查': '8-闭店-能源安全检查',
+        '安防闭店检查': '8-闭店-安防闭店检查'
+      }
+    }
+    
+    // Look up the new folder name for duty manager tasks
+    if (role === '值班经理' && taskFolderMap[role]?.[taskName]) {
+      return `${role}/${taskFolderMap[role][taskName]}`
     }
     
     return `${role}/${taskName}`

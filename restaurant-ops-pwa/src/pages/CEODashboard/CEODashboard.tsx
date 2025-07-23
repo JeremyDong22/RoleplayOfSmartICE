@@ -1,7 +1,8 @@
 // CEO Dashboard component with hierarchical view of all operations
+// Updated to use MUI v7 Grid component with size prop
 import type { FC } from 'react'
 
-import { Box, Container, Typography, Grid, Paper } from '@mui/material'
+import { Box, Container, Typography, Paper, Grid } from '@mui/material'
 import { CountdownTimer } from '../../components/Timer/CountdownTimer'
 
 export const CEODashboard: FC = () => {
@@ -16,11 +17,11 @@ export const CEODashboard: FC = () => {
       </Typography>
       
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <CountdownTimer currentTask={null} onTaskAlert={handleTaskAlert} />
         </Grid>
         
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h5" gutterBottom>
               团队概览 Team Overview
@@ -29,7 +30,7 @@ export const CEODashboard: FC = () => {
           </Paper>
         </Grid>
         
-        <Grid item xs={12}>
+        <Grid size={12}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h5" gutterBottom>
               实时任务状态 Real-time Task Status

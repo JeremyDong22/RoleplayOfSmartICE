@@ -1,7 +1,8 @@
 // Manager Dashboard component for front-of-house operations
+// Updated to use MUI v7 Grid component with size prop
 import type { FC } from 'react'
 
-import { Box, Container, Typography, Grid, Paper } from '@mui/material'
+import { Box, Container, Typography, Paper, Grid } from '@mui/material'
 import { CountdownTimer } from '../../components/Timer/CountdownTimer'
 
 export const ManagerDashboard: FC = () => {
@@ -16,11 +17,11 @@ export const ManagerDashboard: FC = () => {
       </Typography>
       
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <CountdownTimer currentTask={null} onTaskAlert={handleTaskAlert} />
         </Grid>
         
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h5" gutterBottom>
               前厅团队 Front-of-House Team
@@ -29,7 +30,7 @@ export const ManagerDashboard: FC = () => {
           </Paper>
         </Grid>
         
-        <Grid item xs={12}>
+        <Grid size={12}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h5" gutterBottom>
               今日任务 Today's Tasks

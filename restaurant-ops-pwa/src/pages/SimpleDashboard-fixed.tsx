@@ -1,7 +1,6 @@
-// Fixed dashboard with proper MUI Grid v2 and Typography nesting
+// Fixed dashboard with proper MUI Grid and Typography nesting
 import { useState, useEffect } from 'react'
-import { Box, Container, Typography, Paper, List, ListItem, ListItemText, Chip, AppBar, Toolbar } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import { Box, Container, Typography, Paper, List, ListItem, ListItemText, Chip, AppBar, Toolbar, Grid } from '@mui/material'
 import { CountdownTimer } from '../components/Timer/CountdownTimer'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'

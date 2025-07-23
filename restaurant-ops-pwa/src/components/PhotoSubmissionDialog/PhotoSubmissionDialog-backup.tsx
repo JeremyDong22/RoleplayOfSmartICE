@@ -228,7 +228,7 @@ export default function PhotoSubmissionDialog({
             </Typography>
             <Grid container spacing={2}>
               {capturedEvidence.map((evidence, index) => (
-                <Grid item xs={12} sm={6} key={index}>
+                <Grid size={{ xs: 12, sm: 6 }} key={index}>
                   <Paper elevation={2} sx={{ p: 2 }}>
                     <Box 
                       component="img" 
@@ -263,7 +263,7 @@ export default function PhotoSubmissionDialog({
           // Capture mode
           <Grid container spacing={3} sx={{ height: '100%' }}>
             {/* Left side - Sample */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
                 <Typography variant="h6" gutterBottom>
                   示例 {currentSampleIndex + 1}/{samples.length}
@@ -315,7 +315,7 @@ export default function PhotoSubmissionDialog({
             </Grid>
             
             {/* Right side - Camera capture */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
                 <Typography variant="h6" gutterBottom>
                   拍摄

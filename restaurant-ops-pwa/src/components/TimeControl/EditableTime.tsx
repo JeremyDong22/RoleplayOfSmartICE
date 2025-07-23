@@ -29,6 +29,8 @@ import {
   getCurrentTestTime,
   useGlobalTestTime 
 } from '../../utils/globalTestTime'
+import { broadcastService } from '../../services/broadcastService'
+import { clearAllAppStorage } from '../../utils/clearAllStorage'
 
 interface EditableTimeProps {
   testTime?: Date
@@ -107,7 +109,7 @@ const EditableTimeComponent: React.FC<EditableTimeProps> = ({ testTime, onTimeCh
   const handleEdit = () => {
     // Use the current time snapshot when opening the dialog
     const now = new Date(currentTime)  // Create a copy
-    console.log('Opening dialog with time:', now.toLocaleString())
+    // console.log('Opening dialog with time:', now.toLocaleString())
     setEditHour(now.getHours().toString().padStart(2, '0'))
     setEditMinute(now.getMinutes().toString().padStart(2, '0'))
     setEditSecond(now.getSeconds().toString().padStart(2, '0'))
@@ -149,9 +151,23 @@ const EditableTimeComponent: React.FC<EditableTimeProps> = ({ testTime, onTimeCh
   }
 
   const handleResetTasks = () => {
-    if (confirm('确定要重置所有任务状态吗？这将清空今天所有已完成的任务记录。')) {
+    if (confirm('确定要重置所有任务状态吗？这将清空所有页面的所有任务记录和存储数据。')) {
+      // Clear all local storage across all tabs
+      clearAllAppStorage()
+      
+      // Broadcast to all other tabs to clear their storage
+      broadcastService.send('CLEAR_ALL_STORAGE', {}, 'system')
+      
+      // Call the parent's reset handler if provided
       onResetTasks?.()
+      
+      // Close the dialog
       setIsEditing(false)
+      
+      // Reload the page after a short delay to ensure storage is cleared
+      setTimeout(() => {
+        window.location.reload()
+      }, 100)
     }
   }
 

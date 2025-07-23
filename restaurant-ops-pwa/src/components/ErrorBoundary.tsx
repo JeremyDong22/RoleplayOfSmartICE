@@ -1,5 +1,6 @@
 // Error boundary component to catch and display React errors
-import { Component, ReactNode } from 'react'
+import { Component } from 'react'
+import type { ReactNode } from 'react'
 import { Box, Typography, Button, Paper } from '@mui/material'
 
 interface Props {

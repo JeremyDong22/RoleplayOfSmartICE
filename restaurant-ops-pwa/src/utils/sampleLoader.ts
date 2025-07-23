@@ -4,6 +4,14 @@
 // - Added missing hygiene inspection tasks (lunch-prep-manager-1, etc.)
 // - Corrected mismatched task IDs for all roles (Manager, Chef, DutyManager)
 // - Added missing tasks like opening equipment checks and closing security checks
+// - 2025-01-21: Fixed kitchen management special tasks mappings
+//   - Verified floating tasks (收货验货, 交割损耗称重) are correctly mapped
+//   - Added missing chef task mappings (lunch-prep-chef-2, dinner-prep-chef-3, etc.)
+//   - Note: Some tasks reuse existing sample folders where specific folders don't exist
+// - 2025-01-22: Updated task mappings after removing lunch duty manager tasks
+//   - Removed lunch-duty-manager-1 and lunch-duty-manager-2 (deleted tasks)
+//   - Moved lunch-duty-manager-3 and lunch-duty-manager-4 to Manager tasks
+//   - Updated lunch-closing-manager-2 and lunch-closing-manager-3 mappings
 
 export interface TaskSample {
   content: string
@@ -18,38 +26,43 @@ const taskSamplePathMap: Record<string, string> = {
   'lunch-prep-manager-1': '前厅/2 - 开市寻店验收 - 卫生',  // Added lunch hygiene inspection mapping
   'lunch-prep-manager-2': '前厅/2 - 开市寻店验收 - 物资准备',
   'lunch-closing-manager-1': '前厅/4-餐后收市午市-收市清洁检查',
+  'lunch-closing-manager-2': '前厅/4-餐后收市午市-营业款核对',
+  'lunch-closing-manager-3': '前厅/4-餐后收市午市-能源管理',
+  'lunch-closing-manager-4': '前厅/4-餐后收市午市-安排值班人员',
   'dinner-prep-manager-1': '前厅/5-餐前准备晚市-召开午会',
   'dinner-prep-manager-2': '前厅/5-餐前准备晚市-开市寻店验收 - 卫生',
   'dinner-prep-manager-3': '前厅/5-餐前准备晚市-开市寻店验收 - 物资准备',
   'pre-closing-manager-2': '前厅/7-预打烊晚市-值班安排',
-  'pre-closing-manager-1': '前厅/7-预打烊晚市-收市准备',
+  'pre-closing-manager-1': '前厅/7-预打烊晚市-收市清洁检查',
+  'closing-manager-1': '前厅/8-闭店-当日复盘总结',  // Note: Reusing daily review folder for receipt management
+  'closing-manager-3': '前厅/8-闭店-当日复盘总结',  // Note: Reusing daily review folder for cash management
   'closing-manager-4': '前厅/8-闭店-当日复盘总结',
-  'closing-manager-2': '前厅/8-闭店-营业数据记录',
-  'closing-manager-5': '前厅/8-闭店-能源安全检查',
-  'closing-manager-6': '前厅/8-闭店-安防闭店检查',
   
   // 后厨任务
   'opening-chef-1': '后厨/1-开店-开店准备与设备检查',
   'lunch-prep-chef-1': '后厨/2-餐前准备午市-食品安全检查',
+  'lunch-prep-chef-2': '后厨/2-餐前准备午市-收货验货',  // Note: Using receiving task folder as food prep placeholder
   'lunch-prep-chef-3': '后厨/2-餐前准备午市-开始巡店验收',
   'lunch-closing-chef-1': '后厨/4-餐后收市午市-收市清洁检查',
+  'lunch-closing-chef-2': '后厨/4-餐后收市午市-收市清洁检查',  // Note: Reusing same folder for energy management
+  'lunch-closing-chef-3': '后厨/4-餐后收市午市-收市清洁检查',  // Note: Reusing same folder for staff meal
   'dinner-prep-chef-1': '后厨/5-餐前准备晚市-召开午会',
-  'dinner-prep-chef-2': '后厨/5-餐前准备晚市-食品安全检查',
-  'dinner-prep-chef-4': '后厨/5-餐前准备晚市-巡店验收',
-  'pre-closing-chef-3': '后厨/7-预打烊晚市-值班安排',
-  'pre-closing-chef-2': '后厨/7-预打烊晚市-收市准备',
+  'dinner-prep-chef-2': '后厨/2-餐前准备午市-食品安全检查',  // Note: Reusing lunch food safety check
+  'dinner-prep-chef-3': '后厨/5-餐前准备晚市-食材准备',  // Correct mapping exists
+  'dinner-prep-chef-4': '后厨/2-餐前准备午市-开始巡店验收',  // Note: Reusing lunch inspection
   'pre-closing-chef-1': '后厨/7-预打烊晚市-食材下单',
-  'pre-closing-chef-4': '后厨/7-预打烊晚市-损耗称重',
+  'pre-closing-chef-2': '后厨/7-预打烊晚市-收市清洁检查',
+  'pre-closing-chef-3': '后厨/7-预打烊晚市-损耗称重',  // Correct mapping exists
+  'pre-closing-chef-4': '后厨/7-预打烊晚市-收市准备',  // Note: Reusing closing prep for staff meal
   
   // 浮动任务（后厨）
   'floating-receiving': '后厨特殊任务/收货验货',
   'floating-meat-processing': '后厨特殊任务/交割损耗称重',
   
   // 值班经理任务
-  'lunch-duty-manager-1': '值班经理/4-餐后收市午市-能源管理',
-  'lunch-duty-manager-2': '值班经理/4-餐后收市午市-营业款核对',
-  'closing-duty-manager-2': '值班经理/8-闭店-安防闭店检查',
   'closing-duty-manager-1': '值班经理/8-闭店-能源安全检查',
+  'closing-duty-manager-2': '值班经理/8-闭店-安防闭店检查',
+  'closing-duty-manager-3': '值班经理/8-闭店-营业数据记录',
 }
 
 // Extract placeholder text from sample file

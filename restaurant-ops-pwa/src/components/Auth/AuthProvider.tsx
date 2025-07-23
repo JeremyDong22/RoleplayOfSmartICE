@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useDispatch } from 'react-redux'
 import { supabase } from '../../services/supabase'
 import { getCurrentUser } from '../../store/authSlice'
-import { AppDispatch } from '../../store'
+import type { AppDispatch } from '../../store'
 
 interface AuthProviderProps {
   children: ReactNode

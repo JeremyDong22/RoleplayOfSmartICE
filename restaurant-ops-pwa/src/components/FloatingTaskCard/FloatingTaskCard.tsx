@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material'
 import type { TaskTemplate } from '../../utils/workflowParser'
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
+import { specialTaskTheme } from '../../theme/specialTaskTheme'
 
 interface FloatingTaskCardProps {
   tasks: TaskTemplate[]
@@ -64,9 +65,11 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
         sx={{ 
           mb: 2,
           background: hasIncompleteTasks 
-            ? 'linear-gradient(135deg, #fff8e1 0%, #fffbf0 100%)'
-            : 'linear-gradient(135deg, #e8f5e9 0%, #f1f8f4 100%)',
-          border: hasIncompleteTasks ? '2px solid #ff9800' : '2px solid #4caf50',
+            ? 'linear-gradient(135deg, #e3f2fd 0%, #f3f8ff 100%)'
+            : specialTaskTheme.completed.background,
+          border: hasIncompleteTasks 
+            ? `2px solid ${specialTaskTheme.primary}` 
+            : `2px solid ${specialTaskTheme.completed.iconColor}`,
           position: 'relative',
           overflow: 'hidden'
         }}
@@ -82,7 +85,7 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <LocalShipping sx={{ fontSize: 28, color: hasIncompleteTasks ? '#ff9800' : '#4caf50' }} />
+            <LocalShipping sx={{ fontSize: 28, color: hasIncompleteTasks ? specialTaskTheme.iconColor : specialTaskTheme.completed.iconColor }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 待处理特殊任务
@@ -95,9 +98,16 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Chip 
               label={hasIncompleteTasks ? `待完成 ${incompleteTasks.length}` : '已完成'}
-              color={hasIncompleteTasks ? 'warning' : 'success'}
               size="small"
               icon={hasIncompleteTasks ? <Warning /> : <CheckCircle />}
+              sx={{
+                backgroundColor: hasIncompleteTasks ? specialTaskTheme.chip.background : specialTaskTheme.completed.iconColor,
+                color: specialTaskTheme.chip.color,
+                fontWeight: 500,
+                '& .MuiChip-icon': {
+                  color: specialTaskTheme.chip.color
+                }
+              }}
             />
             <IconButton onClick={() => setExpanded(!expanded)} size="small">
               {expanded ? <ExpandLess /> : <ExpandMore />}
@@ -123,8 +133,8 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
                     p: 2,
                     mb: 1,
                     borderRadius: 1,
-                    backgroundColor: isCompleted ? 'rgba(76, 175, 80, 0.08)' : 'rgba(255, 152, 38, 0.08)',
-                    border: `1px solid ${isCompleted ? 'rgba(76, 175, 80, 0.3)' : 'rgba(255, 152, 38, 0.3)'}`,
+                    backgroundColor: isCompleted ? specialTaskTheme.completed.background : specialTaskTheme.lightBackground,
+                    border: `1px solid ${isCompleted ? specialTaskTheme.completed.borderColor : specialTaskTheme.borderColor}`,
                     transition: 'all 0.3s ease'
                   }}
                 >

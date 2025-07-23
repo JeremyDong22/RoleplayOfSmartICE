@@ -1,5 +1,9 @@
 // Manager Dashboard with status island and new timer display
 // Updated: Added debug logs for isManualClosing state tracking and recovery mechanism for stuck states
+// Updated: Added automatic creation of audit tasks when manager confirms "last customer left".
+// Creates two audit tasks for lunch period (energy management and revenue verification) and
+// two for dinner/closing period (energy safety check and security check). These audit tasks
+// are linked to corresponding duty manager tasks for review.
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
@@ -7,21 +11,27 @@ import {
   AppBar, 
   Toolbar, 
   IconButton,
-  Typography
+  Typography,
+  CircularProgress,
+  Alert,
+  Button
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 // Status Island removed as requested
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
-import { TaskSummary } from '../components/TaskSummary/TaskSummary'
+import { TaskSummary } from '../components/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
-import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods } from '../utils/workflowParser'
+import { FloatingTaskCard } from '../components/FloatingTaskCard'
+import { getCurrentPeriod, getNextPeriod } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
+import { useTaskData } from '../contexts/TaskDataContext'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
-import { useDutyManager } from '../contexts/DutyManagerContext'
+import { useDutyManager, type DutyManagerSubmission } from '../contexts/DutyManagerContext'
 import { broadcastService } from '../services/broadcastService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
+import { clearAllAppStorage } from '../utils/clearAllStorage'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -142,7 +152,10 @@ export const ManagerDashboard: React.FC = () => {
   const selectedRole = localStorage.getItem('selectedRole')
   
   const navigate = useNavigate()
-  const { setTrigger, submissions, updateReviewStatus } = useDutyManager()
+  const { setTrigger, submissions, updateReviewStatus, reviewStatus, clearTrigger, addSubmission } = useDutyManager()
+  
+  // 从数据库获取任务数据
+  const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
   
   // Redirect to role selection if no role is selected
   useEffect(() => {
@@ -165,8 +178,16 @@ export const ManagerDashboard: React.FC = () => {
   const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
   const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
   const [preClosingTasks, setPreClosingTasks] = useState<TaskTemplate[]>([]) // Store pre-closing tasks when transitioning to closing
-  const workflowPeriods = loadWorkflowPeriods()
+  // 过滤只显示 Manager 的浮动任务
+  const floatingTasks = allFloatingTasks.filter(task => task.role === 'Manager')
   
+  // Debug: 打印浮动任务信息
+  useEffect(() => {
+    console.log('=== Manager Dashboard Debug ===')
+    console.log('All floating tasks:', allFloatingTasks)
+    console.log('Manager floating tasks:', floatingTasks)
+    console.log('Current period:', currentPeriod?.id)
+  }, [allFloatingTasks, floatingTasks, currentPeriod?.id])
   
   // Load state from localStorage on mount
   useEffect(() => {
@@ -203,6 +224,19 @@ export const ManagerDashboard: React.FC = () => {
       setHasInitialized(true)
     }
   }, [hasInitialized])
+  
+  // Listen for clear storage broadcast from other tabs
+  useEffect(() => {
+    const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
+      // Clear all storage and reload
+      clearAllAppStorage()
+      window.location.reload()
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [])
   
   // Save state to localStorage whenever key states change
   useEffect(() => {
@@ -283,6 +317,7 @@ export const ManagerDashboard: React.FC = () => {
       }
     }
   }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod])
+  
   
   // Sync refs with state
   useEffect(() => {
@@ -378,8 +413,8 @@ export const ManagerDashboard: React.FC = () => {
         periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
         
         // If this period has ended and it's not the current period
-        // Skip pre-closing period as it doesn't end by time
-        if (now > periodEnd && period.id !== currentPeriod.id && period.id !== 'pre-closing') {
+        // Skip event-driven periods (pre-closing, closing) as they don't end by time
+        if (now > periodEnd && period.id !== currentPeriod.id && !period.isEventDriven) {
           // Check for uncompleted tasks using completedTaskIds (same as manual transition)
           period.tasks.manager.forEach((task: TaskTemplate) => {
             if (task.isNotice) return // Skip notices
@@ -431,7 +466,8 @@ export const ManagerDashboard: React.FC = () => {
   
   // Overdue status update effect
   useEffect(() => {
-    if (!currentPeriod || currentPeriod.id === 'pre-closing') return
+    // Skip event-driven periods (pre-closing, closing) as they don't have fixed end times
+    if (!currentPeriod || currentPeriod.isEventDriven || currentPeriod.id === 'pre-closing' || currentPeriod.id === 'closing') return
     
     const updateOverdueStatus = () => {
       const now = testTime || new Date()
@@ -475,6 +511,46 @@ export const ManagerDashboard: React.FC = () => {
   
   const handleTaskComplete = (taskId: string, data: any) => {
     const now = testTime || new Date()
+    
+    // 检查是否是审核任务
+    const task = currentTasks.find(t => t.id === taskId)
+    if (task && task.uploadRequirement === '审核' && task.linkedTasks) {
+      // 处理审核通过逻辑
+      // console.log(`Approving review task ${taskId}, updating linked tasks:`, task.linkedTasks)
+      
+      // 更新被审核的值班经理任务状态为通过
+      task.linkedTasks.forEach(linkedTaskId => {
+        // console.log(`Updating linked task ${linkedTaskId} status to approved`)
+        updateReviewStatus(linkedTaskId, 'approved')
+      })
+    }
+    
+    // 检查是否是值班经理任务
+    if (task && task.role === 'DutyManager' && data) {
+      console.log('[ManagerDashboard] Processing DutyManager task submission:', {
+        taskId,
+        taskTitle: task.title,
+        data
+      })
+      
+      // 将值班经理任务的提交数据添加到Context
+      const submission: DutyManagerSubmission = {
+        taskId,
+        taskTitle: task.title,
+        submittedAt: now,
+        content: {
+          // 处理照片数据 - 注意PhotoSubmissionDialog使用的是item.image而不是item.photo
+          photos: data.evidence?.map((item: any) => item.photo || item.image) || [],
+          photoGroups: data.photoGroups || [],
+          text: data.textInput || data.evidence?.[0]?.description || ''
+        }
+      }
+      
+      console.log('[ManagerDashboard] Adding submission to DutyManagerContext:', submission)
+      addSubmission(submission)
+    }
+    
+    // 更新任务状态
     setTaskStatuses(prev => [
       ...prev.filter(s => s.taskId !== taskId),
       {
@@ -523,7 +599,6 @@ export const ManagerDashboard: React.FC = () => {
     
     // TODO: Submit late task data to backend
     if (data) {
-      console.log('Late task submission:', { taskId, data })
     }
   }
   
@@ -532,66 +607,6 @@ export const ManagerDashboard: React.FC = () => {
     navigate('/')
   }
   
-  const handleLastCustomerLeftLunch = () => {
-    // 触发值班经理的午市任务
-    console.log('午市最后一桌客人离开，触发值班经理任务')
-    
-    // 发送广播消息通知其他标签页
-    broadcastService.send('LAST_CUSTOMER_LEFT_LUNCH', {
-      period: currentPeriod?.id,
-      timestamp: Date.now()
-    }, 'manager')
-    
-    // 使用Context设置触发状态
-    setTrigger({
-      type: 'last-customer-left-lunch',
-      triggeredAt: new Date(),
-      triggeredBy: 'manager-001' // 在实际应用中应该是真实的管理员ID
-    })
-    
-    // 创建审核任务并添加到当前任务中
-    const reviewTask: TaskTemplate = {
-      id: 'review-lunch-duty-tasks',
-      title: '值班经理任务审核',
-      description: '审核午市值班记录',
-      role: 'Manager',
-      department: '前厅',
-      uploadRequirement: '审核',
-      linkedTasks: ['lunch-duty-manager-1', 'lunch-duty-manager-2'],
-      autoGenerated: true,
-      timeSlot: 'lunch-closing',
-      isNotice: false,  // 添加必需的属性
-      startTime: '14:00',
-      endTime: '14:30'
-    }
-    
-    // 添加审核任务到当前任务列表
-    if (currentPeriod && currentPeriod.tasks && Array.isArray(currentPeriod.tasks.manager)) {
-      // Create a deep copy of the period to avoid mutation issues
-      const updatedPeriod: WorkflowPeriod = {
-        ...currentPeriod,
-        tasks: {
-          ...currentPeriod.tasks,
-          manager: [...currentPeriod.tasks.manager, reviewTask]
-        }
-      }
-      console.log('Adding review task to current period:', reviewTask)
-      setCurrentPeriod(updatedPeriod)
-      
-      // Force update currentTasks by triggering a re-render
-      // This is a workaround for the state update issue
-      setTimeout(() => {
-        setCurrentPeriod(updatedPeriod)
-      }, 100)
-    } else {
-      console.error('Cannot add review task: currentPeriod or tasks is undefined', {
-        currentPeriod: !!currentPeriod,
-        tasks: !!currentPeriod?.tasks,
-        manager: !!currentPeriod?.tasks?.manager,
-        managerIsArray: Array.isArray(currentPeriod?.tasks?.manager)
-      })
-    }
-  }
   
   const handleLastCustomerLeft = () => {
     // Send broadcast message
@@ -600,6 +615,13 @@ export const ManagerDashboard: React.FC = () => {
       timestamp: Date.now()
     }, 'manager')
     
+    // 使用Context设置触发状态
+    setTrigger({
+      type: 'last-customer-left-dinner',
+      triggeredAt: new Date(),
+      triggeredBy: 'manager-001' // 在实际应用中应该是真实的管理员ID
+    })
+    
     // Force transition to closing period
     const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
     
@@ -607,6 +629,62 @@ export const ManagerDashboard: React.FC = () => {
       // Store pre-closing tasks to display them along with closing tasks
       if (currentPeriod?.id === 'pre-closing') {
         setPreClosingTasks(currentPeriod.tasks.manager)
+      }
+      
+      // 创建两个审核任务
+      const reviewTask1: TaskTemplate = {
+        id: 'review-closing-duty-energy',
+        title: '审核：能源安全检查',
+        description: '审核值班经理提交的设备关闭、燃气阀门和总电源检查记录',
+        role: 'Manager',
+        department: '前厅',
+        uploadRequirement: '审核',
+        linkedTasks: ['closing-duty-manager-1'],
+        autoGenerated: true,
+        timeSlot: 'closing',
+        isNotice: false,
+        startTime: '00:00',
+        endTime: '01:00'
+      }
+      
+      const reviewTask2: TaskTemplate = {
+        id: 'review-closing-duty-security',
+        title: '审核：安防闭店检查',
+        description: '审核值班经理提交的门窗锁闭、监控系统和报警系统设置记录',
+        role: 'Manager',
+        department: '前厅',
+        uploadRequirement: '审核',
+        linkedTasks: ['closing-duty-manager-2'],
+        autoGenerated: true,
+        timeSlot: 'closing',
+        isNotice: false,
+        startTime: '00:00',
+        endTime: '01:00'
+      }
+      
+      const reviewTask3: TaskTemplate = {
+        id: 'review-closing-duty-data',
+        title: '审核：营业数据记录',
+        description: '审核值班经理提交的交班单和日营业报表数据',
+        role: 'Manager',
+        department: '前厅',
+        uploadRequirement: '审核',
+        linkedTasks: ['closing-duty-manager-3'],
+        autoGenerated: true,
+        timeSlot: 'closing',
+        isNotice: false,
+        startTime: '00:00',
+        endTime: '01:00'
+      }
+      
+      // 将审核任务添加到closing period
+      const closingPeriodWithReviews: WorkflowPeriod = {
+        ...closingPeriod,
+        displayName: closingPeriod.displayName || '闭店', // 确保displayName存在
+        tasks: {
+          ...closingPeriod.tasks,
+          manager: [...closingPeriod.tasks.manager, reviewTask1, reviewTask2, reviewTask3]
+        }
       }
       
       // Only add missing tasks from periods BEFORE pre-closing
@@ -626,7 +704,7 @@ export const ManagerDashboard: React.FC = () => {
         setIsManualClosing(true)
         
         // Then update all other states
-        setCurrentPeriod(closingPeriod)
+        setCurrentPeriod(closingPeriodWithReviews)
         setNextPeriod(null) // No next period during closing
         
         // Set all missing tasks (excluding pre-closing tasks)
@@ -642,15 +720,48 @@ export const ManagerDashboard: React.FC = () => {
   }
   
   const handleReviewReject = (taskId: string, reason: string) => {
-    // 更新审核状态为驳回
-    updateReviewStatus(taskId, 'rejected', reason)
+    // console.log(`handleReviewReject called for review task ${taskId} with reason: ${reason}`)
     
-    // 审核任务保持未完成状态
+    // 找到审核任务对应的linkedTasks（值班经理任务）
+    const reviewTask = currentTasks.find(t => t.id === taskId)
+    if (!reviewTask || !reviewTask.linkedTasks || reviewTask.linkedTasks.length === 0) {
+      // console.error('Review task not found or has no linked tasks')
+      return
+    }
+    
+    // 更新被审核的值班经理任务状态为驳回（不是审核任务本身！）
+    reviewTask.linkedTasks.forEach(linkedTaskId => {
+      // console.log(`Updating linked task ${linkedTaskId} status to rejected`)
+      updateReviewStatus(linkedTaskId, 'rejected', reason)
+    })
+    
+    // 审核任务本身回到未完成状态（从completedTaskIds中移除）
+    // console.log('Before removing review task from completedTaskIds:', completedTaskIds)
+    setCompletedTaskIds(prev => {
+      const newIds = prev.filter(id => id !== taskId)
+      // console.log('After removing review task from completedTaskIds:', newIds)
+      return newIds
+    })
+    
+    // 清除审核任务的taskStatus
+    setTaskStatuses(prev => {
+      const newStatuses = prev.filter(status => status.taskId !== taskId)
+      // console.log('Cleared task status for review task:', taskId)
+      return newStatuses
+    })
+    
     // 值班经理可以通过Context看到驳回状态并重新提交
-    console.log(`审核任务 ${taskId} 被驳回，原因：${reason}`)
+    // console.log('Review rejection completed')
   }
   
   const handleClosingComplete = () => {
+    // Check floating tasks first
+    const incompleteFloatingTasks = floatingTasks.filter(task => !completedTaskIds.includes(task.id))
+    if (incompleteFloatingTasks.length > 0) {
+      alert(`请先完成特殊任务：${incompleteFloatingTasks.map(t => t.title).join('、')}`)
+      return
+    }
+    
     // Check if there are any missing tasks
     if (missingTasks.length > 0) {
       alert(`还有 ${missingTasks.length} 个未完成的任务，请先完成所有缺失任务后再闭店。`)
@@ -707,6 +818,12 @@ export const ManagerDashboard: React.FC = () => {
     
     const nextPeriod = workflowPeriods[currentIndex + 1]
     
+    // Special handling for transitioning to pre-closing (event-driven period)
+    if (nextPeriod.id === 'pre-closing') {
+      // Pre-closing should only be entered when dinner service ends naturally
+      // or through manual advance (representing early end of service)
+    }
+    
     // Collect uncompleted tasks from current period
     const uncompletedTasks: { task: TaskTemplate; periodName: string }[] = []
     currentPeriod.tasks.manager.forEach(task => {
@@ -745,23 +862,63 @@ export const ManagerDashboard: React.FC = () => {
     manualAdvanceRef.current = null
     setIsWaitingForNextDay(false)
     waitingRef.current = false
+    // setLunchSwipeCompleted(false) // Removed - variable not defined
     
     // 清除本地存储
     clearState('manager')
+    
+    // 清除值班经理相关的存储
+    localStorage.removeItem('dutyManagerTrigger')
+    localStorage.removeItem('dutyManagerSubmissions')
+    localStorage.removeItem('dutyManagerReviewStatus')
+    
+    // 清除Context中的值班经理数据
+    clearTrigger()
     
     // 保持当前时段不变，但重新初始化
     const now = testTime || new Date()
     const newPeriod = getCurrentPeriod(now)
     setCurrentPeriod(newPeriod)
     setNextPeriod(getNextPeriod(now))
-  }, [testTime])
+  }, [testTime, clearTrigger])
   
   // When in closing period, concatenate pre-closing tasks with closing tasks
-  const currentTasks = currentPeriod?.id === 'closing' && preClosingTasks.length > 0
+  // Always append floating tasks at the end
+  const baseTasks = currentPeriod?.id === 'closing' && preClosingTasks.length > 0
     ? [...preClosingTasks, ...(currentPeriod?.tasks?.manager || [])]
     : currentPeriod?.tasks?.manager || []
   
+  const currentTasks = [...baseTasks, ...floatingTasks]
+  
+  // Debug log for current tasks
+  useEffect(() => {
+    console.log('Current period:', currentPeriod?.id)
+    console.log('Current tasks:', currentTasks.map(t => ({ id: t.id, title: t.title, uploadRequirement: t.uploadRequirement })))
+    console.log('Base tasks count:', baseTasks.length)
+    console.log('Floating tasks count:', floatingTasks.length)
+  }, [currentPeriod?.id, currentTasks.length])
+  
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
+  
+  // 处理加载状态
+  if (isLoading) {
+    return (
+      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>正在从数据库加载任务...</Typography>
+      </Container>
+    )
+  }
+  
+  // 处理错误状态
+  if (error) {
+    return (
+      <Container sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        <Button variant="contained" onClick={() => window.location.reload()}>重新加载</Button>
+      </Container>
+    )
+  }
   
   return (
     <>
@@ -797,10 +954,10 @@ export const ManagerDashboard: React.FC = () => {
                 onComplete={handleTaskComplete}
                 onComment={handleNoticeComment}
                 onLastCustomerLeft={handleLastCustomerLeft}
-                onLastCustomerLeftLunch={handleLastCustomerLeftLunch}
                 onClosingComplete={handleClosingComplete}
                 onAdvancePeriod={handleAdvancePeriod}
                 onReviewReject={handleReviewReject}
+                reviewStatus={reviewStatus}
               />
             ) : (
               <ClosedPeriodDisplay nextPeriod={nextPeriod} testTime={testTime} />

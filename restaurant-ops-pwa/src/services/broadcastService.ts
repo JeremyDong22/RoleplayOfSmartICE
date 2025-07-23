@@ -2,10 +2,10 @@
 // This service handles communication between Manager and Chef dashboards
 
 export interface BroadcastMessage {
-  type: 'LAST_CUSTOMER_LEFT_LUNCH' | 'LAST_CUSTOMER_LEFT_DINNER' | 'PERIOD_CHANGED' | 'TASK_COMPLETED' | 'STATE_SYNC'
+  type: 'LAST_CUSTOMER_LEFT_LUNCH' | 'LAST_CUSTOMER_LEFT_DINNER' | 'PERIOD_CHANGED' | 'TASK_COMPLETED' | 'STATE_SYNC' | 'CLEAR_ALL_STORAGE'
   timestamp: number
   data?: any
-  sender: 'manager' | 'chef' | 'ceo'
+  sender: 'manager' | 'chef' | 'ceo' | 'system'
 }
 
 class BroadcastService {
@@ -20,7 +20,7 @@ class BroadcastService {
     if (this.isSupported) {
       this.initialize()
     } else {
-      console.warn('BroadcastChannel is not supported. Falling back to localStorage events.')
+      // BroadcastChannel is not supported. Falling back to localStorage events.
     }
   }
 
@@ -36,19 +36,15 @@ class BroadcastService {
       
       // Handle errors
       this.channel.onmessageerror = (event) => {
-        console.error('BroadcastChannel message error:', event)
+        // BroadcastChannel message error
       }
-      
-      console.log('BroadcastChannel initialized successfully')
     } catch (error) {
-      console.error('Failed to initialize BroadcastChannel:', error)
+      // Failed to initialize BroadcastChannel
       this.isSupported = false
     }
   }
 
   private handleMessage(message: BroadcastMessage) {
-    console.log('Received broadcast message:', message)
-    
     // Notify all listeners for this message type
     const listeners = this.listeners.get(message.type)
     if (listeners) {
@@ -56,7 +52,7 @@ class BroadcastService {
         try {
           callback(message)
         } catch (error) {
-          console.error('Error in broadcast listener:', error)
+          // Error in broadcast listener
         }
       })
     }
@@ -68,7 +64,7 @@ class BroadcastService {
         try {
           callback(message)
         } catch (error) {
-          console.error('Error in broadcast listener:', error)
+          // Error in broadcast listener
         }
       })
     }
@@ -86,9 +82,8 @@ class BroadcastService {
     if (this.isSupported && this.channel) {
       try {
         this.channel.postMessage(message)
-        console.log('Broadcast message sent:', message)
       } catch (error) {
-        console.error('Failed to send broadcast message:', error)
+        // Failed to send broadcast message
         this.fallbackToLocalStorage(message)
       }
     } else {
@@ -127,7 +122,7 @@ class BroadcastService {
         localStorage.removeItem(key)
       }, 1000)
     } catch (error) {
-      console.error('Failed to use localStorage fallback:', error)
+      // Failed to use localStorage fallback
     }
   }
 
@@ -140,7 +135,7 @@ class BroadcastService {
             const message = JSON.parse(event.newValue) as BroadcastMessage
             this.handleMessage(message)
           } catch (error) {
-            console.error('Failed to parse storage event:', error)
+            // Failed to parse storage event
           }
         }
       })

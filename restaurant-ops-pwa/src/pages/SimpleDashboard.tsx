@@ -1,6 +1,7 @@
 // Simple dashboard without authentication for testing
+// Updated to use MUI v7 Grid component with size prop
 import { useState, useEffect } from 'react'
-import { Box, Container, Typography, Grid, Paper, List, ListItem, ListItemText, Chip, AppBar, Toolbar } from '@mui/material'
+import { Box, Container, Typography, Paper, List, ListItem, ListItemText, Chip, AppBar, Toolbar, Grid } from '@mui/material'
 import { CountdownTimer } from '../components/Timer/CountdownTimer'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -119,12 +120,12 @@ export const SimpleDashboard = () => {
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Grid container spacing={3}>
           {/* Countdown Timer */}
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <CountdownTimer currentTask={currentTask} onTaskAlert={handleTaskAlert} />
           </Grid>
           
           {/* Today's Tasks */}
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Paper sx={{ p: 3, height: '100%' }}>
               <Typography variant="h5" gutterBottom>
                 今日任务 Today's Tasks
@@ -184,9 +185,9 @@ export const SimpleDashboard = () => {
           </Grid>
           
           {/* Statistics */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                   <Typography variant="h4" color="success.main">
                     {mockTasks.filter(t => t.status === 'completed').length}
@@ -194,7 +195,7 @@ export const SimpleDashboard = () => {
                   <Typography variant="body1">已完成 Completed</Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                   <Typography variant="h4" color="primary.main">
                     {mockTasks.filter(t => t.status === 'in_progress').length}
@@ -202,7 +203,7 @@ export const SimpleDashboard = () => {
                   <Typography variant="body1">进行中 In Progress</Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                   <Typography variant="h4" color="text.secondary">
                     {mockTasks.filter(t => t.status === 'pending').length}

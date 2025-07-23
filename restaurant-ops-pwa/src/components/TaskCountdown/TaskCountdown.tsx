@@ -14,6 +14,9 @@
 // like a photo album. Users can now freely browse all tasks without being forced back.
 // Updated: Added automatic reset to first task card when period changes. Now when transitioning
 // between periods, the carousel automatically scrolls back to the first task for better UX.
+// Updated: Added special styling for audit tasks. Auto-generated audit tasks show with dashed
+// border initially, then turn orange with "待审核" label when duty manager submits their tasks.
+// Integrated with DutyManagerContext to track submission status.
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Paper,
@@ -40,7 +43,12 @@ import {
   Checklist
 } from '@mui/icons-material'
 import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
-import type { NoticeComment } from '../../types'
+
+interface NoticeComment {
+  noticeId: string
+  comment: string
+  timestamp: Date
+}
 import useEmblaCarousel from 'embla-carousel-react'
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 import AudioRecordingDialog from '../AudioRecordingDialog'
@@ -48,9 +56,13 @@ import TextInputDialog from '../TextInputDialog'
 import NoticeCommentDialog from '../NoticeCommentDialog'
 import ListSubmissionDialog from '../ListSubmissionDialog'
 import { ReviewTaskDialog } from '../ReviewTaskDialog/ReviewTaskDialog'
+import { useDutyManager } from '../../contexts/DutyManagerContext'
+import RateReviewIcon from '@mui/icons-material/RateReview'
+import PendingActionsIcon from '@mui/icons-material/PendingActions'
+import { specialTaskTheme } from '../../theme/specialTaskTheme'
 
 // Swipeable card component for last customer confirmation - iPhone-style slide to unlock
-const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => {
+const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void; text?: string }> = ({ onConfirm, text = '预打烊完成，安排值班人员' }) => {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
@@ -218,7 +230,7 @@ const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void }> = ({ onConf
                 fontSize: '1.1rem',
               }}
             >
-              最后一位客人离店
+              {text}
             </Typography>
             <Box
               sx={{
@@ -309,6 +321,14 @@ interface TaskCountdownProps {
   onClosingComplete?: () => void
   onAdvancePeriod?: () => void
   onReviewReject?: (taskId: string, reason: string) => void
+  hideTimer?: boolean  // 新增: 隐藏倒计时器
+  reviewStatus?: {
+    [taskId: string]: {
+      status: 'pending' | 'approved' | 'rejected'
+      reviewedAt?: Date
+      reason?: string
+    }
+  }
 }
 
 export const TaskCountdown: React.FC<TaskCountdownProps> = ({
@@ -323,12 +343,20 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   onLastCustomerLeftLunch,
   onClosingComplete,
   onAdvancePeriod,
-  onReviewReject
+  onReviewReject,
+  hideTimer = false,
+  reviewStatus = {}
 }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const [currentTime, setCurrentTime] = useState<Date>(testTime || new Date())
   const [selectedIndex, setSelectedIndex] = useState(0)
   const prevPeriodRef = React.useRef(period?.id)
+  const { submissions } = useDutyManager()
+  
+  // Track submissions updates
+  useEffect(() => {
+    // Removed console.log to reduce noise
+  }, [submissions])
   
   // Dialog states
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false)
@@ -354,12 +382,11 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     startIndex: 0,
     watchSlides: true,
     watchResize: true,
-    speed: 20,  // Increased speed for snappier animations
-    duration: 500  // Smooth elastic animation duration (in ms)
+    speed: 25,  // Increased speed for snappier animations
+    duration: 200  // Faster animation duration (in ms)
   })
   
   // Separate tasks and notices
-  console.log('TaskCountdown received tasks:', tasks, 'isArray:', Array.isArray(tasks))
   const regularTasks = Array.isArray(tasks) ? tasks.filter(t => t && !t.isNotice) : []
   const notices = Array.isArray(tasks) ? tasks.filter(t => t && t.isNotice) : []
   
@@ -410,7 +437,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     const calculateTime = () => {
       const now = testTime || new Date()
       
-      if (!period || period.id === 'pre-closing' || period.id === 'closing') {
+      // For event-driven periods (pre-closing, closing), show current time instead of countdown
+      // These periods don't have fixed end times - they end based on events
+      if (!period || period.isEventDriven || period.id === 'pre-closing' || period.id === 'closing') {
         setCurrentTime(now)
         return
       }
@@ -459,14 +488,14 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   
   // Early return if period or tasks is undefined
   if (!period || !tasks) {
-    console.warn('TaskCountdown: Missing required props', { period: !!period, tasks: !!tasks })
     return null
   }
   
   return (
     <>
       {/* Period Timer */}
-      <Paper 
+      {!hideTimer && (
+        <Paper 
         elevation={3}
         sx={{
           p: 3,
@@ -529,7 +558,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           )}
           
           {/* Advance Period Button - Hide during in-service, pre-closing and closing */}
-          {onAdvancePeriod && !allTasksCompleted && period?.id !== 'lunch-service' && period?.id !== 'dinner-service' && period?.id !== 'pre-closing' && period?.id !== 'closing' && (
+          {onAdvancePeriod && period?.id !== 'lunch-service' && period?.id !== 'dinner-service' && period?.id !== 'pre-closing' && period?.id !== 'closing' && (
             <Box mt={2}>
               <Button
                 variant="outlined"
@@ -547,6 +576,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           )}
         </Box>
       </Paper>
+      )}
 
       {/* Current Task Card with Embla Carousel */}
       {regularTasks.length > 0 && (
@@ -605,6 +635,43 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                 {regularTasks.map((task, index) => {
                   const isCompleted = (completedTaskIds || []).includes(task.id)
                   const isCurrentSlide = index === selectedIndex
+                  const isAuditTask = task.uploadRequirement === '审核' && task.autoGenerated
+                  const taskReviewStatus = reviewStatus[task.id]
+                  const isRejected = taskReviewStatus?.status === 'rejected'
+                  const isApproved = taskReviewStatus?.status === 'approved'
+                  const isInReview = taskReviewStatus?.status === 'pending' || (isCompleted && !isApproved && !isRejected && !isAuditTask)
+                  const isDutyManagerTask = task.role === 'DutyManager'
+                  
+                  // Check if any linked tasks have been submitted
+                  const hasLinkedSubmissions = task.linkedTasks && task.linkedTasks.some(linkedTaskId => {
+                    const hasSubmission = submissions.some(sub => sub.taskId === linkedTaskId)
+                    const linkedReviewStatus = reviewStatus[linkedTaskId]
+                    // If linked task is rejected, don't count it as having submission
+                    if (linkedReviewStatus?.status === 'rejected') {
+                      // console.log(`Linked task ${linkedTaskId} is rejected, not counting as submission`)
+                      return false
+                    }
+                    // If linked task is approved, also don't count it (审核已完成)
+                    if (linkedReviewStatus?.status === 'approved') {
+                      // console.log(`Linked task ${linkedTaskId} is approved, not counting as pending submission`)
+                      return false
+                    }
+                    return hasSubmission
+                  })
+                  
+                  // Debug logging
+                  if (isAuditTask || isDutyManagerTask) {
+                    // console.log(`Task ${task.id}:`, {
+                    //   isAuditTask,
+                    //   isDutyManagerTask,
+                    //   hasLinkedSubmissions,
+                    //   isCompleted,
+                    //   isRejected,
+                    //   isApproved,
+                    //   reviewStatus: taskReviewStatus,
+                    //   submissions: task.linkedTasks ? submissions.filter(s => task.linkedTasks?.includes(s.taskId)) : []
+                    // })
+                  }
                   
                   return (
                     <Box
@@ -619,21 +686,49 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                       }}
                     >
                       <Box sx={{ 
-                        border: theme => task.isFloating 
-                          ? `2px solid ${theme.palette.warning.main}` // Orange border for floating tasks
-                          : isCurrentSlide ? `2px solid ${theme.palette.primary.main}` : '1px solid',
-                        borderColor: task.isFloating 
-                          ? 'warning.main' // Orange for floating tasks
+                        border: theme => {
+                          // 审核任务的边框逻辑
+                          if (isAuditTask) {
+                            if (hasLinkedSubmissions && !isCompleted) return `2px solid ${theme.palette.warning.main}` // 待审核
+                            if (!hasLinkedSubmissions) return `2px solid ${theme.palette.grey[400]}` // 等待提交 - 改为实线
+                          }
+                          // 值班经理任务的边框逻辑
+                          if (isDutyManagerTask) {
+                            if (isRejected) return `2px solid ${theme.palette.error.main}` // 待修改
+                            if (isInReview) return `2px solid ${theme.palette.warning.main}` // 待审核
+                            if (isApproved) return `2px solid ${theme.palette.success.main}` // 已通过
+                          }
+                          // 其他任务的边框逻辑
+                          if (task.isFloating) return `2px solid ${specialTaskTheme.primary}`
+                          if (isCurrentSlide) return `2px solid ${theme.palette.primary.main}`
+                          return '1px solid'
+                        },
+                        borderColor: isAuditTask && hasLinkedSubmissions && !isCompleted
+                          ? 'warning.main'
+                          : isDutyManagerTask && isRejected
+                          ? 'error.main'
+                          : isDutyManagerTask && isInReview
+                          ? 'warning.main'
+                          : isDutyManagerTask && isApproved
+                          ? 'success.main'
+                          : task.isFloating 
+                          ? specialTaskTheme.primary
                           : isCompleted ? 'success.main' : 'divider',
                         borderRadius: 2,
                         p: 3,
-                        backgroundColor: isCompleted ? 'action.hover' : 'background.paper',
+                        backgroundColor: theme => {
+                          // 所有任务都使用纯白背景，不要毛玻璃效果
+                          if (isCompleted && !isDutyManagerTask && !isAuditTask) {
+                            return theme.palette.action.hover
+                          }
+                          return theme.palette.background.paper
+                        },
                         height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        opacity: isCompleted ? 0.7 : 1,
+                        opacity: (isCompleted && !isRejected) ? 0.7 : 1, // 被驳回的任务不降低透明度
                         transform: isCurrentSlide ? 'scale(1)' : 'scale(0.92)',
-                        transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, border 0.3s ease',
+                        transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, border 0.3s ease, background-color 0.3s ease',
                         pointerEvents: 'auto',  // Ensure pointer events work
                         touchAction: 'manipulation'  // Better touch handling
                       }}>
@@ -642,16 +737,74 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                             <Typography variant="h5" fontWeight="bold">
                               {task.title}
                             </Typography>
-                            {task.isFloating && (
-                              <Chip 
-                                label="特殊任务" 
-                                size="small" 
-                                color="warning"
-                                sx={{ mt: 1 }}
-                              />
-                            )}
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                              {task.isFloating && (
+                                <Chip 
+                                  label="特殊任务" 
+                                  size="small" 
+                                  sx={{
+                                    backgroundColor: specialTaskTheme.chip.background,
+                                    color: specialTaskTheme.chip.color,
+                                    fontWeight: 500
+                                  }}
+                                />
+                              )}
+                              {isAuditTask && !hasLinkedSubmissions && !isCompleted && (
+                                <Chip 
+                                  label="等待提交" 
+                                  size="small" 
+                                  color="default"
+                                  icon={<RateReviewIcon sx={{ fontSize: 16 }} />}
+                                />
+                              )}
+                              {isAuditTask && hasLinkedSubmissions && !isCompleted && (
+                                <Chip 
+                                  label="待审核" 
+                                  size="small" 
+                                  color="warning"
+                                  icon={<PendingActionsIcon sx={{ fontSize: 16 }} />}
+                                />
+                              )}
+                              {isAuditTask && isCompleted && (
+                                <Chip 
+                                  label="已完成" 
+                                  size="small" 
+                                  color="success"
+                                  icon={<CheckCircle sx={{ fontSize: 16 }} />}
+                                />
+                              )}
+                              {/* 值班经理任务状态标签 */}
+                              {isDutyManagerTask && isInReview && !isRejected && !isApproved && (
+                                <Chip 
+                                  label="待审核" 
+                                  size="small" 
+                                  color="warning"
+                                  icon={<PendingActionsIcon sx={{ fontSize: 16 }} />}
+                                />
+                              )}
+                              {isDutyManagerTask && isApproved && (
+                                <Chip 
+                                  label="已通过" 
+                                  size="small" 
+                                  color="success"
+                                  icon={<CheckCircle sx={{ fontSize: 16 }} />}
+                                />
+                              )}
+                              {isRejected && (
+                                <Chip 
+                                  label="待修改" 
+                                  size="small" 
+                                  color="error"
+                                  icon={<TextFields sx={{ fontSize: 16 }} />}
+                                />
+                              )}
+                            </Box>
                           </Box>
-                          {isCompleted && (
+                          {/* 根据不同状态显示不同的图标 */}
+                          {isDutyManagerTask && isApproved && (
+                            <CheckCircle sx={{ color: 'success.main', fontSize: 30, ml: 1 }} />
+                          )}
+                          {!isDutyManagerTask && isCompleted && (
                             <CheckCircleOutline sx={{ color: 'success.main', fontSize: 30, ml: 1 }} />
                           )}
                         </Box>
@@ -660,6 +813,27 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                           <Typography variant="body1" color="text.secondary" paragraph sx={{ flex: 1 }}>
                             {task.description}
                           </Typography>
+                        )}
+                        
+                        {/* 显示驳回原因 - 只有值班经理任务才显示驳回原因 */}
+                        {isDutyManagerTask && isRejected && taskReviewStatus?.reason && (
+                          <Box 
+                            sx={{ 
+                              p: 2, 
+                              mb: 2,
+                              bgcolor: 'error.50',
+                              borderRadius: 1,
+                              border: '1px solid',
+                              borderColor: 'error.main'
+                            }}
+                          >
+                            <Typography variant="subtitle2" color="error.main" gutterBottom>
+                              驳回原因：
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {taskReviewStatus.reason}
+                            </Typography>
+                          </Box>
                         )}
                         
                         {/* Required Evidence */}
@@ -676,46 +850,66 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                                   task.uploadRequirement === '录音' ? <Videocam /> :
                                   task.uploadRequirement === '记录' ? <TextFields /> :
                                   task.uploadRequirement === '列表' ? <Checklist /> :
-                                  task.uploadRequirement === '审核' ? <Assignment /> :
+                                  task.uploadRequirement === '审核' ? <RateReviewIcon /> :
                                   <Comment />
                                 }
                                 label={task.uploadRequirement}
+                                color='default'
                               />
                             </Box>
                           </Box>
                         )}
                         
-                        {!isCompleted && (
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            fullWidth
-                            size="large"
-                            onClick={() => {
-                              // Check if task requires photo or audio evidence
-                              if (task.uploadRequirement === '拍照') {
-                                setActiveTask(task)
-                                setPhotoDialogOpen(true)
-                              } else if (task.uploadRequirement === '录音') {
-                                setActiveTask(task)
-                                setAudioDialogOpen(true)
-                              } else if (task.uploadRequirement === '记录') {
-                                setActiveTask(task)
-                                setTextDialogOpen(true)
-                              } else if (task.uploadRequirement === '列表') {
-                                setActiveTask(task)
-                                setListDialogOpen(true)
-                              } else if (task.uploadRequirement === '审核') {
+                        {/* 按钮显示逻辑 - 审核任务和普通任务分开处理 */}
+                        {isAuditTask ? (
+                          // 审核任务的按钮逻辑
+                          // 只有在有待审核内容且任务未完成时才显示按钮
+                          hasLinkedSubmissions && !isCompleted && (
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              fullWidth
+                              size="large"
+                              onClick={() => {
                                 setActiveTask(task)
                                 setReviewDialogOpen(true)
-                              } else {
-                                onComplete(task.id, {})
-                              }
-                            }}
-                            sx={{ mt: 'auto' }}
-                          >
-                            完成任务
-                          </Button>
+                              }}
+                              sx={{ mt: 'auto' }}
+                            >
+                              去审核
+                            </Button>
+                          )
+                        ) : (
+                          // 非审核任务的按钮逻辑（包括值班经理任务）
+                          (!isCompleted || (isDutyManagerTask && isRejected)) && (
+                            <Button
+                              variant="contained"
+                              color={isDutyManagerTask && isRejected ? "error" : "primary"}
+                              fullWidth
+                              size="large"
+                              onClick={() => {
+                                // Check if task requires photo or audio evidence
+                                if (task.uploadRequirement === '拍照') {
+                                  setActiveTask(task)
+                                  setPhotoDialogOpen(true)
+                                } else if (task.uploadRequirement === '录音') {
+                                  setActiveTask(task)
+                                  setAudioDialogOpen(true)
+                                } else if (task.uploadRequirement === '记录') {
+                                  setActiveTask(task)
+                                  setTextDialogOpen(true)
+                                } else if (task.uploadRequirement === '列表') {
+                                  setActiveTask(task)
+                                  setListDialogOpen(true)
+                                } else {
+                                  onComplete(task.id, {})
+                                }
+                              }}
+                              sx={{ mt: 'auto' }}
+                            >
+                              {isDutyManagerTask && isRejected ? '重新提交' : '完成任务'}
+                            </Button>
+                          )
                         )}
                       </Box>
                     </Box>
@@ -764,24 +958,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
 
       {/* Swipe Card for Lunch Closing Period (Manager Only) */}
       {period?.id === 'lunch-closing' && onLastCustomerLeftLunch && (
-        <Paper 
-          elevation={2}
-          sx={{
-            p: 3,
-            mb: 3,
-            textAlign: 'center',
-            background: theme => `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.08)}, ${alpha(theme.palette.success.main, 0.15)})`,
-            border: theme => `1px solid ${alpha(theme.palette.success.main, 0.2)}`
-          }}
-        >
-          <Typography variant="h6" gutterBottom sx={{ color: 'success.dark', fontWeight: 600 }}>
-            确认最后一桌客人离开
-          </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            滑动确认后将触发值班经理的午市任务
-          </Typography>
-          <SwipeableLastCustomerCard onConfirm={onLastCustomerLeftLunch} />
-        </Paper>
+        <SwipeableLastCustomerCard onConfirm={onLastCustomerLeftLunch} text="收市完成安排值班人员" />
       )}
       
       {/* Swipe Card for Pre-closing Period (Manager Only) */}
@@ -988,7 +1165,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           }}
           onReject={(taskId, reason) => {
             // 处理驳回逻辑
-            console.log('任务被驳回:', taskId, reason)
+            // console.log('任务被驳回:', taskId, reason)
             // 任务保持未完成状态，不调用onComplete
             // 通过回调函数处理驳回
             if (onReviewReject) {

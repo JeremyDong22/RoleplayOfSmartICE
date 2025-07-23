@@ -1,14 +1,16 @@
 // 值班经理工作台页面
+// Updated: Fixed scrolling behavior - changed main container from overflow: 'hidden' to overflow: 'auto'
+// and removed fixed height constraints to allow proper scrolling
+// Updated: Added TaskCountdown component for swipeable task cards like Manager/Chef dashboards
 import React, { useState, useEffect } from 'react'
 import {
   Box,
   Typography,
   Paper,
-  Container,
   AppBar,
   Toolbar,
   IconButton,
-  CircularProgress,
+  Chip,
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -16,19 +18,26 @@ import { useNavigate } from 'react-router-dom'
 import type { TaskTemplate, WorkflowPeriod } from '../utils/workflowParser'
 import { getCurrentPeriod, workflowPeriods } from '../utils/workflowParser'
 import { EditableTime } from '../components/TimeControl/EditableTime'
+import { TaskSummary } from '../components/TaskSummary'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
-import FloatingTaskCard from '../components/FloatingTaskCard/FloatingTaskCard'
-import { TaskSummary } from '../components/TaskSummary/TaskSummary'
-import { saveState, loadState, clearState } from '../utils/persistenceManager'
 import { useDutyManager } from '../contexts/DutyManagerContext'
+import { broadcastService } from '../services/broadcastService'
+import { clearAllAppStorage } from '../utils/clearAllStorage'
+
+interface NoticeComment {
+  noticeId: string
+  comment: string
+  timestamp: Date
+}
 
 interface DutyManagerState {
   activeTasks: TaskTemplate[]
   completedTaskIds: string[]
-  taskStatuses: { [key: string]: { completedAt: Date; overdue: boolean } }
-  noticeComments: { [key: string]: string }
+  taskStatuses: { [key: string]: { completedAt: Date; overdue: boolean; evidence?: any } }
+  noticeComments: NoticeComment[]
   isWaitingForTrigger: boolean
   currentTrigger?: 'last-customer-left-lunch' | 'last-customer-left-dinner'
+  targetPeriod?: WorkflowPeriod  // 保存触发任务所属的时段
 }
 
 const DutyManagerDashboard: React.FC = () => {
@@ -40,7 +49,7 @@ const DutyManagerDashboard: React.FC = () => {
     activeTasks: [],
     completedTaskIds: [],
     taskStatuses: {},
-    noticeComments: {},
+    noticeComments: [],
     isWaitingForTrigger: true,
     currentTrigger: undefined,
   })
@@ -51,16 +60,48 @@ const DutyManagerDashboard: React.FC = () => {
     setCurrentPeriod(period)
   }, [testTime])
 
+  // Listen for clear storage broadcast from other tabs
+  useEffect(() => {
+    const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
+      // Clear all storage and reload
+      clearAllAppStorage()
+      window.location.reload()
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   // 检查是否有触发的任务
   useEffect(() => {
-    if (!currentPeriod || !currentTrigger) return
+    if (!currentTrigger) return
 
-    // 获取当前时段的值班经理任务
-    const dutyTasks = currentPeriod.tasks.dutyManager || []
+    // 根据触发类型获取对应的任务
+    // last-customer-left-dinner触发closing时段的值班经理任务
+    let targetPeriodId = ''
+    if (currentTrigger.type === 'last-customer-left-dinner') {
+      targetPeriodId = 'closing'
+    } else if (currentTrigger.type === 'last-customer-left-lunch') {
+      targetPeriodId = 'lunch-closing'
+    }
+
+    // 从workflowPeriods中找到目标时段
+    const targetPeriod = workflowPeriods.find(p => p.id === targetPeriodId)
+    
+    if (!targetPeriod) {
+      return
+    }
+
+    // 获取目标时段的值班经理任务
+    const dutyTasks = (targetPeriod.tasks as any).dutyManager || []
     
     // 检查是否有被触发的任务
-    const triggeredTasks = dutyTasks.filter(task => {
-      return task.prerequisiteTrigger === currentTrigger.type
+    const triggeredTasks = dutyTasks.filter((task: any) => {
+      // 确保任务是值班经理任务，不是审核任务
+      return task.prerequisiteTrigger === currentTrigger.type && 
+             task.role === 'DutyManager' && 
+             task.uploadRequirement !== '审核'
     })
 
     if (triggeredTasks.length > 0) {
@@ -69,59 +110,164 @@ const DutyManagerDashboard: React.FC = () => {
         activeTasks: triggeredTasks,
         isWaitingForTrigger: false,
         currentTrigger: currentTrigger.type,
+        targetPeriod: targetPeriod,  // 保存目标时段
       }))
     }
-  }, [currentPeriod, currentTrigger])
+  }, [currentTrigger])
 
   // 任务完成处理
-  const handleTaskComplete = (taskId: string) => {
+  const handleTaskComplete = (taskId: string, data: any) => {
+    // 如果是重新提交，清除之前的驳回状态
+    const isResubmit = reviewStatus[taskId]?.status === 'rejected'
+    
     setState(prev => ({
       ...prev,
-      completedTaskIds: [...prev.completedTaskIds, taskId],
+      // 如果是重新提交，先移除之前的完成记录
+      completedTaskIds: isResubmit 
+        ? [...prev.completedTaskIds.filter(id => id !== taskId), taskId]
+        : [...prev.completedTaskIds, taskId],
       taskStatuses: {
         ...prev.taskStatuses,
-        [taskId]: { completedAt: new Date(), overdue: false },
+        [taskId]: { completedAt: new Date(), overdue: false, evidence: data },
       },
     }))
-  }
-
-  // 提交值班记录
-  const handleSubmitDutyRecord = () => {
-    // 将任务提交到Context供Manager审核
-    state.activeTasks.forEach(task => {
+    
+    // 立即提交到Context，任务进入待审核状态
+    const task = state.activeTasks.find(t => t.id === taskId)
+    if (task) {
+      console.log('DutyManager submitting task:', taskId, 'with data:', data)
+      console.log('Is resubmit?', isResubmit)
+      
+      // 处理照片数据格式
+      let photos = []
+      let photoGroups = []
+      
+      // 检查是否有照片组数据（新格式）
+      if (data.photoGroups && Array.isArray(data.photoGroups)) {
+        photoGroups = data.photoGroups
+        // 同时生成平铺的照片数组以保持兼容性
+        photos = photoGroups.flatMap(group => group.photos || [])
+      } else if (data.evidence && Array.isArray(data.evidence)) {
+        // 旧格式：evidence 是一个数组，需要转换为照片组
+        const groupedByIndex: { [key: number]: any[] } = {}
+        
+        data.evidence.forEach((item: any) => {
+          const sampleIndex = item.sampleIndex || 0
+          if (!groupedByIndex[sampleIndex]) {
+            groupedByIndex[sampleIndex] = []
+          }
+          groupedByIndex[sampleIndex].push(item)
+        })
+        
+        // 将分组后的数据转换为PhotoGroup格式
+        photoGroups = Object.entries(groupedByIndex).map(([index, items]) => ({
+          id: `group-${Date.now()}-${index}`,
+          photos: items.map(item => {
+            if (typeof item === 'string') return item
+            return item.photo || item.photoData || item
+          }),
+          sampleIndex: parseInt(index),
+          comment: items[0]?.description || '',
+        }))
+        
+        // 同时生成平铺的照片数组
+        photos = data.evidence.map((item: any) => {
+          if (typeof item === 'string') {
+            return item
+          }
+          return item.photo || item.photoData || item
+        })
+      } else if (data.photo) {
+        // 处理单个照片的情况
+        photos = [data.photo]
+        photoGroups = [{
+          id: `group-${Date.now()}`,
+          photos: [data.photo],
+          sampleIndex: 0,
+          comment: '',
+        }]
+      } else if (data.photos) {
+        // 处理照片数组的情况
+        photos = data.photos
+        photoGroups = [{
+          id: `group-${Date.now()}`,
+          photos: data.photos,
+          sampleIndex: 0,
+          comment: '',
+        }]
+      }
+      
       const submission = {
         taskId: task.id,
         taskTitle: task.title,
         submittedAt: new Date(),
         content: {
-          text: `已完成${task.title}任务`,
-          photos: [], // 实际应用中从任务状态中获取
-          amount: task.title.includes('营业款') ? 12580 : undefined, // 示例金额
+          text: data.textInput || data.transcription || data.text || '',
+          photos: photos, // 保留兼容性
+          photoGroups: photoGroups, // 新增照片组数据
+          amount: data.amount || (task.title.includes('营业款') ? 12580 : undefined),
         },
       }
+      
+      console.log('Formatted submission:', submission)
+      console.log('Calling addSubmission...')
       addSubmission(submission)
-    })
-    
-    console.log('提交值班记录', {
-      period: currentPeriod?.displayName,
-      completedTasks: state.completedTaskIds,
-      taskStatuses: state.taskStatuses,
-    })
-    
-    // 清除当前触发，重置状态
-    clearTrigger()
+      console.log('addSubmission called')
+    }
+  }
+
+  // 处理通知评论
+  const handleNoticeComment = (noticeId: string, comment: string) => {
     setState(prev => ({
       ...prev,
-      activeTasks: [],
-      isWaitingForTrigger: true,
-      currentTrigger: undefined,
-      completedTaskIds: [],
-      taskStatuses: {},
+      noticeComments: [
+        ...prev.noticeComments,
+        {
+          noticeId,
+          comment,
+          timestamp: new Date()
+        }
+      ]
     }))
   }
 
+  // 检查是否所有任务都已提交并审核通过
+  useEffect(() => {
+    if (state.activeTasks.length === 0) return
+    
+    // 检查所有任务是否都已审核通过
+    const allApproved = state.activeTasks.every(task => 
+      reviewStatus[task.id]?.status === 'approved'
+    )
+    
+    if (allApproved) {
+      // 所有任务都已审核通过，自动清除状态并返回等待界面
+      setTimeout(() => {
+        clearTrigger()
+        setState(prev => ({
+          ...prev,
+          activeTasks: [],
+          isWaitingForTrigger: true,
+          currentTrigger: undefined,
+          targetPeriod: undefined,
+          completedTaskIds: [],
+          taskStatuses: {},
+          noticeComments: []
+        }))
+      }, 2000) // 延迟2秒让用户看到审核通过状态
+    }
+  }, [reviewStatus, state.activeTasks])
+
   // 登出处理
   const handleLogout = () => {
+    // 清理值班经理相关的存储
+    localStorage.removeItem('dutyManagerTrigger')
+    localStorage.removeItem('dutyManagerSubmissions')
+    localStorage.removeItem('dutyManagerReviewStatus')
+    
+    // 清除Context中的数据
+    clearTrigger()
+    
     navigate('/')
   }
 
@@ -142,7 +288,7 @@ const DutyManagerDashboard: React.FC = () => {
             <Typography variant="h6" sx={{ flexGrow: 1 }}>
               值班经理工作台
             </Typography>
-            <EditableTime onTimeChange={setTestTime} />
+            <EditableTime onTimeChange={(date) => setTestTime(date || null)} />
           </Toolbar>
         </AppBar>
         
@@ -199,96 +345,67 @@ const DutyManagerDashboard: React.FC = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            值班经理 - {currentPeriod?.displayName || ''}
+            值班经理
           </Typography>
-          <EditableTime onTimeChange={setTestTime} />
+          <EditableTime onTimeChange={(date) => setTestTime(date || null)} />
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, overflow: 'hidden' }}>
-        <Grid container sx={{ height: '100%' }}>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <Grid container>
           <Grid size={{ xs: 12, md: 8 }}>
-            <Box sx={{ height: '100%', p: 2, overflow: 'auto' }}>
-              <TaskCountdown
-                currentPeriod={currentPeriod}
-                currentTasks={activeTasks}
-                completedTaskIds={state.completedTaskIds}
-                taskStatuses={state.taskStatuses}
-                noticeComments={state.noticeComments}
-                onTaskComplete={handleTaskComplete}
-                onNoticeComment={(taskId, comment) => {
-                  setState(prev => ({
-                    ...prev,
-                    noticeComments: { ...prev.noticeComments, [taskId]: comment },
-                  }))
-                }}
-                testTime={testTime}
-                allTasksCompleted={allTasksCompleted}
-                missingTasks={[]}
-                onAdvancePeriod={() => {}}
-                role="duty-manager"
-              />
-
-              {/* 显示驳回状态 */}
-              {Object.entries(reviewStatus).map(([taskId, status]) => {
-                if (status.status === 'rejected' && state.activeTasks.some(t => t.id === taskId)) {
-                  return (
-                    <Box 
-                      key={taskId}
-                      sx={{ 
-                        mt: 2, 
-                        p: 2, 
-                        bgcolor: 'error.50',
-                        borderRadius: 2,
-                        border: '1px solid',
-                        borderColor: 'error.main'
-                      }}
-                    >
-                      <Typography variant="h6" color="error.main" gutterBottom>
-                        任务被驳回
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        驳回原因：{status.reason}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        驳回时间：{status.reviewedAt?.toLocaleString('zh-CN')}
-                      </Typography>
-                    </Box>
-                  )
-                }
-                return null
-              })}
-              
-              {/* 提交按钮 */}
-              {allTasksCompleted && (
-                <Box sx={{ mt: 3, textAlign: 'center' }}>
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      color: 'error.main',
-                      mb: 2,
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    提交{currentPeriod?.id === 'lunch-closing' ? '午市' : '晚市'}值班记录
+            <Box sx={{ p: 2 }}>
+              {/* Current Task Container with swipeable cards */}
+              {state.activeTasks.length > 0 && state.targetPeriod ? (
+                <TaskCountdown
+                  period={state.targetPeriod}  // 使用目标时段而不是当前时段
+                  tasks={state.activeTasks}
+                  completedTaskIds={state.completedTaskIds}
+                  noticeComments={state.noticeComments}
+                  testTime={testTime || undefined}
+                  onComplete={handleTaskComplete}
+                  onComment={handleNoticeComment}
+                  hideTimer={true}  // 值班经理不显示倒计时
+                  reviewStatus={reviewStatus}  // 传递审核状态
+                />
+              ) : (
+                <Paper sx={{ p: 3, mb: 3 }}>
+                  <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold' }}>
+                    当前任务 Current Task
                   </Typography>
-                  <Box
-                    sx={{
-                      bgcolor: 'error.main',
-                      color: 'white',
-                      p: 3,
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      '&:hover': { bgcolor: 'error.dark' },
-                    }}
-                    onClick={handleSubmitDutyRecord}
-                  >
-                    <Typography variant="h6">
-                      {Object.values(reviewStatus).some(s => s.status === 'rejected') 
-                        ? '重新提交值班记录' 
-                        : '点击提交值班记录'}
-                    </Typography>
-                  </Box>
+                  <Typography variant="body1" color="text.secondary">
+                    暂无任务
+                  </Typography>
+                </Paper>
+              )}
+
+              {/* 显示审核状态总览 */}
+              {state.activeTasks.length > 0 && allTasksCompleted && (
+                <Box sx={{ mt: 3, p: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    任务提交状态
+                  </Typography>
+                  {state.activeTasks.map(task => {
+                    const status = reviewStatus[task.id]
+                    const isSubmitted = state.completedTaskIds.includes(task.id)
+                    
+                    return (
+                      <Box key={task.id} sx={{ mb: 1 }}>
+                        <Typography variant="body2">
+                          {task.title}: {' '}
+                          {!isSubmitted && <Chip label="未提交" size="small" />}
+                          {isSubmitted && !status && <Chip label="待审核" color="warning" size="small" />}
+                          {status?.status === 'approved' && <Chip label="已通过" color="success" size="small" />}
+                          {status?.status === 'rejected' && <Chip label="待修改" color="error" size="small" />}
+                        </Typography>
+                        {status?.status === 'rejected' && status.reason && (
+                          <Typography variant="caption" color="error" sx={{ ml: 2 }}>
+                            驳回原因: {status.reason}
+                          </Typography>
+                        )}
+                      </Box>
+                    )
+                  })}
                 </Box>
               )}
             </Box>
@@ -296,11 +413,19 @@ const DutyManagerDashboard: React.FC = () => {
 
           <Grid size={{ xs: 12, md: 4 }}>
             <TaskSummary
-              currentPeriod={currentPeriod}
+              tasks={state.activeTasks}
+              taskStatuses={Object.entries(state.taskStatuses).map(([taskId, status]) => ({
+                taskId,
+                completed: state.completedTaskIds.includes(taskId),
+                completedAt: status.completedAt,
+                overdue: status.overdue
+              }))}
               completedTaskIds={state.completedTaskIds}
-              role="DutyManager"
               missingTasks={[]}
-              testTime={testTime}
+              noticeComments={[]}
+              onLateSubmit={() => {}}
+              testTime={testTime || undefined}
+              role="manager"
             />
           </Grid>
         </Grid>

@@ -9,21 +9,25 @@ import {
   Typography,
   Paper,
   Button,
-  Box
+  Box,
+  CircularProgress,
+  Alert
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 // Status Island removed as requested
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
-import { TaskSummary } from '../components/TaskSummary/TaskSummary'
+import { TaskSummary } from '../components/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { FloatingTaskCard } from '../components/FloatingTaskCard'
-import { getCurrentPeriod, getNextPeriod, loadWorkflowPeriods, getFloatingTasks } from '../utils/workflowParser'
+import { getCurrentPeriod, getNextPeriod } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
+import { useTaskData } from '../contexts/TaskDataContext'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
 import { broadcastService } from '../services/broadcastService'
+import { clearAllAppStorage } from '../utils/clearAllStorage'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -153,6 +157,9 @@ export const ChefDashboard: React.FC = () => {
   
   const navigate = useNavigate()
   
+  // 从数据库获取任务数据
+  const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
+  
   // Redirect to role selection if no role is selected
   useEffect(() => {
     if (!selectedRole) {
@@ -176,8 +183,8 @@ export const ChefDashboard: React.FC = () => {
     const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
     const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
     
-    const workflowPeriods = loadWorkflowPeriods()
-    const floatingTasks = getFloatingTasks('Chef')
+    // 过滤只显示 Chef 的浮动任务
+    const floatingTasks = allFloatingTasks.filter(task => task.role === 'Chef')
   
   // Load state from localStorage on mount
   useEffect(() => {
@@ -213,6 +220,19 @@ export const ChefDashboard: React.FC = () => {
       setHasInitialized(true)
     }
   }, [hasInitialized])
+  
+  // Listen for clear storage broadcast from other tabs
+  useEffect(() => {
+    const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
+      // Clear all storage and reload
+      clearAllAppStorage()
+      window.location.reload()
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [])
   
   // Save state to localStorage whenever key states change
   useEffect(() => {
@@ -312,11 +332,9 @@ export const ChefDashboard: React.FC = () => {
   // Subscribe to broadcast messages
   useEffect(() => {
     const unsubscribe = broadcastService.subscribe('*', (message) => {
-      console.log('Chef dashboard received broadcast:', message)
       
       // Handle lunch customer left message
       if (message.type === 'LAST_CUSTOMER_LEFT_LUNCH') {
-        console.log('Received notification: Last customer left at lunch')
         // Force refresh the current period to ensure we have the latest state
         const now = testTime || new Date()
         const newPeriod = getCurrentPeriod(now)
@@ -574,7 +592,6 @@ export const ChefDashboard: React.FC = () => {
     
     // TODO: Submit late task data to backend
     if (data) {
-      console.log('Late task submission:', { taskId, data })
     }
   }
   
@@ -689,6 +706,11 @@ export const ChefDashboard: React.FC = () => {
     // 清除本地存储
     clearState('chef')
     
+    // 清除值班经理相关的存储（以防万一）
+    localStorage.removeItem('dutyManagerTrigger')
+    localStorage.removeItem('dutyManagerSubmissions')
+    localStorage.removeItem('dutyManagerReviewStatus')
+    
     // 保持当前时段不变，但重新初始化
     const now = testTime || new Date()
     const newPeriod = getCurrentPeriod(now)
@@ -698,6 +720,26 @@ export const ChefDashboard: React.FC = () => {
   
   // Combine current period tasks with floating tasks for unified display
   const currentTasks = [...(currentPeriod?.tasks.chef || []), ...floatingTasks]
+  
+  // 处理加载状态
+  if (isLoading) {
+    return (
+      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>正在从数据库加载任务...</Typography>
+      </Container>
+    )
+  }
+  
+  // 处理错误状态
+  if (error) {
+    return (
+      <Container sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        <Button variant="contained" onClick={() => window.location.reload()}>重新加载</Button>
+      </Container>
+    )
+  }
   
   return (
     <>

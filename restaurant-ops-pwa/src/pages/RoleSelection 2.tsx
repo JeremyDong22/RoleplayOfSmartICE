@@ -1,7 +1,6 @@
 // Role selection page for choosing between Manager and Chef
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, Paper, Button } from '@mui/material'
-import Grid2 from '@mui/material/Unstable_Grid2'
+import { Box, Container, Typography, Paper, Button, Grid } from '@mui/material'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 

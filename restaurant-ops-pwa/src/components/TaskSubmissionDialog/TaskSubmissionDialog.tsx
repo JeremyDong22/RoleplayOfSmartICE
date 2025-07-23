@@ -1,8 +1,8 @@
 // Universal task submission dialog that adapts to different task types
 // Supports photo, audio, text, and no-requirement submissions
 // Changes made:
-// 1. Added camera mode selection for photo tasks
-// 2. Users can choose between traditional dialog or floating camera view
+// 1. Removed camera mode selection - now using unified PhotoSubmissionDialog
+// 2. All photo tasks use the new three-layer interface structure
 import React, { useState } from 'react'
 import {
   Dialog,
@@ -15,22 +15,15 @@ import {
   TextField,
   Stepper,
   Step,
-  StepLabel,
-  Card,
-  CardActionArea,
-  CardContent,
-  Stack
+  StepLabel
 } from '@mui/material'
 import {
   PhotoCamera,
   Mic,
   TextFields,
-  CheckCircle,
-  ViewInAr,
-  GridView
+  CheckCircle
 } from '@mui/icons-material'
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
-import { FloatingCameraView } from '../FloatingCameraView'
 import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
 import type { TaskTemplate } from '../../utils/workflowParser'
@@ -53,7 +46,6 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [step, setStep] = useState(0)
   const [explanation, setExplanation] = useState('')
   const [showSubmissionDialog, setShowSubmissionDialog] = useState(false)
-  const [cameraMode, setCameraMode] = useState<'dialog' | 'floating' | null>(null)
   
   if (!task) return null
   
@@ -80,7 +72,6 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     setStep(0)
     setExplanation('')
     setShowSubmissionDialog(false)
-    setCameraMode(null)
     onClose()
   }
   
@@ -137,84 +128,20 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     )
   }
   
-  // Show camera mode selection for photo tasks
-  if (task.uploadRequirement === '拍照' && !cameraMode && (showSubmissionDialog || !isLateSubmission)) {
-    return (
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          选择拍照模式
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            请选择您偏好的拍照方式
-          </Typography>
-          <Stack spacing={2}>
-            <Card>
-              <CardActionArea onClick={() => setCameraMode('floating')}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <ViewInAr color="primary" sx={{ fontSize: 40 }} />
-                    <Box>
-                      <Typography variant="h6">悬浮窗模式</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        全屏相机，示例图片悬浮显示，可自由拖动和调整大小
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </CardActionArea>
-            </Card>
-            <Card>
-              <CardActionArea onClick={() => setCameraMode('dialog')}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <GridView color="primary" sx={{ fontSize: 40 }} />
-                    <Box>
-                      <Typography variant="h6">传统模式</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        分步骤查看示例和拍照，适合需要仔细对比的任务
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </CardActionArea>
-            </Card>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} color="inherit">
-            取消
-          </Button>
-        </DialogActions>
-      </Dialog>
-    )
-  }
 
   // Show appropriate submission dialog based on task requirements
   if (showSubmissionDialog || !isLateSubmission) {
     // For tasks requiring photo submission
-    if (task.uploadRequirement === '拍照' && cameraMode) {
-      if (cameraMode === 'floating') {
-        return (
-          <FloatingCameraView
-            open={open}
-            taskName={task.title}
-            taskId={task.id}
-            onClose={handleClose}
-            onSubmit={(evidence) => handleTaskSubmit({ evidence, type: 'photo' })}
-          />
-        )
-      } else {
-        return (
-          <PhotoSubmissionDialog
-            open={open}
-            taskName={task.title}
-            taskId={task.id}
-            onClose={handleClose}
-            onSubmit={(evidence) => handleTaskSubmit({ evidence, type: 'photo' })}
-          />
-        )
-      }
+    if (task.uploadRequirement === '拍照') {
+      return (
+        <PhotoSubmissionDialog
+          open={open}
+          taskName={task.title}
+          taskId={task.id}
+          onClose={handleClose}
+          onSubmit={(evidence) => handleTaskSubmit({ evidence, type: 'photo' })}
+        />
+      )
     }
     
     // For tasks requiring audio submission

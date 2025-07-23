@@ -15,7 +15,7 @@ import {
   Container
 } from '@mui/material'
 import { signIn, clearError } from '../../store/authSlice'
-import { AppDispatch, RootState } from '../../store'
+import type { AppDispatch, RootState } from '../../store'
 
 export const Login: FC = () => {
   const [email, setEmail] = useState('')
