@@ -21,7 +21,6 @@ import { EditableTime } from '../components/TimeControl/EditableTime'
 import { TaskSummary } from '../components/TaskSummary'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { useDutyManager } from '../contexts/DutyManagerContext'
-import { broadcastService } from '../services/broadcastService'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 
 interface NoticeComment {
@@ -60,18 +59,8 @@ const DutyManagerDashboard: React.FC = () => {
     setCurrentPeriod(period)
   }, [testTime])
 
-  // Listen for clear storage broadcast from other tabs
-  useEffect(() => {
-    const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
-      // Clear all storage and reload
-      clearAllAppStorage()
-      window.location.reload()
-    })
-    
-    return () => {
-      unsubscribe()
-    }
-  }, [])
+  // Note: CLEAR_ALL_STORAGE functionality has been removed as we're focusing on 
+  // cross-device communication via Supabase Realtime
 
   // 检查是否有触发的任务
   useEffect(() => {
@@ -135,8 +124,8 @@ const DutyManagerDashboard: React.FC = () => {
     // 立即提交到Context，任务进入待审核状态
     const task = state.activeTasks.find(t => t.id === taskId)
     if (task) {
-      console.log('DutyManager submitting task:', taskId, 'with data:', data)
-      console.log('Is resubmit?', isResubmit)
+      // console.log('DutyManager submitting task:', taskId, 'with data:', data)
+      // console.log('Is resubmit?', isResubmit)
       
       // 处理照片数据格式
       let photos = []
@@ -209,10 +198,10 @@ const DutyManagerDashboard: React.FC = () => {
         },
       }
       
-      console.log('Formatted submission:', submission)
-      console.log('Calling addSubmission...')
+      // console.log('Formatted submission:', submission)
+      // console.log('Calling addSubmission...')
       addSubmission(submission)
-      console.log('addSubmission called')
+      // console.log('addSubmission called')
     }
   }
 

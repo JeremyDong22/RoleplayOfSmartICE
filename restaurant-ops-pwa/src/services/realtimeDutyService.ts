@@ -1,7 +1,7 @@
 // 值班经理任务实时通信服务
 // 使用 Supabase Realtime 实现跨设备实时通信
 
-import { supabase } from '../utils/supabase'
+import { supabase } from './supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { DutyManagerSubmission } from '../contexts/DutyManagerContext'
 
@@ -16,8 +16,26 @@ class RealtimeDutyService {
   private channel: RealtimeChannel | null = null
   private listeners: Map<string, Set<(message: DutyManagerMessage) => void>> = new Map()
   private userId: string | null = null
+  private isInitialized: boolean = false
+  private initializationPromise: Promise<void> | null = null
 
   async initialize(userId: string) {
+    console.log('[RealtimeDutyService] Initialize called with userId:', userId)
+    // 如果已经初始化或正在初始化，返回现有的promise
+    if (this.isInitialized) {
+      console.log('[RealtimeDutyService] Already initialized')
+      return
+    }
+    if (this.initializationPromise) {
+      console.log('[RealtimeDutyService] Already initializing, waiting...')
+      return this.initializationPromise
+    }
+    
+    this.initializationPromise = this._doInitialize(userId)
+    return this.initializationPromise
+  }
+
+  private async _doInitialize(userId: string) {
     this.userId = userId
     
     // 创建或加入频道
@@ -30,13 +48,33 @@ class RealtimeDutyService {
     })
 
     // 监听广播消息
-    this.channel
-      .on('broadcast', { event: 'duty-message' }, (payload) => {
-        this.handleMessage(payload.payload as DutyManagerMessage)
-      })
-      .subscribe((status) => {
-        console.log('Realtime subscription status:', status)
-      })
+    await new Promise<void>((resolve, reject) => {
+      // Add a timeout in case subscription doesn't respond
+      const timeout = setTimeout(() => {
+        console.warn('[RealtimeDutyService] Subscription timeout, proceeding anyway')
+        this.isInitialized = true
+        resolve()
+      }, 5000) // 5 second timeout
+      
+      this.channel!
+        .on('broadcast', { event: 'duty-message' }, (payload) => {
+          console.log('[RealtimeDutyService] Received broadcast message:', payload)
+          this.handleMessage(payload.payload as DutyManagerMessage)
+        })
+        .subscribe((status) => {
+          console.log('[RealtimeDutyService] Subscription status:', status)
+          if (status === 'SUBSCRIBED') {
+            clearTimeout(timeout)
+            this.isInitialized = true
+            console.log('[RealtimeDutyService] Successfully initialized')
+            resolve()
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            clearTimeout(timeout)
+            console.error('[RealtimeDutyService] Failed to subscribe:', status)
+            reject(new Error(`Failed to subscribe: ${status}`))
+          }
+        })
+    })
   }
 
   private handleMessage(message: DutyManagerMessage) {
@@ -63,9 +101,22 @@ class RealtimeDutyService {
 
   // 发送消息
   async send(type: DutyManagerMessage['type'], data: any) {
-    if (!this.channel || !this.userId) {
-      console.error('Realtime service not initialized')
-      return
+    console.log('[RealtimeDutyService] Send called:', type, 'initialized:', this.isInitialized)
+    
+    // 等待初始化完成
+    if (!this.isInitialized && this.initializationPromise) {
+      console.log('[RealtimeDutyService] Waiting for initialization...')
+      await this.initializationPromise
+      console.log('[RealtimeDutyService] Initialization complete')
+    }
+    
+    if (!this.channel || !this.userId || !this.isInitialized) {
+      console.error('[RealtimeDutyService] Send failed - not initialized', {
+        channel: !!this.channel,
+        userId: !!this.userId,
+        isInitialized: this.isInitialized
+      })
+      throw new Error('Realtime service not initialized')
     }
 
     const message: DutyManagerMessage = {
@@ -133,6 +184,9 @@ class RealtimeDutyService {
       this.channel = null
     }
     this.listeners.clear()
+    this.isInitialized = false
+    this.initializationPromise = null
+    this.userId = null
   }
 }
 

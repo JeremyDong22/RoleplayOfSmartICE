@@ -1,9 +1,8 @@
 // 值班经理任务触发上下文 - 用于管理前厅和值班经理之间的通信
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import type { TaskTemplate } from '../utils/workflowParser'
-import { broadcastService } from '../services/broadcastService'
 import { realtimeDutyService } from '../services/realtimeDutyService'
-import { supabase } from '../utils/supabase'
+import { supabase } from '../services/supabase'
 
 // 照片组结构
 export interface PhotoGroup {
@@ -35,7 +34,7 @@ interface DutyManagerTrigger {
 interface DutyManagerContextType {
   // 触发状态
   currentTrigger: DutyManagerTrigger | null
-  setTrigger: (trigger: DutyManagerTrigger) => void
+  setTrigger: (trigger: DutyManagerTrigger) => Promise<void>
   clearTrigger: () => void
   
   // 任务提交状态
@@ -82,9 +81,19 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   // Initialize realtime service
   useEffect(() => {
     const initRealtime = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await realtimeDutyService.initialize(user.id)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await realtimeDutyService.initialize(user.id)
+        } else {
+          // For testing without authentication, use a mock user ID
+          console.log('No authenticated user, using mock user for testing')
+          await realtimeDutyService.initialize('mock-user-' + Date.now())
+        }
+      } catch (error) {
+        console.error('Error initializing realtime service:', error)
+        // Fallback to mock user
+        await realtimeDutyService.initialize('mock-user-' + Date.now())
       }
     }
     initRealtime()
@@ -94,11 +103,11 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     }
   }, [])
 
-  // Subscribe to realtime messages (replacing broadcast messages)
+  // Subscribe to realtime messages
   useEffect(() => {
     // Subscribe to realtime messages from other devices
     const unsubscribeRealtime = realtimeDutyService.subscribe('*', (message) => {
-      console.log('Received realtime message:', message)
+      // console.log('Received realtime message:', message)
       
       if (message.type === 'TRIGGER' && message.data?.trigger) {
         const trigger = message.data.trigger
@@ -126,42 +135,9 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         }
       }
     })
-
-    // Also keep broadcast for same-device communication
-    const unsubscribeBroadcast = broadcastService.subscribe('STATE_SYNC', (message) => {
-      if (message.data?.type === 'DUTY_MANAGER_TRIGGER' && message.data.trigger) {
-        const trigger = message.data.trigger
-        trigger.triggeredAt = new Date(trigger.triggeredAt)
-        setCurrentTrigger(trigger)
-      } else if (message.data?.type === 'DUTY_MANAGER_SUBMISSION' && message.data.submission) {
-        const submission = message.data.submission
-        submission.submittedAt = new Date(submission.submittedAt)
-        setSubmissions(prev => {
-          // 如果是重新提交，替换原有的提交记录
-          const filtered = prev.filter(s => s.taskId !== submission.taskId)
-          return [...filtered, submission]
-        })
-      } else if (message.data?.type === 'DUTY_MANAGER_CLEAR_SUBMISSIONS') {
-        setSubmissions([])
-      } else if (message.data?.type === 'DUTY_MANAGER_REVIEW_STATUS' && message.data.taskId) {
-        const { taskId, reviewData } = message.data
-        reviewData.reviewedAt = new Date(reviewData.reviewedAt)
-        setReviewStatus(prev => ({
-          ...prev,
-          [taskId]: reviewData
-        }))
-        
-        // 如果是驳回，也要清除提交记录
-        if (reviewData.status === 'rejected') {
-          // console.log(`Broadcast: Clearing submission for rejected task ${taskId}`)
-          setSubmissions(prev => prev.filter(s => s.taskId !== taskId))
-        }
-      }
-    })
     
     return () => {
       unsubscribeRealtime()
-      unsubscribeBroadcast()
     }
   }, [])
 
@@ -232,15 +208,14 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     }
   }, [reviewStatus])
 
-  const setTrigger = (trigger: DutyManagerTrigger) => {
+  const setTrigger = async (trigger: DutyManagerTrigger) => {
     setCurrentTrigger(trigger)
-    // Broadcast the trigger to other tabs (same device)
-    broadcastService.send('STATE_SYNC', {
-      type: 'DUTY_MANAGER_TRIGGER',
-      trigger
-    })
     // Send via realtime to other devices
-    realtimeDutyService.sendTrigger(trigger)
+    try {
+      await realtimeDutyService.sendTrigger(trigger)
+    } catch (error) {
+      console.error('Failed to send trigger via realtime:', error)
+    }
   }
 
   const clearTrigger = () => {
@@ -269,31 +244,16 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         [submission.taskId]: newReviewData
       }))
       
-      // 广播审核状态的更新！这很重要！
-      broadcastService.send('STATE_SYNC', {
-        type: 'DUTY_MANAGER_REVIEW_STATUS',
-        taskId: submission.taskId,
-        reviewData: newReviewData
-      })
       // Send via realtime
       realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
     }
     
-    // Broadcast the submission to other tabs
-    broadcastService.send('STATE_SYNC', {
-      type: 'DUTY_MANAGER_SUBMISSION',
-      submission
-    })
     // Send via realtime to other devices
     realtimeDutyService.sendSubmission(submission)
   }
 
   const clearSubmissions = () => {
     setSubmissions([])
-    // Broadcast the clear action
-    broadcastService.send('STATE_SYNC', {
-      type: 'DUTY_MANAGER_CLEAR_SUBMISSIONS'
-    })
     // Send via realtime
     realtimeDutyService.clearSubmissions()
   }
@@ -315,12 +275,6 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       setSubmissions(prev => prev.filter(s => s.taskId !== taskId))
     }
     
-    // Broadcast the review status update
-    broadcastService.send('STATE_SYNC', {
-      type: 'DUTY_MANAGER_REVIEW_STATUS',
-      taskId,
-      reviewData
-    })
     // Send via realtime to other devices
     realtimeDutyService.sendReviewStatus(taskId, reviewData)
   }

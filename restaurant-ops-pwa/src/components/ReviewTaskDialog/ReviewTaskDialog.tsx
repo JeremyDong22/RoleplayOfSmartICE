@@ -202,8 +202,8 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
           <Alert severity="info">暂无提交记录</Alert>
         ) : (
           <Box>
-            {console.log('[ReviewDialog] All submissions:', submissions)}
-            {console.log('[ReviewDialog] First submission content:', submissions[0]?.content)}
+            {/* console.log('[ReviewDialog] All submissions:', submissions) */}
+            {/* console.log('[ReviewDialog] First submission content:', submissions[0]?.content) */}
             {(() => {
               const validSubmissions = submissions.filter(sub => 
                 (sub.content.photoGroups && sub.content.photoGroups.length > 0) ||
@@ -237,21 +237,21 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
               
               // 如果还是没有照片数据，跳过此submission
               if (!hasPhotoGroups || photoGroups.length === 0) {
-                console.log('[ReviewDialog] No photo data for submission:', submission.taskId)
+                // console.log('[ReviewDialog] No photo data for submission:', submission.taskId)
                 return null
               }
               
-              console.log('[ReviewDialog] Processing submission:', {
-                taskId: submission.taskId,
-                hasPhotoGroups,
-                photoGroupsCount: photoGroups.length,
-                photosCount: submission.content.photos?.length || 0,
-                photoGroups: photoGroups
-              })
+              // console.log('[ReviewDialog] Processing submission:', {
+              //   taskId: submission.taskId,
+              //   hasPhotoGroups,
+              //   photoGroupsCount: photoGroups.length,
+              //   photosCount: submission.content.photos?.length || 0,
+              //   photoGroups: photoGroups
+              // })
               
               return (
                 <Box key={subIndex} sx={{ mb: 3 }}>
-                  {console.log('[ReviewDialog] Rendering submission:', subIndex, 'hasPhotoGroups:', hasPhotoGroups)}
+                  {/* console.log('[ReviewDialog] Rendering submission:', subIndex, 'hasPhotoGroups:', hasPhotoGroups) */}
                   {/* 按照片组显示 */}
                   {hasPhotoGroups ? (
                     <Grid container spacing={2}>

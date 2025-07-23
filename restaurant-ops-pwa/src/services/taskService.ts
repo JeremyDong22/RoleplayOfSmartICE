@@ -82,7 +82,7 @@ class TaskService {
   private async loadAllTasks() {
     // 先检查用户认证状态
     const { data: { user } } = await supabase.auth.getUser()
-    console.log('Current user:', user?.email, user?.id)
+    // console.log('Current user:', user?.email, user?.id)
     
     const { data, error } = await supabase
       .from('roleplay_tasks')
@@ -94,18 +94,9 @@ class TaskService {
       return
     }
     
-    console.log('=== Raw tasks from database ===')
-    console.log('Total tasks loaded:', data?.length)
-    console.log('Floating tasks:', data?.filter(t => t.is_floating))
-    console.log('Tasks with null period_id:', data?.filter(t => !t.period_id))
-    console.log('Sample task data:', data?.[0])
-    
-    // 检查是否有特定的浮动任务
-    const floatingReceivingManager = data?.find(t => t.id === 'floating-receiving-manager')
-    console.log('floating-receiving-manager task:', floatingReceivingManager)
-    
-    // 打印所有任务的 ID 和 is_floating 状态
-    console.log('All task IDs and floating status:', data?.map(t => ({ id: t.id, is_floating: t.is_floating })))
+    // console.log('=== Raw tasks from database ===')
+    // console.log('Total tasks loaded:', data?.length)
+    // console.log('Floating tasks:', data?.filter(t => t.is_floating))
 
     // 按期间组织任务
     const tasksByPeriod = new Map<string, DatabaseTask[]>()
@@ -119,9 +110,9 @@ class TaskService {
     })
 
     // Debug: 打印浮动任务
-    console.log('=== TaskService Debug ===')
-    console.log('Floating tasks in cache:', tasksByPeriod.get('floating'))
-    console.log('All cache keys:', Array.from(tasksByPeriod.keys()))
+    // console.log('=== TaskService Debug ===')
+    // console.log('Floating tasks in cache:', tasksByPeriod.get('floating'))
+    // console.log('All cache keys:', Array.from(tasksByPeriod.keys()))
 
     this.tasksCache = tasksByPeriod
   }
@@ -275,10 +266,10 @@ class TaskService {
   getFloatingTasks(role?: string): TaskTemplate[] {
     const floatingTasks = this.tasksCache.get('floating') || []
     
-    console.log('=== getFloatingTasks Debug ===')
-    console.log('Role filter:', role)
-    console.log('Raw floating tasks:', floatingTasks)
-    console.log('After role filter:', floatingTasks.filter(t => !role || t.role_code === role.toLowerCase()))
+    // console.log('=== getFloatingTasks Debug ===')
+    // console.log('Role filter:', role)
+    // console.log('Raw floating tasks:', floatingTasks)
+    // console.log('After role filter:', floatingTasks.filter(t => !role || t.role_code === role.toLowerCase()))
     
     return floatingTasks
       .filter(t => !role || t.role_code === role.toLowerCase())
