@@ -16,6 +16,7 @@ import { taskService } from './services/taskService'
 import { Snackbar, Alert } from '@mui/material'
 import { TestRealtime } from './pages/TestRealtime'
 import { TestDatabase } from './pages/TestDatabase'
+import { initializeStorage } from './utils/initializeStorage'
 
 const theme = createTheme({
   palette: {
@@ -65,6 +66,9 @@ function App() {
   const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
+    // 初始化Storage
+    initializeStorage()
+    
     // 模拟用户登录后启动 Realtime
     const initRealtime = async () => {
       try {

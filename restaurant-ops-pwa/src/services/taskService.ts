@@ -55,10 +55,10 @@ class TaskService {
     await this.loadPeriods()
     await this.loadAllTasks()
     
-    // 延迟设置实时订阅，避免立即触发更新
-    setTimeout(() => {
-      this.subscribeToChanges()
-    }, 1000)
+    // 暂时禁用实时订阅，排查问题
+    // setTimeout(() => {
+    //   this.subscribeToChanges()
+    // }, 1000)
   }
 
   /**
@@ -106,6 +106,13 @@ class TaskService {
     const tasksByPeriod = new Map<string, DatabaseTask[]>()
     
     data?.forEach(task => {
+      // 临时修复：手动识别浮动任务
+      if (task.id && task.id.startsWith('floating-')) {
+        task.is_floating = true
+        task.period_id = null
+        console.log('Manually fixing floating task:', task.id)
+      }
+      
       const periodId = task.period_id || 'floating'
       
       // Debug individual task processing

@@ -22,6 +22,7 @@ import { TaskSummary } from '../components/TaskSummary'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { useDutyManager } from '../contexts/DutyManagerContext'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
+import { uploadPhoto } from '../services/storageService'
 
 interface NoticeComment {
   noticeId: string
@@ -105,7 +106,7 @@ const DutyManagerDashboard: React.FC = () => {
   }, [currentTrigger])
 
   // 任务完成处理
-  const handleTaskComplete = (taskId: string, data: any) => {
+  const handleTaskComplete = async (taskId: string, data: any) => {
     // 如果是重新提交，清除之前的驳回状态
     const isResubmit = reviewStatus[taskId]?.status === 'rejected'
     
@@ -130,12 +131,40 @@ const DutyManagerDashboard: React.FC = () => {
       // 处理照片数据格式
       let photos = []
       let photoGroups = []
+      let uploadedPhotoUrls = []
+      let uploadedPhotoGroups = []
+      
+      // 获取用户ID（使用mock ID）
+      const userId = 'mock-user-' + Date.now()
       
       // 检查是否有照片组数据（新格式）
       if (data.photoGroups && Array.isArray(data.photoGroups)) {
-        photoGroups = data.photoGroups
-        // 同时生成平铺的照片数组以保持兼容性
-        photos = photoGroups.flatMap(group => group.photos || [])
+        // 上传每个照片组的照片
+        for (const group of data.photoGroups) {
+          const uploadedUrls = []
+          for (const photo of group.photos || []) {
+            if (photo && photo.startsWith('data:')) {
+              // 上传照片到Supabase Storage
+              const result = await uploadPhoto(photo, userId, taskId)
+              if (result) {
+                uploadedUrls.push(result.publicUrl)
+              } else {
+                console.error('Failed to upload photo')
+                uploadedUrls.push(photo) // 失败时保留原始base64
+              }
+            } else {
+              uploadedUrls.push(photo) // 如果已经是URL，直接使用
+            }
+          }
+          
+          uploadedPhotoGroups.push({
+            ...group,
+            photos: uploadedUrls
+          })
+          uploadedPhotoUrls.push(...uploadedUrls)
+        }
+        photoGroups = uploadedPhotoGroups
+        photos = uploadedPhotoUrls
       } else if (data.evidence && Array.isArray(data.evidence)) {
         // 旧格式：evidence 是一个数组，需要转换为照片组
         const groupedByIndex: { [key: number]: any[] } = {}
@@ -148,39 +177,70 @@ const DutyManagerDashboard: React.FC = () => {
           groupedByIndex[sampleIndex].push(item)
         })
         
-        // 将分组后的数据转换为PhotoGroup格式
-        photoGroups = Object.entries(groupedByIndex).map(([index, items]) => ({
-          id: `group-${Date.now()}-${index}`,
-          photos: items.map(item => {
-            if (typeof item === 'string') return item
-            return item.photo || item.photoData || item
-          }),
-          sampleIndex: parseInt(index),
-          comment: items[0]?.description || '',
-        }))
-        
-        // 同时生成平铺的照片数组
-        photos = data.evidence.map((item: any) => {
-          if (typeof item === 'string') {
-            return item
+        // 将分组后的数据转换为PhotoGroup格式并上传
+        for (const [index, items] of Object.entries(groupedByIndex)) {
+          const uploadedUrls = []
+          for (const item of items) {
+            let photoData = typeof item === 'string' ? item : (item.photo || item.photoData || item)
+            if (photoData && photoData.startsWith('data:')) {
+              const result = await uploadPhoto(photoData, userId, taskId)
+              if (result) {
+                uploadedUrls.push(result.publicUrl)
+              } else {
+                uploadedUrls.push(photoData)
+              }
+            } else {
+              uploadedUrls.push(photoData)
+            }
           }
-          return item.photo || item.photoData || item
-        })
+          
+          uploadedPhotoGroups.push({
+            id: `group-${Date.now()}-${index}`,
+            photos: uploadedUrls,
+            sampleIndex: parseInt(index),
+            comment: items[0]?.description || '',
+          })
+          uploadedPhotoUrls.push(...uploadedUrls)
+        }
+        
+        photoGroups = uploadedPhotoGroups
+        photos = uploadedPhotoUrls
       } else if (data.photo) {
         // 处理单个照片的情况
-        photos = [data.photo]
-        photoGroups = [{
-          id: `group-${Date.now()}`,
-          photos: [data.photo],
-          sampleIndex: 0,
-          comment: '',
-        }]
+        if (data.photo.startsWith('data:')) {
+          const result = await uploadPhoto(data.photo, userId, taskId)
+          const photoUrl = result ? result.publicUrl : data.photo
+          photos = [photoUrl]
+          photoGroups = [{
+            id: `group-${Date.now()}`,
+            photos: [photoUrl],
+            sampleIndex: 0,
+            comment: '',
+          }]
+        } else {
+          photos = [data.photo]
+          photoGroups = [{
+            id: `group-${Date.now()}`,
+            photos: [data.photo],
+            sampleIndex: 0,
+            comment: '',
+          }]
+        }
       } else if (data.photos) {
         // 处理照片数组的情况
-        photos = data.photos
+        const uploadedUrls = []
+        for (const photo of data.photos) {
+          if (photo && photo.startsWith('data:')) {
+            const result = await uploadPhoto(photo, userId, taskId)
+            uploadedUrls.push(result ? result.publicUrl : photo)
+          } else {
+            uploadedUrls.push(photo)
+          }
+        }
+        photos = uploadedUrls
         photoGroups = [{
           id: `group-${Date.now()}`,
-          photos: data.photos,
+          photos: uploadedUrls,
           sampleIndex: 0,
           comment: '',
         }]
