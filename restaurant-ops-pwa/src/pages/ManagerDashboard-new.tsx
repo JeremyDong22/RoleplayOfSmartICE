@@ -33,6 +33,8 @@ import { broadcastService } from '../services/broadcastService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 import notificationService from '../services/notificationService'
+import { getTodayCompletedTaskIds, submitTaskRecord, getCompletedTasksInRange } from '../services/taskRecordService'
+import { supabase } from '../services/supabase'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -186,52 +188,62 @@ export const ManagerDashboard: React.FC = () => {
   const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
   const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
   const [preClosingTasks, setPreClosingTasks] = useState<TaskTemplate[]>([]) // Store pre-closing tasks when transitioning to closing
+  const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
   // 过滤只显示 Manager 的浮动任务
   const floatingTasks = allFloatingTasks.filter(task => task.role === 'Manager')
   
   
-  // Load state from localStorage on mount
+  // Load completed tasks from Supabase on mount
   useEffect(() => {
+    async function loadFromDatabase() {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          console.error('No authenticated user')
+          setIsLoadingFromDb(false)
+          return
+        }
+        
+        setCurrentUserId(user.id)
+        
+        // Load today's completed tasks
+        const completedIds = await getTodayCompletedTaskIds(user.id)
+        setCompletedTaskIds(completedIds)
+        
+        // For now, still load some state from localStorage (will be removed later)
+        const savedState = loadState('manager')
+        if (savedState) {
+          setNoticeComments(savedState.noticeComments)
+          setIsManualClosing(savedState.isManualClosing)
+          setIsWaitingForNextDay(savedState.isWaitingForNextDay)
+          manualClosingRef.current = savedState.isManualClosing
+          setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
+          manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
+          setPreClosingTasks(savedState.preClosingTasks || [])
+          
+          if (savedState.testTime) {
+            setTestTime(new Date(savedState.testTime))
+          }
+        }
+        
+        // Check for global test time
+        const globalTestTime = getCurrentTestTime()
+        if (globalTestTime && !savedState?.testTime) {
+          setTestTime(globalTestTime)
+        }
+        
+      } catch (error) {
+        console.error('Error loading from database:', error)
+      } finally {
+        setIsLoadingFromDb(false)
+        setHasInitialized(true)
+      }
+    }
+    
     if (!hasInitialized) {
-      const savedState = loadState('manager')
-      if (savedState) {
-        setCompletedTaskIds(savedState.completedTaskIds)
-        setTaskStatuses(savedState.taskStatuses)
-        setNoticeComments(savedState.noticeComments)
-        
-        // Check if we're in opening period - if so, don't load old missing tasks
-        const now = testTime || new Date()
-        const currentHour = now.getHours()
-        const currentMinutes = now.getMinutes()
-        const isInOpeningPeriod = currentHour === 10 && currentMinutes >= 0 && currentMinutes <= 30
-        
-        // Only load missing tasks if we're not in the opening period
-        // Opening period should start fresh without previous day's missing tasks
-        if (!isInOpeningPeriod) {
-          setMissingTasks(savedState.missingTasks)
-        } else {
-          setMissingTasks([])
-        }
-        
-        setIsManualClosing(savedState.isManualClosing)
-        setIsWaitingForNextDay(savedState.isWaitingForNextDay)
-        manualClosingRef.current = savedState.isManualClosing
-        setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
-        manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
-        setPreClosingTasks(savedState.preClosingTasks || [])
-        // Restore testTime if saved
-        if (savedState.testTime) {
-          setTestTime(new Date(savedState.testTime))
-        }
-      }
-      
-      // Also check for global test time
-      const globalTestTime = getCurrentTestTime()
-      if (globalTestTime && !savedState?.testTime) {
-        setTestTime(globalTestTime)
-      }
-      
-      setHasInitialized(true)
+      loadFromDatabase()
     }
   }, [hasInitialized])
   
@@ -248,14 +260,14 @@ export const ManagerDashboard: React.FC = () => {
     }
   }, [])
   
-  // Save state to localStorage whenever key states change
+  // Save state to localStorage (only non-task completion data)
   useEffect(() => {
     if (hasInitialized) {
       saveState('manager', {
-        completedTaskIds,
-        taskStatuses,
+        completedTaskIds: [], // No longer save completed tasks to localStorage
+        taskStatuses: [], // No longer save task statuses to localStorage
         noticeComments,
-        missingTasks,
+        missingTasks: [], // No longer save missing tasks to localStorage
         isManualClosing,
         isWaitingForNextDay,
         manuallyAdvancedPeriod,
@@ -263,7 +275,7 @@ export const ManagerDashboard: React.FC = () => {
         testTime: testTime?.toISOString() || null
       })
     }
-  }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, preClosingTasks, testTime, hasInitialized])
+  }, [noticeComments, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, preClosingTasks, testTime, hasInitialized])
   
   // Period update effect
   useEffect(() => {
@@ -421,9 +433,9 @@ export const ManagerDashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [testTime, isWaitingForNextDay])
   
-  // Missing tasks update effect
+  // Missing tasks update effect - based on database
   useEffect(() => {
-    if (!currentPeriod) return
+    if (!currentPeriod || !currentUserId || isLoadingFromDb) return
     
     // Don't update missing tasks if we're in manual closing mode or have manually advanced
     // This prevents overwriting the missing tasks set during transition
@@ -431,75 +443,56 @@ export const ManagerDashboard: React.FC = () => {
       return
     }
 
-    const updateMissingTasks = () => {
+    const updateMissingTasks = async () => {
       const now = testTime || new Date()
-      const updatedMissingTasks: { task: TaskTemplate; periodName: string }[] = []
+      const today = now.toISOString().split('T')[0]
       
-      // Check all periods that have passed
-      workflowPeriods.forEach(period => {
-        const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
-        const periodEnd = new Date(now)
-        periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
+      try {
+        // Get all completed tasks for today from database
+        const completedIds = await getTodayCompletedTaskIds(currentUserId)
         
-        // If this period has ended and it's not the current period
-        // Skip event-driven periods (pre-closing, closing) as they don't end by time
-        if (now > periodEnd && period.id !== currentPeriod.id && !period.isEventDriven) {
-          // Check for uncompleted tasks using completedTaskIds (same as manual transition)
-          period.tasks.manager.forEach((task: TaskTemplate) => {
-            if (task.isNotice) return // Skip notices
-            
-            // Use completedTaskIds for consistency with manual transition
-            if (!completedTaskIds.includes(task.id)) {
-              updatedMissingTasks.push({
-                task,
-                periodName: period.displayName
-              })
-            }
-          })
-        }
-      })
-      
-      // For opening period, we should start fresh with no missing tasks from previous days
-      // Only keep missing tasks from today
-      if (currentPeriod.id === 'opening') {
-        // Clear all missing tasks that are from previous days
-        // Since opening is at 10:00 AM, any missing tasks from before should be cleared
-        setMissingTasks(updatedMissingTasks)
-      } else {
-        setMissingTasks(prev => {
-          // Preserve manually added tasks and only update auto-detected ones
-          // Keep all tasks that were manually added (through handleAdvancePeriod)
-          const manuallyAddedTasks = prev.filter(item => {
-            // Check if this task's period has not ended naturally yet
-            const period = workflowPeriods.find(p => p.displayName === item.periodName)
-            if (!period) return true // Keep if period not found
-            
-            const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
-            const periodEnd = new Date(now)
-            periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
-            
-            // Keep tasks from periods that haven't naturally ended yet
-            return now <= periodEnd || period.id === 'pre-closing'
-          })
+        const updatedMissingTasks: { task: TaskTemplate; periodName: string }[] = []
+        
+        // Check all periods that have passed
+        workflowPeriods.forEach(period => {
+          const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+          const periodEnd = new Date(now)
+          periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
           
-          // Combine manually added tasks with auto-detected ones
-          const combined = [...manuallyAddedTasks, ...updatedMissingTasks]
-          
-          // Remove duplicates based on task ID
-          const uniqueTasks = combined.filter((item, index, self) =>
-            index === self.findIndex(t => t.task.id === item.task.id)
-          )
-          
-          return uniqueTasks
+          // If this period has ended and it's not the current period
+          // Skip event-driven periods (pre-closing, closing) as they don't end by time
+          if (now > periodEnd && period.id !== currentPeriod.id && !period.isEventDriven) {
+            // Check for uncompleted tasks using database data
+            period.tasks.manager.forEach((task: TaskTemplate) => {
+              if (task.isNotice) return // Skip notices
+              
+              // Use database completedIds instead of local state
+              if (!completedIds.includes(task.id)) {
+                updatedMissingTasks.push({
+                  task,
+                  periodName: period.displayName
+                })
+              }
+            })
+          }
         })
+        
+        // Always set missing tasks based on database for today only
+        setMissingTasks(updatedMissingTasks)
+        
+      } catch (error) {
+        console.error('Error updating missing tasks from database:', error)
       }
     }
 
+    // Initial update
     updateMissingTasks()
-    const interval = setInterval(updateMissingTasks, 5000) // Check every 5 seconds instead of every second
+    
+    // Update every 30 seconds (less frequent since database calls are involved)
+    const interval = setInterval(updateMissingTasks, 30000)
     
     return () => clearInterval(interval)
-  }, [testTime, currentPeriod?.id, workflowPeriods, completedTaskIds, isManualClosing])
+  }, [testTime, currentPeriod?.id, workflowPeriods, currentUserId, isLoadingFromDb, isManualClosing])
   
   // Overdue status update effect
   useEffect(() => {
@@ -565,7 +558,7 @@ export const ManagerDashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [testTime, currentPeriod])
   
-  const handleTaskComplete = (taskId: string, data: any) => {
+  const handleTaskComplete = async (taskId: string, data: any) => {
     const now = testTime || new Date()
     
     // 检查是否是审核任务
@@ -620,7 +613,32 @@ export const ManagerDashboard: React.FC = () => {
     
     setCompletedTaskIds(prev => [...prev, taskId])
     
-    // TODO: Submit task data to backend
+    // Submit task data to Supabase
+    if (currentUserId && task) {
+      try {
+        const submissionData = {
+          user_id: currentUserId,
+          restaurant_id: '野百灵',
+          task_id: taskId,
+          date: now.toISOString().split('T')[0],
+          period_id: currentPeriod?.id || '',
+          submission_type: task.uploadRequirement ? 
+            (task.uploadRequirement === '拍照' ? 'photo' : 
+             task.uploadRequirement === '录音' ? 'audio' : 
+             task.uploadRequirement === '记录' ? 'text' : 
+             task.uploadRequirement === '列表' ? 'list' : null) : null,
+          text_content: data?.textInput || data?.evidence?.[0]?.description || '',
+          photo_urls: data?.evidence?.map((item: any) => item.photo || item.image).filter(Boolean) || [],
+          submission_metadata: data
+        }
+        
+        await submitTaskRecord(submissionData)
+        console.log('Task submitted to Supabase:', taskId)
+      } catch (error) {
+        console.error('Error submitting task to Supabase:', error)
+        // Still update local state even if submission fails
+      }
+    }
   }
   
   const handleNoticeComment = (noticeId: string, comment: string) => {
@@ -634,7 +652,7 @@ export const ManagerDashboard: React.FC = () => {
     // TODO: Send comment to backend
   }
   
-  const handleLateSubmit = (taskId: string, data?: any) => {
+  const handleLateSubmit = async (taskId: string, data?: any) => {
     // Remove the task from missing tasks
     setMissingTasks(prev => prev.filter(item => item.task.id !== taskId))
     
@@ -653,14 +671,42 @@ export const ManagerDashboard: React.FC = () => {
     
     setCompletedTaskIds(prev => [...prev, taskId])
     
-    // TODO: Submit late task data to backend
-    if (data) {
+    // Submit late task data to Supabase
+    if (data && currentUserId) {
+      try {
+        // Find the task details
+        const task = currentTasks.find(t => t.id === taskId) || 
+                    missingTasks.find(item => item.task.id === taskId)?.task
+        
+        if (task) {
+          const submissionData = {
+            user_id: currentUserId,
+            restaurant_id: '野百灵',
+            task_id: taskId,
+            date: now.toISOString().split('T')[0],
+            period_id: currentPeriod?.id || '',
+            submission_type: task.uploadRequirement ? 
+              (task.uploadRequirement === '拍照' ? 'photo' : 
+               task.uploadRequirement === '录音' ? 'audio' : 
+               task.uploadRequirement === '记录' ? 'text' : 
+               task.uploadRequirement === '列表' ? 'list' : null) : null,
+            text_content: data?.textInput || data?.evidence?.[0]?.description || '',
+            photo_urls: data?.evidence?.map((item: any) => item.photo || item.image).filter(Boolean) || [],
+            submission_metadata: data
+          }
+          
+          await submitTaskRecord(submissionData)
+          console.log('Late task submitted to Supabase:', taskId)
+        }
+      } catch (error) {
+        console.error('Error submitting late task to Supabase:', error)
+      }
     }
   }
   
   const handleBack = () => {
     localStorage.removeItem('selectedRole')
-    navigate('/')
+    navigate('/role-selection')
   }
   
   
@@ -1008,7 +1054,7 @@ export const ManagerDashboard: React.FC = () => {
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
   
   // 处理加载状态
-  if (isLoading) {
+  if (isLoading || isLoadingFromDb) {
     return (
       <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <CircularProgress />

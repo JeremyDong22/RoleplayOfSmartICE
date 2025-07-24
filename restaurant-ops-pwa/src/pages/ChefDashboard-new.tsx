@@ -28,6 +28,8 @@ import { useTaskData } from '../contexts/TaskDataContext'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
 import { broadcastService } from '../services/broadcastService'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
+import { getTodayCompletedTaskIds, submitTaskRecord } from '../services/taskRecordService'
+import { supabase } from '../services/supabase'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -182,56 +184,66 @@ export const ChefDashboard: React.FC = () => {
     const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
     const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
     const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
+    const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
     
     // 过滤只显示 Chef 的浮动任务
     const floatingTasks = allFloatingTasks.filter(task => task.role === 'Chef')
   
-  // Load state from localStorage on mount
+  // Load completed tasks from Supabase on mount
   useEffect(() => {
+    async function loadFromDatabase() {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          console.error('No authenticated user')
+          setIsLoadingFromDb(false)
+          return
+        }
+        
+        setCurrentUserId(user.id)
+        
+        // Load today's completed tasks
+        const completedIds = await getTodayCompletedTaskIds(user.id)
+        setCompletedTaskIds(completedIds)
+        
+        // For now, still load some state from localStorage (will be removed later)
+        const savedState = loadState('chef')
+        if (savedState) {
+          // Check for invalid stuck state BEFORE applying it
+          if (savedState.isManualClosing && !savedState.isWaitingForNextDay) {
+            savedState.isManualClosing = false
+          }
+          
+          setNoticeComments(savedState.noticeComments)
+          setIsManualClosing(savedState.isManualClosing)
+          setIsWaitingForNextDay(savedState.isWaitingForNextDay)
+          waitingRef.current = savedState.isWaitingForNextDay
+          setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
+          manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
+          
+          if (savedState.testTime) {
+            setTestTime(new Date(savedState.testTime))
+          }
+        }
+        
+        // Check for global test time
+        const globalTestTime = getCurrentTestTime()
+        if (globalTestTime && !savedState?.testTime) {
+          setTestTime(globalTestTime)
+        }
+        
+      } catch (error) {
+        console.error('Error loading from database:', error)
+      } finally {
+        setIsLoadingFromDb(false)
+        setHasInitialized(true)
+      }
+    }
+    
     if (!hasInitialized) {
-      const savedState = loadState('chef')
-      if (savedState) {
-        // Check for invalid stuck state BEFORE applying it
-        if (savedState.isManualClosing && !savedState.isWaitingForNextDay) {
-          savedState.isManualClosing = false
-        }
-        
-        setCompletedTaskIds(savedState.completedTaskIds)
-        setTaskStatuses(savedState.taskStatuses)
-        setNoticeComments(savedState.noticeComments)
-        
-        // Check if we're in opening period - if so, don't load old missing tasks
-        const now = testTime || new Date()
-        const currentHour = now.getHours()
-        const currentMinutes = now.getMinutes()
-        const isInOpeningPeriod = currentHour === 10 && currentMinutes >= 0 && currentMinutes <= 30
-        
-        // Only load missing tasks if we're not in the opening period
-        // Opening period should start fresh without previous day's missing tasks
-        if (!isInOpeningPeriod) {
-          setMissingTasks(savedState.missingTasks)
-        } else {
-          setMissingTasks([])
-        }
-        
-        setIsManualClosing(savedState.isManualClosing)
-        setIsWaitingForNextDay(savedState.isWaitingForNextDay)
-        waitingRef.current = savedState.isWaitingForNextDay
-        setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
-        manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
-        // Restore testTime if saved
-        if (savedState.testTime) {
-          setTestTime(new Date(savedState.testTime))
-        }
-      }
-      
-      // Also check for global test time
-      const globalTestTime = getCurrentTestTime()
-      if (globalTestTime && !savedState?.testTime) {
-        setTestTime(globalTestTime)
-      }
-      
-      setHasInitialized(true)
+      loadFromDatabase()
     }
   }, [hasInitialized])
   
@@ -548,7 +560,7 @@ export const ChefDashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [testTime, currentPeriod])
   
-  const handleTaskComplete = (taskId: string, data: any) => {
+  const handleTaskComplete = async (taskId: string, data: any) => {
     const now = testTime || new Date()
     setTaskStatuses(prev => [
       ...prev.filter(s => s.taskId !== taskId),
@@ -577,7 +589,35 @@ export const ChefDashboard: React.FC = () => {
       }
     }
     
-    // TODO: Submit task data to backend
+    // Submit task data to Supabase
+    if (currentUserId) {
+      try {
+        const task = currentTasks.find(t => t.id === taskId)
+        if (task) {
+          const submissionData = {
+            user_id: currentUserId,
+            restaurant_id: '野百灵',
+            task_id: taskId,
+            date: now.toISOString().split('T')[0],
+            period_id: currentPeriod?.id || '',
+            submission_type: task.uploadRequirement ? 
+              (task.uploadRequirement === '拍照' ? 'photo' : 
+               task.uploadRequirement === '录音' ? 'audio' : 
+               task.uploadRequirement === '记录' ? 'text' : 
+               task.uploadRequirement === '列表' ? 'list' : null) : null,
+            text_content: data?.textInput || data?.evidence?.[0]?.description || '',
+            photo_urls: data?.evidence?.map((item: any) => item.photo || item.image).filter(Boolean) || [],
+            submission_metadata: data
+          }
+          
+          await submitTaskRecord(submissionData)
+          console.log('Task submitted to Supabase:', taskId)
+        }
+      } catch (error) {
+        console.error('Error submitting task to Supabase:', error)
+        // Still update local state even if submission fails
+      }
+    }
   }
   
   const handleNoticeComment = (noticeId: string, comment: string) => {
@@ -617,7 +657,7 @@ export const ChefDashboard: React.FC = () => {
   
   const handleBack = () => {
     localStorage.removeItem('selectedRole')
-    navigate('/')
+    navigate('/role-selection')
   }
   
   // Removed handleLastCustomerLeft as it's not used for Chef

@@ -56,9 +56,9 @@ const DutyManagerDashboard: React.FC = () => {
         console.log('[DutyManagerDashboard] Loading saved state:', parsed)
         
         // 恢复日期对象
-        if (parsed.taskStatuses) {
+        if (parsed.taskStatuses && typeof parsed.taskStatuses === 'object' && parsed.taskStatuses !== null) {
           Object.keys(parsed.taskStatuses).forEach(key => {
-            if (parsed.taskStatuses[key].completedAt) {
+            if (parsed.taskStatuses[key] && parsed.taskStatuses[key].completedAt) {
               parsed.taskStatuses[key].completedAt = new Date(parsed.taskStatuses[key].completedAt)
             }
           })
@@ -494,8 +494,8 @@ const DutyManagerDashboard: React.FC = () => {
     }
   }, [reviewStatus, state.activeTasks])
 
-  // 登出处理
-  const handleLogout = () => {
+  // 返回到角色选择页面
+  const handleBack = () => {
     // 清理值班经理相关的存储
     localStorage.removeItem('dutyManagerTrigger')
     localStorage.removeItem('dutyManagerSubmissions')
@@ -505,7 +505,7 @@ const DutyManagerDashboard: React.FC = () => {
     // 清除Context中的数据
     clearTrigger()
     
-    navigate('/')
+    navigate('/role-selection')
   }
 
   // 等待界面
@@ -517,7 +517,7 @@ const DutyManagerDashboard: React.FC = () => {
             <IconButton
               edge="start"
               color="inherit"
-              onClick={handleLogout}
+              onClick={handleBack}
               sx={{ mr: 2 }}
             >
               <ArrowBackIcon />

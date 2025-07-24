@@ -135,6 +135,47 @@ export async function getTaskRecords(filters: {
   return data
 }
 
+// 获取今日已完成的任务ID列表
+export async function getTodayCompletedTaskIds(userId: string): Promise<string[]> {
+  const today = new Date().toISOString().split('T')[0]
+  
+  const { data, error } = await supabase
+    .from('roleplay_task_records')
+    .select('task_id')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .in('status', ['submitted', 'completed'])
+
+  if (error) {
+    console.error('Error fetching today completed tasks:', error)
+    return []
+  }
+
+  return data?.map(record => record.task_id) || []
+}
+
+// 获取指定日期范围内的已完成任务
+export async function getCompletedTasksInRange(
+  userId: string, 
+  startDate: string, 
+  endDate: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('roleplay_task_records')
+    .select('task_id')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .in('status', ['submitted', 'completed'])
+
+  if (error) {
+    console.error('Error fetching completed tasks in range:', error)
+    return []
+  }
+
+  return data?.map(record => record.task_id) || []
+}
+
 // 获取待审核的值班经理任务
 export async function getPendingDutyTasks(restaurantId: string) {
   const { data, error } = await supabase
