@@ -13,7 +13,7 @@
 import { supabase } from './supabase';
 
 // Constants
-const BUCKET_NAME = 'duty-manager-photos';
+const BUCKET_NAME = 'RolePlay';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
 /**
@@ -49,9 +49,10 @@ function generateFilePath(userId: string, taskId: string, date?: Date): string {
   const uploadDate = date || new Date();
   const dateStr = uploadDate.toISOString().split('T')[0]; // YYYY-MM-DD format
   const timestamp = uploadDate.getTime();
+  const randomId = Math.random().toString(36).substring(2, 8); // Add random ID to ensure uniqueness
   
-  // Create path: userId/date/taskId/timestamp.jpg
-  return `${userId}/${dateStr}/${taskId}/${timestamp}.jpg`;
+  // Create path following new structure: photos/date/taskId_timestamp_randomId.jpg
+  return `photos/${dateStr}/${taskId}_${timestamp}_${randomId}.jpg`;
 }
 
 /**
@@ -69,8 +70,6 @@ export async function uploadPhoto(
   metadata?: Record<string, any>
 ): Promise<{ publicUrl: string; filePath: string } | null> {
   try {
-    console.log(`[StorageService] Starting photo upload for user: ${userId}, task: ${taskId}`);
-    
     // Validate inputs
     if (!base64Image || !userId || !taskId) {
       throw new Error('Missing required parameters for photo upload');
@@ -78,7 +77,6 @@ export async function uploadPhoto(
     
     // Convert base64 to blob
     const blob = base64ToBlob(base64Image);
-    console.log(`[StorageService] Blob created, size: ${(blob.size / 1024).toFixed(2)}KB`);
     
     // Check file size
     if (blob.size > MAX_FILE_SIZE) {
@@ -87,11 +85,9 @@ export async function uploadPhoto(
     
     // Generate unique file path
     const filePath = generateFilePath(userId, taskId);
-    console.log(`[StorageService] Generated file path: ${filePath}`);
     
     // Upload to Supabase Storage
-    console.log(`[StorageService] Uploading to bucket: ${BUCKET_NAME}`);
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, blob, {
         contentType: 'image/jpeg',
@@ -120,7 +116,7 @@ export async function uploadPhoto(
       .from(BUCKET_NAME)
       .getPublicUrl(filePath);
     
-    console.log(`[StorageService] Photo uploaded successfully: ${publicUrl}`);
+    console.log(`[StorageService] Photo uploaded successfully`);
     
     return {
       publicUrl,
@@ -145,16 +141,12 @@ export async function uploadPhotoBatch(
     metadata?: Record<string, any>;
   }>
 ): Promise<Array<{ publicUrl: string; filePath: string } | null>> {
-  console.log(`Starting batch upload of ${photos.length} photos`);
-  
   const uploadPromises = photos.map(photo =>
     uploadPhoto(photo.base64Image, photo.userId, photo.taskId, photo.metadata)
   );
   
   try {
     const results = await Promise.all(uploadPromises);
-    const successCount = results.filter(r => r !== null).length;
-    console.log(`Batch upload complete: ${successCount}/${photos.length} successful`);
     return results;
   } catch (error) {
     console.error('Error during batch upload:', error);
@@ -169,8 +161,6 @@ export async function uploadPhotoBatch(
  */
 export async function deletePhoto(filePath: string): Promise<boolean> {
   try {
-    console.log(`Deleting photo: ${filePath}`);
-    
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
       .remove([filePath]);
@@ -180,7 +170,6 @@ export async function deletePhoto(filePath: string): Promise<boolean> {
       return false;
     }
     
-    console.log('Photo deleted successfully');
     return true;
   } catch (error) {
     console.error('Failed to delete photo:', error);
@@ -208,6 +197,75 @@ export async function getSignedUrl(filePath: string, expiresIn: number = 3600): 
     return data.signedUrl;
   } catch (error) {
     console.error('Failed to create signed URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Uploads an audio file to Supabase Storage
+ * @param audioBlob - The audio blob data
+ * @param userId - The ID of the user uploading the audio
+ * @param taskId - The ID of the task associated with the audio
+ * @param metadata - Optional metadata to store with the file
+ * @returns Object containing the public URL and file path, or null if upload fails
+ */
+export async function uploadAudio(
+  audioBlob: Blob,
+  userId: string,
+  taskId: string,
+  metadata?: Record<string, any>
+): Promise<{ publicUrl: string; filePath: string } | null> {
+  try {
+    // Validate inputs
+    if (!audioBlob || !userId || !taskId) {
+      throw new Error('Missing required parameters for audio upload');
+    }
+    
+    // Check file size
+    if (audioBlob.size > MAX_FILE_SIZE) {
+      throw new Error(`File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+    }
+    
+    // Generate unique file path for audio
+    const uploadDate = new Date();
+    const dateStr = uploadDate.toISOString().split('T')[0];
+    const timestamp = uploadDate.getTime();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const filePath = `audio/${dateStr}/${taskId}_${timestamp}_${randomId}.m4a`;
+    
+    // Upload to Supabase Storage
+    const { error } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(filePath, audioBlob, {
+        contentType: 'audio/m4a',
+        cacheControl: '3600',
+        upsert: false,
+        metadata: {
+          userId,
+          taskId,
+          uploadedAt: new Date().toISOString(),
+          ...metadata
+        }
+      });
+    
+    if (error) {
+      console.error('[StorageService] Audio upload error:', error);
+      throw new Error(`Failed to upload audio: ${error.message}`);
+    }
+    
+    // Get public URL for the uploaded file
+    const { data: { publicUrl } } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(filePath);
+    
+    console.log(`[StorageService] Audio uploaded successfully`);
+    
+    return {
+      publicUrl,
+      filePath
+    };
+  } catch (error) {
+    console.error('Failed to upload audio:', error);
     return null;
   }
 }
@@ -286,7 +344,7 @@ export async function createBucketIfNotExists(): Promise<boolean> {
       
       console.log(`Bucket '${BUCKET_NAME}' created successfully`);
     } else {
-      console.log(`Bucket '${BUCKET_NAME}' already exists`);
+      // Bucket already exists
     }
     
     return true;

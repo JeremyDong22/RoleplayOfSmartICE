@@ -53,7 +53,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
   const [cameraError, setCameraError] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showPhotoDrawer, setShowPhotoDrawer] = useState(false)
-  const [isCapturing, setIsCapturing] = useState(false)
+  // const [isCapturing, setIsCapturing] = useState(false)
   const [loading, setLoading] = useState(true)
   
   // Refs
@@ -258,7 +258,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
   // Capture photo
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current && videoRef.current.readyState === 4) {
-      setIsCapturing(true)
+      // setIsCapturing(true)
       const video = videoRef.current
       const canvas = canvasRef.current
       
@@ -276,7 +276,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         
         setTimeout(() => {
-          setIsCapturing(false)
+          // setIsCapturing(false)
         }, 300)
       }
     }
@@ -555,7 +555,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         samples={samples}
         onClose={() => setShowPhotoDrawer(false)}
         onDeletePhoto={deletePhoto}
-        onRetakePhoto={(photoId) => {
+        onRetakePhoto={() => {
           // TODO: Implement retake functionality
           setShowPhotoDrawer(false)
         }}

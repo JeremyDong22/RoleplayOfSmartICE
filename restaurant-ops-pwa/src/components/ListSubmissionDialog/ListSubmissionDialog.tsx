@@ -1,5 +1,5 @@
 // List submission dialog for checklist-based tasks
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -146,16 +146,16 @@ export default function ListSubmissionDialog({
     onClose()
   }
 
-  const getStatusIcon = (status: ListItem['status']) => {
-    switch (status) {
-      case 'checked':
-        return <CheckCircleIcon sx={{ color: 'success.main' }} />
-      case 'failed':
-        return <CancelIcon sx={{ color: 'error.main' }} />
-      default:
-        return <RadioButtonUncheckedIcon sx={{ color: 'text.disabled' }} />
-    }
-  }
+  // const getStatusIcon = (status: ListItem['status']) => {
+  //   switch (status) {
+  //     case 'checked':
+  //       return <CheckCircleIcon sx={{ color: 'success.main' }} />
+  //     case 'failed':
+  //       return <CancelIcon sx={{ color: 'error.main' }} />
+  //     default:
+  //       return <RadioButtonUncheckedIcon sx={{ color: 'text.disabled' }} />
+  //   }
+  // }
 
   const completedCount = items.filter(item => item.status !== 'unchecked').length
   const totalCount = items.length

@@ -1,5 +1,5 @@
 // Main App component with routing and Realtime integration
-// Updated: 2025-07-22 - Added Supabase Realtime service and TaskDataProvider
+// Updated: 2025-07-24 - Added notification permission component for PWA push notifications
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -12,12 +12,12 @@ import { DutyManagerProvider } from './contexts/DutyManagerContext'
 import { TaskDataProvider } from './contexts/TaskDataContext'
 import { useEffect, useState } from 'react'
 import { realtimeService } from './services/realtimeService'
-import { taskService } from './services/taskService'
 import { Snackbar, Alert } from '@mui/material'
 import { TestRealtime } from './pages/TestRealtime'
 import { TestDatabase } from './pages/TestDatabase'
 import TestFloatingTasks from './pages/TestFloatingTasks'
 import { initializeStorage } from './utils/initializeStorage'
+import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 
 const theme = createTheme({
   palette: {
@@ -67,7 +67,7 @@ const router = createBrowserRouter([
 ])
 
 function App() {
-  const [realtimeStatus, setRealtimeStatus] = useState<string>('')
+  const [realtimeStatus] = useState<string>('')
   const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
@@ -75,34 +75,34 @@ function App() {
     initializeStorage()
     
     // 模拟用户登录后启动 Realtime
-    const initRealtime = async () => {
-      try {
-        // 这里应该从用户登录状态获取，现在模拟一个用户
-        const mockUser = {
-          id: 'test-user-id',
-          restaurant_id: 'test-restaurant-id',
-          role: 'manager'
-        }
+    // const initRealtime = async () => {
+    //   try {
+    //     // 这里应该从用户登录状态获取，现在模拟一个用户
+    //     const mockUser = {
+    //       id: 'test-user-id',
+    //       restaurant_id: 'test-restaurant-id',
+    //       role: 'manager'
+    //     }
 
-        // 订阅任务更新
-        realtimeService.subscribeToTasks(mockUser.restaurant_id)
-        realtimeService.subscribeToNotifications(mockUser.id)
-        realtimeService.trackPresence(mockUser.id, mockUser.role)
+    //     // 订阅任务更新
+    //     realtimeService.subscribeToTasks(mockUser.restaurant_id)
+    //     realtimeService.subscribeToNotifications(mockUser.id)
+    //     realtimeService.trackPresence(mockUser.id, mockUser.role)
         
-        setRealtimeStatus('Realtime 服务已连接')
-        setShowNotification(true)
+    //     setRealtimeStatus('Realtime 服务已连接')
+    //     setShowNotification(true)
 
-        // 测试发送广播消息
-        setTimeout(() => {
-          realtimeService.sendBroadcast('系统测试：WebSocket 连接正常', 'normal')
-        }, 2000)
+    //     // 测试发送广播消息
+    //     setTimeout(() => {
+    //       realtimeService.sendBroadcast('系统测试：WebSocket 连接正常', 'normal')
+    //     }, 2000)
 
-      } catch (error) {
-        console.error('Realtime 初始化失败:', error)
-        setRealtimeStatus('Realtime 连接失败')
-        setShowNotification(true)
-      }
-    }
+    //   } catch (error) {
+    //     console.error('Realtime initialization failed:', error)
+    //     setRealtimeStatus('Realtime 连接失败')
+    //     setShowNotification(true)
+    //   }
+    // }
 
     // 暂时注释掉自动初始化，等用户系统完善后再启用
     // initRealtime()
@@ -118,6 +118,7 @@ function App() {
       <TaskDataProvider>
         <DutyManagerProvider>
           <RouterProvider router={router} />
+          <NotificationPermission />
         </DutyManagerProvider>
       </TaskDataProvider>
       <Snackbar 

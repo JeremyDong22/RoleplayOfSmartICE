@@ -43,7 +43,12 @@ import {
   Checklist
 } from '@mui/icons-material'
 import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
-import type { NoticeComment } from '../../types'
+
+interface NoticeComment {
+  noticeId: string
+  comment: string
+  timestamp: Date
+}
 import useEmblaCarousel from 'embla-carousel-react'
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 import AudioRecordingDialog from '../AudioRecordingDialog'
@@ -361,7 +366,6 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     startIndex: 0,
     watchSlides: true,
     watchResize: true,
-    speed: 20,  // Increased speed for snappier animations
     duration: 500  // Smooth elastic animation duration (in ms)
   })
   

@@ -13,7 +13,7 @@ import {
   Button,
   Typography,
   Paper,
-  Chip,
+  // Chip,
   Alert,
   Snackbar,
   Badge,
@@ -22,19 +22,19 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider,
+  // Divider,
   Fab,
-  Zoom,
-  Slide,
+  // Zoom,
+  // Slide,
   Fade
 } from '@mui/material'
 import {
   Close as CloseIcon,
   CameraAlt,
-  Check,
+  // Check,
   Refresh,
   CloudUpload,
-  Visibility,
+  // Visibility,
   ZoomIn,
   ZoomOut,
   DragIndicator,
@@ -44,7 +44,7 @@ import {
   PhotoLibrary,
   ViewModule,
   ExpandLess,
-  ExpandMore
+  // ExpandMore
 } from '@mui/icons-material'
 import { useDrag } from '@use-gesture/react'
 import { animated, useSpring } from '@react-spring/web'
@@ -350,7 +350,7 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
   }
 
   // Drag handlers for floating window
-  const bind = useDrag(({ offset: [x, y], down, movement: [mx, my] }) => {
+  const bind = useDrag(({ offset: [x, y], down }) => {
     if (containerRef.current) {
       const bounds = containerRef.current.getBoundingClientRect()
       const maxX = bounds.width - windowSize.width

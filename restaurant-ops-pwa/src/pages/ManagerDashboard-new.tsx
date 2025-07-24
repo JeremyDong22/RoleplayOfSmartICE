@@ -1,5 +1,5 @@
 // Manager Dashboard with status island and new timer display
-// Updated: Added debug logs for isManualClosing state tracking and recovery mechanism for stuck states
+// Updated: Added push notification support for task reminders at period start
 // Updated: Added automatic creation of audit tasks when manager confirms "last customer left".
 // Creates two audit tasks for lunch period (energy management and revenue verification) and
 // two for dinner/closing period (energy safety check and security check). These audit tasks
@@ -32,6 +32,7 @@ import { useDutyManager, type DutyManagerSubmission } from '../contexts/DutyMana
 import { broadcastService } from '../services/broadcastService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
+import notificationService from '../services/notificationService'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -157,6 +158,13 @@ export const ManagerDashboard: React.FC = () => {
   // 从数据库获取任务数据
   const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
   
+  // 监听值班经理的提交状态变化，实时更新UI
+  useEffect(() => {
+    // 当submissions变化时，触发组件重新渲染
+    // submissions 是从 DutyManagerContext 中获取的，会通过实时服务自动更新
+    console.log('[ManagerDashboard] Duty manager submissions updated:', submissions)
+  }, [submissions])
+  
   // Redirect to role selection if no role is selected
   useEffect(() => {
     if (!selectedRole) {
@@ -181,28 +189,6 @@ export const ManagerDashboard: React.FC = () => {
   // 过滤只显示 Manager 的浮动任务
   const floatingTasks = allFloatingTasks.filter(task => task.role === 'Manager')
   
-  // Debug: 打印浮动任务信息
-  useEffect(() => {
-    console.log('\n========== ManagerDashboard Floating Tasks ==========')
-    console.log('1. Loading state:', isLoading)
-    console.log('2. Error state:', error)
-    console.log('3. All floating tasks from context:', allFloatingTasks.length)
-    if (allFloatingTasks.length > 0) {
-      console.log('4. All floating tasks details:')
-      allFloatingTasks.forEach(task => {
-        console.log(`   - ${task.id}: ${task.title} (role: ${task.role})`)
-      })
-    }
-    console.log('5. Manager floating tasks after filter:', floatingTasks.length)
-    if (floatingTasks.length > 0) {
-      console.log('6. Manager floating tasks details:')
-      floatingTasks.forEach(task => {
-        console.log(`   - ${task.id}: ${task.title}`)
-      })
-    }
-    console.log('7. Current period:', currentPeriod?.id)
-    console.log('===================================================\n')
-  }, [allFloatingTasks, floatingTasks, currentPeriod?.id, isLoading, error])
   
   // Load state from localStorage on mount
   useEffect(() => {
@@ -273,6 +259,7 @@ export const ManagerDashboard: React.FC = () => {
   // Period update effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null
+    let lastPeriodId = currentPeriod?.id // Track last period to detect changes
     
     const updatePeriods = () => {
       // Skip all updates if we're in manual closing mode (check ref for immediate value)
@@ -295,6 +282,13 @@ export const ManagerDashboard: React.FC = () => {
           manualAdvanceRef.current = null
           setCurrentPeriod(current)
           setNextPeriod(next)
+          
+          // Send notification for new period
+          if (lastPeriodId !== current.id) {
+            const taskCount = current.tasks.manager.filter(t => !t.isNotice).length
+            notificationService.sendPeriodStartNotification(current.displayName, taskCount)
+            lastPeriodId = current.id
+          }
         } else {
           // Update periods even in waiting state to reflect time changes
           setCurrentPeriod(current)
@@ -318,6 +312,13 @@ export const ManagerDashboard: React.FC = () => {
       // Normal automatic period updates
       setCurrentPeriod(current)
       setNextPeriod(next)
+      
+      // Send notification if period changed
+      if (current && lastPeriodId !== current.id) {
+        const taskCount = current.tasks.manager.filter(t => !t.isNotice).length
+        notificationService.sendPeriodStartNotification(current.displayName, taskCount)
+        lastPeriodId = current.id
+      }
     }
     
     // Always run initial update
@@ -381,6 +382,10 @@ export const ManagerDashboard: React.FC = () => {
       if (lastCheckedHour !== 10 && currentHour === 10) {
         // Clear localStorage
         clearState('manager')
+        
+        // Clear swipe confirmation states
+        localStorage.removeItem('lunch-closing-confirmed')
+        localStorage.removeItem('pre-closing-confirmed')
         
         // Reset all task-related states
         setTaskStatuses([])
@@ -484,6 +489,8 @@ export const ManagerDashboard: React.FC = () => {
     // Skip event-driven periods (pre-closing, closing) as they don't have fixed end times
     if (!currentPeriod || currentPeriod.isEventDriven || currentPeriod.id === 'pre-closing' || currentPeriod.id === 'closing') return
     
+    let notifiedTasks = new Set<string>() // Track which tasks we've notified about
+    
     const updateOverdueStatus = () => {
       const now = testTime || new Date()
       const [endHour, endMinute] = currentPeriod.endTime.split(':').map(Number)
@@ -491,11 +498,21 @@ export const ManagerDashboard: React.FC = () => {
       periodEnd.setHours(endHour, endMinute, 0, 0)
       
       if (now > periodEnd) {
+        const minutesOverdue = Math.floor((now.getTime() - periodEnd.getTime()) / 60000)
+        
         setTaskStatuses(prev => {
           let changed = false
           const updated = prev.map(status => {
             if (!status.completed && !status.overdue) {
               changed = true
+              
+              // Find task name for notification
+              const task = currentPeriod.tasks.manager.find(t => t.id === status.taskId)
+              if (task && !notifiedTasks.has(task.id)) {
+                notificationService.sendOverdueNotification(task.name, minutesOverdue)
+                notifiedTasks.add(task.id)
+              }
+              
               return { ...status, overdue: true }
             }
             return status
@@ -505,6 +522,13 @@ export const ManagerDashboard: React.FC = () => {
           currentPeriod.tasks.manager.forEach(task => {
             if (!task.isNotice && !updated.find(s => s.taskId === task.id)) {
               changed = true
+              
+              // Send notification for newly overdue task
+              if (!notifiedTasks.has(task.id)) {
+                notificationService.sendOverdueNotification(task.name, minutesOverdue)
+                notifiedTasks.add(task.id)
+              }
+              
               updated.push({
                 taskId: task.id,
                 completed: false,
@@ -624,6 +648,9 @@ export const ManagerDashboard: React.FC = () => {
   
   
   const handleLastCustomerLeftLunch = async () => {
+    // Save confirmation state to localStorage
+    localStorage.setItem('lunch-closing-confirmed', 'true')
+    
     // Send broadcast message
     broadcastService.send('LAST_CUSTOMER_LEFT_LUNCH', {
       period: currentPeriod?.id,
@@ -676,6 +703,9 @@ export const ManagerDashboard: React.FC = () => {
   }
 
   const handleLastCustomerLeft = async () => {
+    // Save confirmation state to localStorage
+    localStorage.setItem('pre-closing-confirmed', 'true')
+    
     // Send broadcast message
     broadcastService.send('LAST_CUSTOMER_LEFT_DINNER', {
       period: currentPeriod?.id,
@@ -957,34 +987,6 @@ export const ManagerDashboard: React.FC = () => {
   
   const currentTasks = [...baseTasks, ...floatingTasks]
   
-  // Debug log for current tasks
-  useEffect(() => {
-    console.log('\n========== Current Tasks Composition ==========')
-    console.log('1. Current period:', currentPeriod?.id)
-    console.log('2. Base tasks count:', baseTasks.length)
-    console.log('3. Floating tasks count:', floatingTasks.length)
-    console.log('4. Total current tasks:', currentTasks.length)
-    if (floatingTasks.length > 0) {
-      console.log('5. Floating tasks being added:')
-      floatingTasks.forEach(task => {
-        console.log(`   - ${task.id}: ${task.title} (isFloating: ${task.isFloating})`)
-      })
-    }
-    console.log('6. Final currentTasks array:')
-    currentTasks.forEach((task, index) => {
-      console.log(`   [${index}] ${task.id}: ${task.title} (isFloating: ${task.isFloating || false})`)
-    })
-    console.log('==============================================\n')
-    console.log('Base tasks:', baseTasks)
-    console.log('Floating tasks to add:', floatingTasks)
-    console.log('Current tasks (combined):', currentTasks)
-    console.log('Current tasks details:', currentTasks.map(t => ({ 
-      id: t.id, 
-      title: t.title, 
-      isFloating: t.isFloating,
-      floatingType: t.floatingType 
-    })))
-  }, [currentPeriod?.id, currentTasks.length])
   
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
   

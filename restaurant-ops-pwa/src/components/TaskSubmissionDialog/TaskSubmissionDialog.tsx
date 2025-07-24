@@ -32,6 +32,7 @@ interface TaskSubmissionDialogProps {
   open: boolean
   task: TaskTemplate | null
   isLateSubmission?: boolean
+  initialPhotoGroups?: any[] // 新增：支持传入之前的照片组
   onClose: () => void
   onSubmit: (taskId: string, data: any) => void
 }
@@ -40,6 +41,7 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   open,
   task,
   isLateSubmission = false,
+  initialPhotoGroups,
   onClose,
   onSubmit
 }) => {
@@ -138,8 +140,12 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
           open={open}
           taskName={task.title}
           taskId={task.id}
+          initialPhotoGroups={initialPhotoGroups} // 传递初始照片组
           onClose={handleClose}
-          onSubmit={(evidence) => handleTaskSubmit({ evidence, type: 'photo' })}
+          onSubmit={(data) => {
+            console.log('[TaskSubmissionDialog] PhotoSubmissionDialog returned:', data)
+            handleTaskSubmit({ ...data, type: 'photo' })
+          }}
         />
       )
     }

@@ -47,7 +47,10 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // Exclude large image files from precaching
+        globIgnores: ['**/task-samples/**/*.jpg', '**/task-samples/**/*.jpeg'],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3MB
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/wdpeoyugsxqnpwwtkqsl\.supabase\.co\/.*/i,
@@ -57,6 +60,18 @@ export default defineConfig({
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+              }
+            }
+          },
+          // Cache task sample images at runtime instead of precaching
+          {
+            urlPattern: /\/task-samples\/.*\.(jpg|jpeg|png|webp)$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'task-samples-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
               }
             }
           }

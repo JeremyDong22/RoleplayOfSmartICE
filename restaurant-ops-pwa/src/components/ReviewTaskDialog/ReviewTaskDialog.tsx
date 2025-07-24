@@ -20,9 +20,9 @@ import {
 import Grid from '@mui/material/Grid'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
-import ImageIcon from '@mui/icons-material/Image'
-import TextFieldsIcon from '@mui/icons-material/TextFields'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
+// import ImageIcon from '@mui/icons-material/Image'
+// import TextFieldsIcon from '@mui/icons-material/TextFields'
+// import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CommentIcon from '@mui/icons-material/Comment'
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
@@ -77,6 +77,14 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
         task.linkedTasks?.includes(sub.taskId)
       )
       
+      console.log('[ReviewTaskDialog] Relevant submissions:', relevantSubmissions)
+      console.log('[ReviewTaskDialog] Submission content:', relevantSubmissions.map(sub => ({
+        taskId: sub.taskId,
+        content: sub.content,
+        hasPhotos: sub.content.photos?.length,
+        hasPhotoGroups: sub.content.photoGroups?.length
+      })))
+      
       if (relevantSubmissions.length > 0) {
         setSubmissions(relevantSubmissions)
         setLoading(false)
@@ -87,7 +95,16 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
           if (sub.content.photos) {
             images.push(...sub.content.photos)
           }
+          // 也需要从photoGroups中收集图片
+          if (sub.content.photoGroups) {
+            sub.content.photoGroups.forEach(group => {
+              if (group.photos) {
+                images.push(...group.photos)
+              }
+            })
+          }
         })
+        console.log('[ReviewTaskDialog] All images collected:', images)
         setAllImages(images)
       } else {
         // 如果没有提交数据，显示等待状态
@@ -202,8 +219,7 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
           <Alert severity="info">暂无提交记录</Alert>
         ) : (
           <Box>
-            {/* console.log('[ReviewDialog] All submissions:', submissions) */}
-            {/* console.log('[ReviewDialog] First submission content:', submissions[0]?.content) */}
+            {/* Check for submissions with photos */}
             {(() => {
               const validSubmissions = submissions.filter(sub => 
                 (sub.content.photoGroups && sub.content.photoGroups.length > 0) ||
@@ -237,21 +253,15 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
               
               // 如果还是没有照片数据，跳过此submission
               if (!hasPhotoGroups || photoGroups.length === 0) {
-                // console.log('[ReviewDialog] No photo data for submission:', submission.taskId)
+                // No photo data for this submission
                 return null
               }
               
-              // console.log('[ReviewDialog] Processing submission:', {
-              //   taskId: submission.taskId,
-              //   hasPhotoGroups,
-              //   photoGroupsCount: photoGroups.length,
-              //   photosCount: submission.content.photos?.length || 0,
-              //   photoGroups: photoGroups
-              // })
+              // Process submission with photo groups
               
               return (
                 <Box key={subIndex} sx={{ mb: 3 }}>
-                  {/* console.log('[ReviewDialog] Rendering submission:', subIndex, 'hasPhotoGroups:', hasPhotoGroups) */}
+                  {/* Render submission with photo groups */}
                   {/* 按照片组显示 */}
                   {hasPhotoGroups ? (
                     <Grid container spacing={2}>
@@ -292,6 +302,12 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                             >
                               {group.photos.map((photo, photoIdx) => {
                                 const isValidPhoto = photo && (photo.startsWith('data:') || photo.startsWith('http'))
+                                console.log(`[ReviewTaskDialog] Photo ${photoIdx} validation:`, {
+                                  photo: photo?.substring(0, 100),
+                                  isValidPhoto,
+                                  startsWithData: photo?.startsWith('data:'),
+                                  startsWithHttp: photo?.startsWith('http')
+                                })
                                 
                                 return (
                                   <Box

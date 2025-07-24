@@ -3,9 +3,9 @@
 // Features: Real-time presence indicator, role badges
 
 import React from 'react';
-import { Box, Chip, Typography, Avatar, AvatarGroup, Tooltip } from '@mui/material';
+import { Box, Typography, Avatar, AvatarGroup, Tooltip } from '@mui/material';
 import { useSelector } from 'react-redux';
-import { RootState } from '../../store';
+import type { RootState } from '../../store';
 import { green } from '@mui/material/colors';
 
 const roleColors: Record<string, string> = {
@@ -27,13 +27,13 @@ export const OnlineUsers: React.FC = () => {
   const currentUserId = useSelector((state: RootState) => state.auth.user?.id);
 
   // Group users by role
-  const usersByRole = onlineUsers.reduce((acc, user) => {
-    if (!acc[user.role]) {
-      acc[user.role] = [];
-    }
-    acc[user.role].push(user);
-    return acc;
-  }, {} as Record<string, typeof onlineUsers>);
+  // const usersByRole = onlineUsers.reduce((acc, user) => {
+  //   if (!acc[user.role]) {
+  //     acc[user.role] = [];
+  //   }
+  //   acc[user.role].push(user);
+  //   return acc;
+  // }, {} as Record<string, typeof onlineUsers>);
 
   if (onlineUsers.length === 0) {
     return null;

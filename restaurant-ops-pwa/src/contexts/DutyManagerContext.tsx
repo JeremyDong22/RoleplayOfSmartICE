@@ -87,7 +87,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
           await realtimeDutyService.initialize(user.id)
         } else {
           // For testing without authentication, use a mock user ID
-          console.log('No authenticated user, using mock user for testing')
+          // No authenticated user, using mock user for testing
           await realtimeDutyService.initialize('mock-user-' + Date.now())
         }
       } catch (error) {
@@ -107,7 +107,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   useEffect(() => {
     // Subscribe to realtime messages from other devices
     const unsubscribeRealtime = realtimeDutyService.subscribe('*', (message) => {
-      // console.log('Received realtime message:', message)
+      // Process realtime messages
       
       if (message.type === 'TRIGGER' && message.data?.trigger) {
         const trigger = message.data.trigger
@@ -161,9 +161,10 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         subs.forEach((s: any) => {
           s.submittedAt = new Date(s.submittedAt)
         })
+        console.log('[DutyManagerContext] Restored submissions from localStorage:', subs)
         setSubmissions(subs)
       } catch (e) {
-        // Failed to parse saved submissions
+        console.error('[DutyManagerContext] Failed to parse saved submissions:', e)
       }
     }
 
@@ -226,10 +227,19 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   }
 
   const addSubmission = (submission: DutyManagerSubmission) => {
+    console.log('[DutyManagerContext] addSubmission called with:', {
+      taskId: submission.taskId,
+      content: submission.content,
+      photoGroups: submission.content.photoGroups,
+      photos: submission.content.photos
+    })
+    
     // 如果是重新提交，先移除之前的提交记录
     setSubmissions(prev => {
       const filtered = prev.filter(s => s.taskId !== submission.taskId)
-      return [...filtered, submission]
+      const newSubmissions = [...filtered, submission]
+      console.log('[DutyManagerContext] Updated submissions:', newSubmissions)
+      return newSubmissions
     })
     
     // 如果是重新提交（之前被驳回），清除驳回状态
@@ -258,7 +268,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     realtimeDutyService.clearSubmissions()
   }
 
-  const updateReviewStatus = (taskId: string, status: 'approved' | 'rejected', reason?: string) => {
+  const updateReviewStatus = async (taskId: string, status: 'approved' | 'rejected', reason?: string) => {
     const reviewData = {
       status,
       reviewedAt: new Date(),
@@ -269,9 +279,30 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       [taskId]: reviewData
     }))
     
+    // 更新数据库中的审核状态
+    try {
+      const { reviewTaskRecord } = await import('../services/taskRecordService')
+      
+      // 查找对应的任务记录（通过task_id查找最新的submitted记录）
+      const { data: records } = await supabase
+        .from('roleplay_task_records')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('status', 'submitted')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      if (records && records.length > 0) {
+        await reviewTaskRecord(records[0].id, status, reason)
+        console.log(`[DutyManagerContext] Task ${taskId} review saved to database`)
+      }
+    } catch (error) {
+      console.error('[DutyManagerContext] Failed to save review to database:', error)
+    }
+    
     // 如果是驳回，清除该任务的提交记录
     if (status === 'rejected') {
-      // console.log(`Clearing submission for rejected task ${taskId}`)
+      // Clear submission for rejected task
       setSubmissions(prev => prev.filter(s => s.taskId !== taskId))
     }
     

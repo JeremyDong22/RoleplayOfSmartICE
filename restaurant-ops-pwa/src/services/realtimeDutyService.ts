@@ -18,16 +18,14 @@ class RealtimeDutyService {
   private userId: string | null = null
   private isInitialized: boolean = false
   private initializationPromise: Promise<void> | null = null
+  private useFallback: boolean = false
 
   async initialize(userId: string) {
-    console.log('[RealtimeDutyService] Initialize called with userId:', userId)
     // 如果已经初始化或正在初始化，返回现有的promise
     if (this.isInitialized) {
-      console.log('[RealtimeDutyService] Already initialized')
       return
     }
     if (this.initializationPromise) {
-      console.log('[RealtimeDutyService] Already initializing, waiting...')
       return this.initializationPromise
     }
     
@@ -35,45 +33,106 @@ class RealtimeDutyService {
     return this.initializationPromise
   }
 
-  private async _doInitialize(userId: string) {
+  private async _doInitialize(userId: string, retries = 3) {
     this.userId = userId
     
-    // 创建或加入频道
-    this.channel = supabase.channel('duty-manager-channel', {
-      config: {
-        broadcast: {
-          self: false // 不接收自己发送的消息
+    for (let i = 0; i < retries; i++) {
+      try {
+        // 如果有旧的channel，先清理
+        if (this.channel) {
+          await this.channel.unsubscribe()
+          this.channel = null
         }
-      }
-    })
-
-    // 监听广播消息
-    await new Promise<void>((resolve, reject) => {
-      // Add a timeout in case subscription doesn't respond
-      const timeout = setTimeout(() => {
-        console.error('[RealtimeDutyService] Subscription timeout')
-        reject(new Error('Supabase realtime subscription timeout'))
-      }, 10000) // 10 second timeout
-      
-      this.channel!
-        .on('broadcast', { event: 'duty-message' }, (payload) => {
-          console.log('[RealtimeDutyService] Received broadcast message:', payload)
-          this.handleMessage(payload.payload as DutyManagerMessage)
-        })
-        .subscribe((status) => {
-          console.log('[RealtimeDutyService] Subscription status:', status)
-          if (status === 'SUBSCRIBED') {
-            clearTimeout(timeout)
-            this.isInitialized = true
-            console.log('[RealtimeDutyService] Successfully initialized')
-            resolve()
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            clearTimeout(timeout)
-            console.error('[RealtimeDutyService] Failed to subscribe:', status)
-            reject(new Error(`Failed to subscribe to Supabase realtime: ${status}`))
+        
+        // 创建或加入频道
+        this.channel = supabase.channel('duty-manager-channel', {
+          config: {
+            broadcast: {
+              self: false, // 不接收自己发送的消息
+              ack: true // 等待服务器确认
+            },
+            presence: {
+              key: userId
+            }
           }
         })
-    })
+
+        // 监听广播消息
+        await new Promise<void>((resolve, reject) => {
+          // Add a timeout in case subscription doesn't respond
+          const timeout = setTimeout(() => {
+            console.error('[RealtimeDutyService] Subscription timeout, attempt', i + 1)
+            reject(new Error('Supabase realtime subscription timeout'))
+          }, 10000) // 10 second timeout
+          
+          this.channel!
+            .on('broadcast', { event: 'duty-message' }, (payload) => {
+              this.handleMessage(payload.payload as DutyManagerMessage)
+            })
+            .subscribe((status, err) => {
+              if (status === 'SUBSCRIBED') {
+                clearTimeout(timeout)
+                this.isInitialized = true
+                console.log('[RealtimeDutyService] ✓ Connected to Supabase Realtime')
+                resolve()
+              } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                clearTimeout(timeout)
+                // Don't log error here, will be handled in catch block
+                reject(new Error(`Connection ${status}`))
+              }
+            })
+        })
+        
+        // If we reach here, connection was successful
+        return
+      } catch (error) {
+        console.error(`[RealtimeDutyService] Initialize attempt ${i + 1} failed:`, error)
+        if (i === retries - 1) {
+          // Use fallback mode
+          console.warn('[RealtimeDutyService] ⚠️ Using localStorage fallback (Realtime unavailable)')
+          this.useFallback = true
+          this.isInitialized = true
+          this.startFallbackPolling()
+          return
+        }
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+  }
+  
+  private startFallbackPolling() {
+    // Poll localStorage for messages every second
+    setInterval(() => {
+      const messages = this.getFallbackMessages()
+      messages.forEach(msg => {
+        if (msg.sender !== this.userId) {
+          this.handleMessage(msg)
+        }
+      })
+    }, 1000)
+  }
+  
+  private getFallbackMessages(): DutyManagerMessage[] {
+    const stored = localStorage.getItem('duty-manager-fallback-messages')
+    if (!stored) return []
+    
+    try {
+      const messages = JSON.parse(stored) as DutyManagerMessage[]
+      // Only return messages from the last 30 seconds
+      const cutoff = Date.now() - 30000
+      return messages.filter(msg => msg.timestamp > cutoff)
+    } catch {
+      return []
+    }
+  }
+  
+  private storeFallbackMessage(message: DutyManagerMessage) {
+    const messages = this.getFallbackMessages()
+    messages.push(message)
+    // Keep only last 50 messages
+    const recent = messages.slice(-50)
+    localStorage.setItem('duty-manager-fallback-messages', JSON.stringify(recent))
   }
 
   private handleMessage(message: DutyManagerMessage) {
@@ -100,21 +159,13 @@ class RealtimeDutyService {
 
   // 发送消息
   async send(type: DutyManagerMessage['type'], data: any) {
-    console.log('[RealtimeDutyService] Send called:', type, 'initialized:', this.isInitialized)
-    
     // 等待初始化完成
     if (!this.isInitialized && this.initializationPromise) {
-      console.log('[RealtimeDutyService] Waiting for initialization...')
       await this.initializationPromise
-      console.log('[RealtimeDutyService] Initialization complete')
     }
     
     if (!this.channel || !this.userId || !this.isInitialized) {
-      console.error('[RealtimeDutyService] Send failed - not initialized', {
-        channel: !!this.channel,
-        userId: !!this.userId,
-        isInitialized: this.isInitialized
-      })
+      console.error('[RealtimeDutyService] Not initialized')
       throw new Error('Realtime service not initialized')
     }
 
@@ -125,16 +176,21 @@ class RealtimeDutyService {
       data
     }
 
-    try {
-      await this.channel.send({
-        type: 'broadcast',
-        event: 'duty-message',
-        payload: message
-      })
-      console.log('[RealtimeDutyService] Message sent successfully')
-    } catch (error) {
-      console.error('Failed to send realtime message:', error)
-      throw error
+    if (this.useFallback) {
+      // Use localStorage fallback
+      this.storeFallbackMessage(message)
+      // Message sent via fallback
+    } else {
+      try {
+        await this.channel.send({
+          type: 'broadcast',
+          event: 'duty-message',
+          payload: message
+        })
+      } catch (error) {
+        console.error('[RealtimeDutyService] Send failed:', error)
+        throw error
+      }
     }
   }
 
@@ -188,6 +244,12 @@ class RealtimeDutyService {
     this.isInitialized = false
     this.initializationPromise = null
     this.userId = null
+    this.useFallback = false
+    
+    // Clear fallback messages on cleanup
+    if (this.useFallback) {
+      localStorage.removeItem('duty-manager-fallback-messages')
+    }
   }
 }
 

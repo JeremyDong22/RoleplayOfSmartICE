@@ -2,7 +2,8 @@
 // Updated to use MUI v7 Grid component with size prop
 import type { FC } from 'react'
 
-import { Box, Container, Typography, Paper, Grid } from '@mui/material'
+import { Box, Container, Typography, Paper } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import { CountdownTimer } from '../../components/Timer/CountdownTimer'
 
 export const TaskManagement: FC = () => {

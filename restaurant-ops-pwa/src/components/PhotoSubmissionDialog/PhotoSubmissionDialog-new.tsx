@@ -14,9 +14,8 @@ import {
   Typography,
   TextField,
   IconButton,
-  Grid,
   Paper,
-  Chip,
+  // Chip,
   Alert,
   Snackbar,
   Modal,
@@ -25,18 +24,19 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Badge
+  // Badge
 } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import {
   Close as CloseIcon,
   CameraAlt,
-  Check,
+  // Check,
   Refresh,
   CloudUpload,
   Visibility,
   Delete,
   ArrowBack,
-  Image as ImageIcon,
+  // Image as ImageIcon,
   Comment as CommentIcon
 } from '@mui/icons-material'
 
@@ -71,6 +71,7 @@ interface PhotoSubmissionDialogProps {
   taskName: string
   taskId: string
   isFloatingTask?: boolean
+  initialPhotoGroups?: PhotoGroup[]  // 新增：支持传入之前的照片组
   onClose: () => void
   onSubmit: (evidence: Array<{
     photo: string
@@ -83,7 +84,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   open,
   taskName,
   taskId,
-  isFloatingTask = false,
+  // isFloatingTask = false,
+  initialPhotoGroups,
   onClose,
   onSubmit
 }) => {
@@ -98,7 +100,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // 拍摄相关
   const [currentSessionPhotos, setCurrentSessionPhotos] = useState<Photo[]>([])
-  const [isCapturing, setIsCapturing] = useState(true)
+  // const [isCapturing, setIsCapturing] = useState(true)
   const [cameraError, setCameraError] = useState(false)
   
   // 已保存的照片组
@@ -165,21 +167,28 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     return taskSamplePathMap[taskId] || `前厅/${taskName}`
   }
   
-  // 加载保存的照片组
+  // 加载保存的照片组或使用传入的初始照片组
   useEffect(() => {
     if (open && taskId) {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const groups = JSON.parse(saved)
-          setPhotoGroups(groups)
-          // console.log(`[PhotoDialog] Loaded ${groups.length} saved photo groups`)
+      // 优先使用传入的初始照片组（用于重新提交被驳回的任务）
+      if (initialPhotoGroups && initialPhotoGroups.length > 0) {
+        setPhotoGroups(initialPhotoGroups)
+        console.log(`[PhotoDialog] Using ${initialPhotoGroups.length} initial photo groups from rejected submission`)
+      } else {
+        // 否则从localStorage加载之前保存的照片组
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY)
+          if (saved) {
+            const groups = JSON.parse(saved)
+            setPhotoGroups(groups)
+            // console.log(`[PhotoDialog] Loaded ${groups.length} saved photo groups`)
+          }
+        } catch (err) {
+          // console.error('[PhotoDialog] Error loading saved photos:', err)
         }
-      } catch (err) {
-        // console.error('[PhotoDialog] Error loading saved photos:', err)
       }
     }
-  }, [open, taskId, STORAGE_KEY])
+  }, [open, taskId, STORAGE_KEY, initialPhotoGroups])
   
   // 保存照片组到localStorage
   useEffect(() => {
@@ -288,7 +297,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         streamRef.current = stream
         
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(e => {
+          videoRef.current?.play().catch(() => {
             // console.error('Failed to play video:', e)
             setCameraError(true)
           })

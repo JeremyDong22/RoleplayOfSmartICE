@@ -49,123 +49,123 @@ class TaskService {
   private periodsCache: DatabasePeriod[] = []
   private listeners: Map<string, (data: any) => void> = new Map()
   
-  constructor() {
-    console.log('🏗️ TaskService instance created')
-  }
 
   /**
    * 初始化服务并订阅实时更新
    */
-  async initialize() {
-    console.log('\n🚀 ========== TaskService.initialize START ==========')
+  async initialize(): Promise<boolean> {
+    console.log('[TaskService] Starting initialization...')
     
     // 加载初始数据
-    console.log('📋 Loading periods...')
-    await this.loadPeriods()
-    console.log(`✅ Periods loaded: ${this.periodsCache.length}`)
+    const periodsLoaded = await this.loadPeriods()
+    const tasksLoaded = await this.loadAllTasks()
     
-    console.log('📋 Loading tasks...')
-    await this.loadAllTasks()
-    console.log(`✅ Tasks loaded into ${this.tasksCache.size} groups`)
+    if (!periodsLoaded || !tasksLoaded) {
+      console.error('[TaskService] Failed to initialize - some data could not be loaded')
+      // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
+      return false
+    }
+    
+    console.log('[TaskService] Successfully initialized with', this.periodsCache.length, 'periods and', this.tasksCache.size, 'task groups')
     
     // 暂时禁用实时订阅，排查问题
     // setTimeout(() => {
     //   this.subscribeToChanges()
     // }, 1000)
     
-    console.log('🎉 ========== TaskService.initialize COMPLETE ==========\n')
+    return true
   }
 
   /**
    * 加载所有工作流期间
    */
-  private async loadPeriods() {
-    const { data, error } = await supabase
-      .from('roleplay_workflow_periods')
-      .select('*')
-      .order('display_order')
+  private async loadPeriods(retryCount = 0): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('roleplay_workflow_periods')
+        .select('*')
+        .order('display_order')
 
-    if (error) {
-      console.error('Error loading periods:', error)
-      return
+      if (error) {
+        throw error
+      }
+
+      this.periodsCache = data || []
+      return true
+    } catch (error: any) {
+      console.error('Error loading periods:', {
+        message: error.message || 'Unknown error',
+        details: error.toString(),
+        hint: error.hint || '',
+        code: error.code || ''
+      })
+      
+      // 如果是网络错误且还有重试次数，则重试
+      if (retryCount < 3 && (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION'))) {
+        console.log(`Retrying load periods (attempt ${retryCount + 1}/3)...`)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // 递增延迟
+        return this.loadPeriods(retryCount + 1)
+      }
+      
+      return false
     }
-
-    this.periodsCache = data || []
   }
 
   /**
    * 加载所有任务
    */
-  private async loadAllTasks() {
-    console.log('\n========== TaskService.loadAllTasks START ==========')
-    
-    // 先检查用户认证状态
-    const { data: { user } } = await supabase.auth.getUser()
-    console.log('1. Current user:', user?.email)
-    
-    const { data, error } = await supabase
-      .from('roleplay_tasks')
-      .select('*')
-      .order('sort_order')
+  private async loadAllTasks(retryCount = 0): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('roleplay_tasks')
+        .select('*')
+        .order('sort_order')
 
-    if (error) {
-      console.error('2. ERROR loading tasks:', error)
-      return
+      if (error) {
+        throw error
+      }
+
+      // 按期间组织任务
+      const tasksByPeriod = new Map<string, DatabaseTask[]>()
+      
+      data?.forEach((task) => {
+        // 根据is_floating字段决定任务分组
+        let periodId: string
+        
+        if (task.is_floating === true) {
+          periodId = 'floating'
+        } else if (task.period_id) {
+          periodId = task.period_id
+        } else {
+          // 如果没有period_id且不是floating，跳过此任务
+          return
+        }
+        
+        if (!tasksByPeriod.has(periodId)) {
+          tasksByPeriod.set(periodId, [])
+        }
+        tasksByPeriod.get(periodId)!.push(task)
+      })
+
+      this.tasksCache = tasksByPeriod
+      return true
+    } catch (error: any) {
+      console.error('Error loading tasks:', {
+        message: error.message || 'Unknown error',
+        details: error.toString(),
+        hint: error.hint || '',
+        code: error.code || ''
+      })
+      
+      // 如果是网络错误且还有重试次数，则重试
+      if (retryCount < 3 && (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION'))) {
+        console.log(`Retrying load tasks (attempt ${retryCount + 1}/3)...`)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
+        return this.loadAllTasks(retryCount + 1)
+      }
+      
+      return false
     }
-    
-    console.log('2. Database query successful')
-    console.log('   - Total tasks:', data?.length)
-    console.log('   - Floating tasks:', data?.filter(t => t.is_floating === true).map(t => ({
-      id: t.id,
-      title: t.title,
-      is_floating: t.is_floating,
-      period_id: t.period_id
-    })))
-
-    // 按期间组织任务
-    const tasksByPeriod = new Map<string, DatabaseTask[]>()
-    
-    console.log('3. Organizing tasks by period...')
-    let floatingCount = 0
-    let periodCount = 0
-    
-    data?.forEach((task, index) => {
-      // 根据is_floating字段决定任务分组
-      let periodId: string
-      
-      if (task.is_floating === true) {
-        periodId = 'floating'
-        floatingCount++
-        console.log(`   - Task ${index}: ${task.id} -> floating (is_floating=${task.is_floating})`)
-      } else if (task.period_id) {
-        periodId = task.period_id
-        periodCount++
-      } else {
-        // 如果没有period_id且不是floating，可能是数据问题
-        console.warn(`   - Task ${index}: ${task.id} -> SKIPPED (no period_id and not floating)`)
-        return // 跳过此任务
-      }
-      
-      if (!tasksByPeriod.has(periodId)) {
-        tasksByPeriod.set(periodId, [])
-      }
-      tasksByPeriod.get(periodId)!.push(task)
-    })
-
-    console.log('4. Task organization complete:')
-    console.log(`   - Floating tasks: ${floatingCount}`)
-    console.log(`   - Period tasks: ${periodCount}`)
-    console.log(`   - Cache keys: ${Array.from(tasksByPeriod.keys()).join(', ')}`)
-    
-    // 详细打印floating组的内容
-    const floatingGroup = tasksByPeriod.get('floating') || []
-    console.log(`5. Floating group details (${floatingGroup.length} tasks):`)
-    floatingGroup.forEach(task => {
-      console.log(`   - ${task.id}: ${task.title} (role: ${task.role_code})`)
-    })
-
-    this.tasksCache = tasksByPeriod
-    console.log('========== TaskService.loadAllTasks END ==========\n')
   }
 
   /**
@@ -255,6 +255,22 @@ class TaskService {
   }
 
   /**
+   * 将英文的 submission_type 映射为中文
+   */
+  private mapSubmissionTypeToChinese(submissionType: string | null): '拍照' | '录音' | '记录' | '列表' | null {
+    if (!submissionType) return null
+    
+    const mapping: Record<string, '拍照' | '录音' | '记录' | '列表'> = {
+      'photo': '拍照',
+      'audio': '录音',
+      'text': '记录',
+      'list': '列表'
+    }
+    
+    return mapping[submissionType] || null
+  }
+
+  /**
    * 转换数据库任务到应用格式
    */
   private convertTask(dbTask: DatabaseTask): TaskTemplate {
@@ -269,11 +285,11 @@ class TaskService {
             dbTask.role_code === 'chef' ? 'Chef' : 'DutyManager',
       department: department as '前厅' | '后厨',
       isNotice: dbTask.is_notice || false,
-      uploadRequirement: dbTask.submission_type as any,
+      uploadRequirement: this.mapSubmissionTypeToChinese(dbTask.submission_type),
       isFloating: dbTask.is_floating || false,
       floatingType: dbTask.floating_type as any,
       prerequisiteTrigger: dbTask.prerequisite_trigger as any,
-      linkedTasks: dbTask.linked_tasks,
+      linkedTasks: dbTask.linked_tasks || undefined,
       autoGenerated: dbTask.auto_generated || false
     }
   }
@@ -318,36 +334,12 @@ class TaskService {
    * 获取浮动任务
    */
   getFloatingTasks(role?: string): TaskTemplate[] {
-    console.log('\n========== TaskService.getFloatingTasks START ==========')
-    console.log('1. Role filter:', role)
-    console.log('2. Cache status:')
-    console.log(`   - Total cache keys: ${this.tasksCache.size}`)
-    console.log(`   - Has 'floating' key: ${this.tasksCache.has('floating')}`)
-    
     const floatingTasks = this.tasksCache.get('floating') || []
-    console.log(`3. Floating tasks from cache: ${floatingTasks.length} tasks`)
     
-    if (floatingTasks.length > 0) {
-      console.log('4. Raw floating tasks:')
-      floatingTasks.forEach(task => {
-        console.log(`   - ${task.id}: ${task.title} (role: ${task.role_code}, is_floating: ${task.is_floating})`)
-      })
-    }
+    const result = floatingTasks
+      .filter(t => !role || t.role_code === role.toLowerCase())
+      .map(t => this.convertTask(t))
     
-    const filteredTasks = floatingTasks.filter(t => !role || t.role_code === role.toLowerCase())
-    console.log(`5. After role filter: ${filteredTasks.length} tasks`)
-    
-    const result = filteredTasks.map(t => this.convertTask(t))
-    console.log(`6. After conversion: ${result.length} tasks`)
-    
-    if (result.length > 0) {
-      console.log('7. Converted tasks:')
-      result.forEach(task => {
-        console.log(`   - ${task.id}: ${task.title} (role: ${task.role}, isFloating: ${task.isFloating})`)
-      })
-    }
-    
-    console.log('========== TaskService.getFloatingTasks END ==========\n')
     return result
   }
 

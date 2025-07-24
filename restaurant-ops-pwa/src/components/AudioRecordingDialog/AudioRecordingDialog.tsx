@@ -1,5 +1,5 @@
 // AudioRecordingDialog.tsx - Component for recording audio and converting to text for task evidence
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -36,7 +36,7 @@ interface AudioRecordingDialogProps {
 export default function AudioRecordingDialog({
   open,
   taskName,
-  taskId,
+  // taskId,
   onClose,
   onSubmit
 }: AudioRecordingDialogProps) {
@@ -46,7 +46,7 @@ export default function AudioRecordingDialog({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string>('')
   const [transcription, setTranscription] = useState('')
-  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [isTranscribing] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [sampleContent, setSampleContent] = useState<string>('')
   
@@ -461,7 +461,7 @@ export default function AudioRecordingDialog({
         </Button>
       </DialogActions>
       
-      <style jsx global>{`
+      <style>{`
         @keyframes pulse {
           0% {
             opacity: 1;

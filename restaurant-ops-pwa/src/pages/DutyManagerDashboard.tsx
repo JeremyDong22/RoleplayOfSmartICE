@@ -38,33 +38,139 @@ interface DutyManagerState {
   isWaitingForTrigger: boolean
   currentTrigger?: 'last-customer-left-lunch' | 'last-customer-left-dinner'
   targetPeriod?: WorkflowPeriod  // 保存触发任务所属的时段
+  isInClosingPeriod?: boolean // 新增：记录是否处于closing状态
 }
 
 const DutyManagerDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const { currentTrigger, addSubmission, clearTrigger, reviewStatus } = useDutyManager()
+  const { currentTrigger, addSubmission, clearTrigger, reviewStatus, submissions } = useDutyManager()
   const [testTime, setTestTime] = useState<Date | null>(null)
   const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
-  const [state, setState] = useState<DutyManagerState>({
-    activeTasks: [],
-    completedTaskIds: [],
-    taskStatuses: {},
-    noticeComments: [],
-    isWaitingForTrigger: true,
-    currentTrigger: undefined,
-  })
+  
+  // 从localStorage恢复状态
+  const loadSavedState = (): DutyManagerState => {
+    try {
+      const savedState = localStorage.getItem('dutyManagerDashboardState')
+      if (savedState) {
+        const parsed = JSON.parse(savedState)
+        console.log('[DutyManagerDashboard] Loading saved state:', parsed)
+        
+        // 恢复日期对象
+        if (parsed.taskStatuses) {
+          Object.keys(parsed.taskStatuses).forEach(key => {
+            if (parsed.taskStatuses[key].completedAt) {
+              parsed.taskStatuses[key].completedAt = new Date(parsed.taskStatuses[key].completedAt)
+            }
+          })
+        }
+        if (parsed.noticeComments) {
+          parsed.noticeComments.forEach((comment: any) => {
+            comment.timestamp = new Date(comment.timestamp)
+          })
+        }
+        
+        // 如果有保存的目标时段和任务，恢复完整的任务数据
+        if (parsed.targetPeriod && parsed.activeTasks && parsed.activeTasks.length > 0) {
+          const targetPeriod = workflowPeriods.find(p => p.id === parsed.targetPeriod.id)
+          if (targetPeriod) {
+            const dutyTasks = (targetPeriod.tasks as any).dutyManager || []
+            const fullTasks = parsed.activeTasks.map((savedTask: any) => {
+              return dutyTasks.find((task: any) => task.id === savedTask.id) || savedTask
+            }).filter(Boolean)
+            
+            const restoredState = {
+              ...parsed,
+              activeTasks: fullTasks,
+              targetPeriod: targetPeriod,
+              isWaitingForTrigger: false, // 确保设置为false，因为有激活的任务
+            }
+            console.log('[DutyManagerDashboard] Restored state with full tasks:', restoredState)
+            return restoredState
+          }
+        }
+        
+        // 确保恢复的状态有正确的isWaitingForTrigger值
+        if (parsed.activeTasks && parsed.activeTasks.length > 0) {
+          parsed.isWaitingForTrigger = false
+        }
+        
+        console.log('[DutyManagerDashboard] Final restored state:', parsed)
+        return parsed
+      }
+    } catch (e) {
+      console.error('[DutyManagerDashboard] Failed to load saved state:', e)
+    }
+    
+    return {
+      activeTasks: [],
+      completedTaskIds: [],
+      taskStatuses: {},
+      noticeComments: [],
+      isWaitingForTrigger: true,
+      currentTrigger: undefined,
+    }
+  }
+  
+  const [state, setState] = useState<DutyManagerState>(loadSavedState)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   // 获取当前时段
   useEffect(() => {
     const period = getCurrentPeriod(testTime || undefined)
     setCurrentPeriod(period)
   }, [testTime])
+  
+  // 标记初始化完成
+  useEffect(() => {
+    setIsInitialized(true)
+  }, [])
+  
+  // 保存状态到localStorage
+  useEffect(() => {
+    // 只在初始化后保存，避免保存初始状态
+    if (!isInitialized) return
+    
+    // 只在有意义的状态改变时保存
+    if (state.activeTasks.length > 0 || !state.isWaitingForTrigger) {
+      const stateToSave = {
+        ...state,
+        // 保存简化的任务信息，恢复时会重新获取完整数据
+        activeTasks: state.activeTasks.map(task => ({
+          id: task.id,
+          title: task.title,
+        })),
+        // 保存简化的targetPeriod信息
+        targetPeriod: state.targetPeriod ? {
+          id: state.targetPeriod.id,
+          displayName: state.targetPeriod.displayName,
+        } : undefined,
+      }
+      console.log('[DutyManagerDashboard] Saving state:', stateToSave)
+      localStorage.setItem('dutyManagerDashboardState', JSON.stringify(stateToSave))
+    } else if (state.isWaitingForTrigger && state.activeTasks.length === 0) {
+      // 如果回到等待状态，清除保存的状态
+      console.log('[DutyManagerDashboard] Clearing saved state - back to waiting')
+      localStorage.removeItem('dutyManagerDashboardState')
+    }
+  }, [state, isInitialized])
 
   // Note: CLEAR_ALL_STORAGE functionality has been removed as we're focusing on 
   // cross-device communication via Supabase Realtime
 
+  // 监听审核状态变化，实时更新UI
+  useEffect(() => {
+    // 当审核状态变化时，触发组件重新渲染
+    // reviewStatus 是从 DutyManagerContext 中获取的，会通过实时服务自动更新
+    console.log('[DutyManagerDashboard] Review status updated:', reviewStatus)
+  }, [reviewStatus])
+
   // 检查是否有触发的任务
   useEffect(() => {
+    // 如果已经有激活的任务（从localStorage恢复），不需要重新处理trigger
+    if (state.activeTasks.length > 0 && !state.isWaitingForTrigger) {
+      return
+    }
+    
     if (!currentTrigger) return
 
     // 根据触发类型获取对应的任务
@@ -101,9 +207,10 @@ const DutyManagerDashboard: React.FC = () => {
         isWaitingForTrigger: false,
         currentTrigger: currentTrigger.type,
         targetPeriod: targetPeriod,  // 保存目标时段
+        isInClosingPeriod: targetPeriodId === 'closing', // 记录是否进入closing状态
       }))
     }
-  }, [currentTrigger])
+  }, [currentTrigger, state.activeTasks.length, state.isWaitingForTrigger])
 
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {
@@ -126,8 +233,7 @@ const DutyManagerDashboard: React.FC = () => {
       // 立即提交到Context，任务进入待审核状态
       const task = state.activeTasks.find(t => t.id === taskId)
       if (task) {
-      // console.log('DutyManager submitting task:', taskId, 'with data:', data)
-      // console.log('Is resubmit?', isResubmit)
+      console.log('[DutyManager] Submitting task:', taskId)
       
       // 处理照片数据格式
       let photos = []
@@ -139,9 +245,17 @@ const DutyManagerDashboard: React.FC = () => {
       const userId = 'mock-user-' + Date.now()
       
       // 检查是否有照片组数据（新格式）
-      if (data.photoGroups && Array.isArray(data.photoGroups)) {
+      // 注意：PhotoSubmissionDialog 返回的数据可能是嵌套的
+      // 数据可能在 data.photoGroups 或 data.evidence.photoGroups 中
+      const photoGroupsData = data.photoGroups || (data.evidence && data.evidence.photoGroups) || null
+      
+      console.log('[DutyManager] Raw submission data:', data)
+      console.log('[DutyManager] Evidence data:', data.evidence)
+      console.log('[DutyManager] PhotoGroups data:', photoGroupsData)
+      
+      if (photoGroupsData && Array.isArray(photoGroupsData)) {
         // 上传每个照片组的照片
-        for (const group of data.photoGroups) {
+        for (const group of photoGroupsData) {
           const uploadedUrls = []
           for (const photo of group.photos || []) {
             if (photo && photo.startsWith('data:')) {
@@ -166,11 +280,21 @@ const DutyManagerDashboard: React.FC = () => {
         }
         photoGroups = uploadedPhotoGroups
         photos = uploadedPhotoUrls
-      } else if (data.evidence && Array.isArray(data.evidence)) {
+        console.log('[DutyManager] After processing photoGroups format:', {
+          photoGroups,
+          photos,
+          uploadedPhotoGroups,
+          uploadedPhotoUrls
+        })
+      } else if ((data.evidence && Array.isArray(data.evidence)) || 
+                 (data.evidence && data.evidence.evidence && Array.isArray(data.evidence.evidence))) {
+        // 处理两种情况：直接的 evidence 数组，或嵌套在 data.evidence.evidence 中的数组
+        const evidenceArray = Array.isArray(data.evidence) ? data.evidence : data.evidence.evidence
+        console.log('[DutyManager] Processing evidence format:', evidenceArray)
         // 旧格式：evidence 是一个数组，需要转换为照片组
         const groupedByIndex: { [key: number]: any[] } = {}
         
-        data.evidence.forEach((item: any) => {
+        evidenceArray.forEach((item: any) => {
           const sampleIndex = item.sampleIndex || 0
           if (!groupedByIndex[sampleIndex]) {
             groupedByIndex[sampleIndex] = []
@@ -250,6 +374,15 @@ const DutyManagerDashboard: React.FC = () => {
           sampleIndex: 0,
           comment: '',
         }]
+      } else {
+        // 没有找到任何照片数据
+        console.warn('[DutyManager] No photo data found in submission:', {
+          hasPhotoGroups: !!data.photoGroups,
+          hasEvidence: !!data.evidence,
+          hasPhotos: !!data.photos,
+          dataKeys: Object.keys(data),
+          fullData: data
+        })
       }
       
       const submission = {
@@ -264,23 +397,55 @@ const DutyManagerDashboard: React.FC = () => {
         },
       }
       
-      // console.log('Formatted submission:', submission)
-      // console.log('Calling addSubmission...')
+      console.log('[DutyManager] Photo upload complete, sending submission')
+      console.log('[DutyManager] Submission data:', {
+        taskId: submission.taskId,
+        photoGroups: submission.content.photoGroups,
+        photos: submission.content.photos,
+        photoGroupsCount: submission.content.photoGroups?.length,
+        photosCount: submission.content.photos?.length
+      })
+      
+      // 保存到数据库
+      try {
+        const { submitTaskRecord } = await import('../services/taskRecordService')
+        const currentDate = new Date().toISOString().split('T')[0]
+        
+        await submitTaskRecord({
+          restaurant_id: 'default-restaurant-id', // TODO: 从context获取
+          task_id: task.id,
+          date: currentDate,
+          period_id: task.timeSlot || 'closing',
+          status: 'submitted',
+          submission_type: photos.length > 0 ? 'photo' : 'text',
+          text_content: submission.content.text,
+          photo_urls: photos,
+          submission_metadata: {
+            photoGroups: photoGroups,
+            amount: submission.content.amount
+          }
+        })
+        console.log('[DutyManager] Task saved to database')
+      } catch (dbError) {
+        console.error('[DutyManager] Failed to save to database:', dbError)
+        // 继续执行，不影响本地功能
+      }
+      
       addSubmission(submission)
-      // console.log('addSubmission called')
       }
     } catch (error) {
       console.error('Error in handleTaskComplete:', error)
       alert('照片上传失败，请检查网络连接并重试')
       // 回滚状态
-      setState(prev => ({
-        ...prev,
-        completedTaskIds: prev.completedTaskIds.filter(id => id !== taskId),
-        taskStatuses: {
-          ...prev.taskStatuses,
-          [taskId]: undefined
+      setState(prev => {
+        const newTaskStatuses = { ...prev.taskStatuses }
+        delete newTaskStatuses[taskId]
+        return {
+          ...prev,
+          completedTaskIds: prev.completedTaskIds.filter(id => id !== taskId),
+          taskStatuses: newTaskStatuses
         }
-      }))
+      })
     }
   }
 
@@ -320,8 +485,11 @@ const DutyManagerDashboard: React.FC = () => {
           targetPeriod: undefined,
           completedTaskIds: [],
           taskStatuses: {},
-          noticeComments: []
+          noticeComments: [],
+          isInClosingPeriod: false,
         }))
+        // 清除localStorage中的持久化状态
+        localStorage.removeItem('dutyManagerDashboardState')
       }, 2000) // 延迟2秒让用户看到审核通过状态
     }
   }, [reviewStatus, state.activeTasks])
@@ -332,6 +500,7 @@ const DutyManagerDashboard: React.FC = () => {
     localStorage.removeItem('dutyManagerTrigger')
     localStorage.removeItem('dutyManagerSubmissions')
     localStorage.removeItem('dutyManagerReviewStatus')
+    localStorage.removeItem('dutyManagerDashboardState')
     
     // 清除Context中的数据
     clearTrigger()
@@ -435,6 +604,16 @@ const DutyManagerDashboard: React.FC = () => {
                   onComment={handleNoticeComment}
                   hideTimer={true}  // 值班经理不显示倒计时
                   reviewStatus={reviewStatus}  // 传递审核状态
+                  previousSubmissions={submissions.reduce((acc, sub) => {
+                    // 将submissions转换为TaskCountdown期望的格式
+                    acc[sub.taskId] = {
+                      photoGroups: sub.content.photoGroups || [],
+                      photos: sub.content.photos || [],
+                      text: sub.content.text,
+                      amount: sub.content.amount
+                    }
+                    return acc
+                  }, {} as { [taskId: string]: any })}
                 />
               ) : (
                 <Paper sx={{ p: 3, mb: 3 }}>
@@ -485,8 +664,8 @@ const DutyManagerDashboard: React.FC = () => {
               taskStatuses={Object.entries(state.taskStatuses).map(([taskId, status]) => ({
                 taskId,
                 completed: state.completedTaskIds.includes(taskId),
-                completedAt: status.completedAt,
-                overdue: status.overdue
+                completedAt: status?.completedAt,
+                overdue: status?.overdue || false
               }))}
               completedTaskIds={state.completedTaskIds}
               missingTasks={[]}

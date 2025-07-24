@@ -2,7 +2,7 @@
 // Updated: Made photo description field optional - users can now save photos without entering a description
 // Updated: Confirmed no limit on number of photos that can be uploaded - users can upload unlimited photos
 // Updated: Photo count is independent from example photos shown - examples are just for reference
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -13,10 +13,10 @@ import {
   TextField,
   IconButton,
   Paper,
-  Grid,
-  Fab,
-  CircularProgress
+    Fab,
+  // CircularProgress
 } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import {
   CameraAlt as CameraIcon,
   Close as CloseIcon,
@@ -64,7 +64,7 @@ const getTaskSampleDir = (taskName: string): string => {
 export default function PhotoSubmissionDialog({
   open,
   taskName,
-  taskId,
+  // taskId,
   onClose,
   onSubmit
 }: PhotoSubmissionDialogProps) {
@@ -74,7 +74,7 @@ export default function PhotoSubmissionDialog({
   const [currentPhoto, setCurrentPhoto] = useState<string>('')
   const [currentDescription, setCurrentDescription] = useState('')
   const [showOverview, setShowOverview] = useState(false)
-  const [isCapturing, setIsCapturing] = useState(false)
+  // const [isCapturing, setIsCapturing] = useState(false)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -158,14 +158,14 @@ export default function PhotoSubmissionDialog({
         ctx.drawImage(video, 0, 0)
         const photoData = canvas.toDataURL('image/jpeg', 0.8)
         setCurrentPhoto(photoData)
-        setIsCapturing(false)
+        // setIsCapturing(false)
       }
     }
   }
 
   const retakePhoto = () => {
     setCurrentPhoto('')
-    setIsCapturing(true)
+    // setIsCapturing(true)
   }
 
   const saveCurrentEvidence = () => {
@@ -179,7 +179,7 @@ export default function PhotoSubmissionDialog({
       // Reset for next photo
       setCurrentPhoto('')
       setCurrentDescription('')
-      setIsCapturing(true)
+      // setIsCapturing(true)
       
       // Move to next sample if available
       if (currentSampleIndex < samples.length - 1) {

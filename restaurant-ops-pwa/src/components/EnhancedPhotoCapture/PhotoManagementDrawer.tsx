@@ -20,17 +20,17 @@ import {
   Divider,
   Chip,
   Alert,
-  Grid,
-  Paper,
+  // Paper,
   LinearProgress
 } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import {
   Close as CloseIcon,
   Delete as DeleteIcon,
-  CameraAlt,
+  // CameraAlt,
   CloudUpload,
   CheckCircle,
-  Warning
+  // Warning
 } from '@mui/icons-material'
 import type { PhotoManagementDrawerProps } from './types'
 
@@ -40,7 +40,7 @@ export const PhotoManagementDrawer: React.FC<PhotoManagementDrawerProps> = ({
   samples,
   onClose,
   onDeletePhoto,
-  onRetakePhoto,
+  // onRetakePhoto,
   onSubmitAll
 }) => {
   // Group photos by sample

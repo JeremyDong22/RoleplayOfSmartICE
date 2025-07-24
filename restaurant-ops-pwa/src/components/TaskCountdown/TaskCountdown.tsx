@@ -62,12 +62,17 @@ import PendingActionsIcon from '@mui/icons-material/PendingActions'
 import { specialTaskTheme } from '../../theme/specialTaskTheme'
 
 // Swipeable card component for last customer confirmation - iPhone-style slide to unlock
-const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void; text?: string }> = ({ onConfirm, text = '预打烊完成，安排值班人员' }) => {
+const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void; text?: string; isConfirmed?: boolean }> = ({ onConfirm, text = '预打烊完成，安排值班人员', isConfirmed: externalIsConfirmed = false }) => {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
-  const [isConfirmed, setIsConfirmed] = useState(false)
+  const [isConfirmed, setIsConfirmed] = useState(externalIsConfirmed)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const startXRef = React.useRef(0)
+  
+  // Update isConfirmed when external prop changes
+  useEffect(() => {
+    setIsConfirmed(externalIsConfirmed)
+  }, [externalIsConfirmed])
   
   const [containerWidth, setContainerWidth] = useState(300)
   const SWIPE_THRESHOLD = 0.4 // Swipe 40% to confirm
@@ -329,6 +334,7 @@ interface TaskCountdownProps {
       reason?: string
     }
   }
+  previousSubmissions?: { [taskId: string]: any } // 新增：支持传入之前的提交数据
 }
 
 export const TaskCountdown: React.FC<TaskCountdownProps> = ({
@@ -345,7 +351,8 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   onAdvancePeriod,
   onReviewReject,
   hideTimer = false,
-  reviewStatus = {}
+  reviewStatus = {},
+  previousSubmissions = {}
 }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const [currentTime, setCurrentTime] = useState<Date>(testTime || new Date())
@@ -382,7 +389,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     startIndex: 0,
     watchSlides: true,
     watchResize: true,
-    speed: 25,  // Increased speed for snappier animations
+    // speed: 25,  // Increased speed for snappier animations
     duration: 200  // Faster animation duration (in ms)
   })
   
@@ -390,22 +397,6 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const regularTasks = Array.isArray(tasks) ? tasks.filter(t => t && !t.isNotice) : []
   const notices = Array.isArray(tasks) ? tasks.filter(t => t && t.isNotice) : []
   
-  // Debug: Log received tasks
-  useEffect(() => {
-    console.log('\n========== TaskCountdown Props ==========')
-    console.log('1. All tasks count:', tasks?.length || 0)
-    console.log('2. Regular tasks:', regularTasks.length)
-    console.log('3. Notices:', notices.length)
-    const floatingInTasks = tasks?.filter(t => t.isFloating) || []
-    console.log('4. Floating tasks in current tasks:', floatingInTasks.length)
-    if (floatingInTasks.length > 0) {
-      console.log('5. Floating tasks details:')
-      floatingInTasks.forEach(task => {
-        console.log(`   - ${task.id}: ${task.title} (isFloating: ${task.isFloating})`)
-      })
-    }
-    console.log('=========================================\n')
-  }, [tasks, regularTasks.length, notices.length])
   
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => (completedTaskIds || []).includes(task.id))
   
@@ -975,12 +966,19 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
 
       {/* Swipe Card for Lunch Closing Period (Manager Only) */}
       {period?.id === 'lunch-closing' && onLastCustomerLeftLunch && (
-        <SwipeableLastCustomerCard onConfirm={onLastCustomerLeftLunch} text="收市完成安排值班人员" />
+        <SwipeableLastCustomerCard 
+          onConfirm={onLastCustomerLeftLunch} 
+          text="收市完成安排值班人员"
+          isConfirmed={localStorage.getItem('lunch-closing-confirmed') === 'true'}
+        />
       )}
       
       {/* Swipe Card for Pre-closing Period (Manager Only) */}
       {period?.id === 'pre-closing' && onLastCustomerLeft && (
-        <SwipeableLastCustomerCard onConfirm={onLastCustomerLeft} />
+        <SwipeableLastCustomerCard 
+          onConfirm={onLastCustomerLeft}
+          isConfirmed={localStorage.getItem('pre-closing-confirmed') === 'true'}
+        />
       )}
 
       {/* Closing Complete Button - Shows in same position as swipe card */}
@@ -1082,6 +1080,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           open={photoDialogOpen}
           taskName={activeTask.title}
           taskId={activeTask.id}
+          initialPhotoGroups={previousSubmissions[activeTask.id]?.photoGroups} // 传递之前的照片组
           onClose={() => {
             setPhotoDialogOpen(false)
             setActiveTask(null)

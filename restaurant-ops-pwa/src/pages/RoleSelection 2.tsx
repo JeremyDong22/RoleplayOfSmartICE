@@ -1,6 +1,7 @@
 // Role selection page for choosing between Manager and Chef
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, Paper, Button, Grid } from '@mui/material'
+import { Box, Container, Typography, Paper, Button } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 
@@ -37,7 +38,7 @@ export const RoleSelection = () => {
         </Typography>
 
         <Grid container spacing={4} sx={{ maxWidth: 800 }}>
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid size ={{ xs: 12, md: 6 }}>
             <Paper
               elevation={3}
               sx={{
@@ -86,7 +87,7 @@ export const RoleSelection = () => {
             </Paper>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid size ={{ xs: 12, md: 6 }}>
             <Paper
               elevation={3}
               sx={{

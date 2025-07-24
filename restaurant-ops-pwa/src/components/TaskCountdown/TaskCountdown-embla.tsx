@@ -45,7 +45,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   completedTaskIds,
   testTime,
   onComplete,
-  onComment,
+  // onComment,
   onLastCustomerLeft,
   onClosingComplete,
   onAdvancePeriod
@@ -306,13 +306,13 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                         )}
                         
                         {/* Required Evidence */}
-                        {task.requiredEvidence && task.requiredEvidence.length > 0 && (
+                        {task.uploadRequirement && (
                           <Box mb={2}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                               需要提交 Required:
                             </Typography>
                             <Box display="flex" gap={1} flexWrap="wrap">
-                              {task.requiredEvidence.map((evidence, idx) => (
+                              {[task.uploadRequirement].map((evidence, idx) => (
                                 <Chip
                                   key={idx}
                                   size="small"

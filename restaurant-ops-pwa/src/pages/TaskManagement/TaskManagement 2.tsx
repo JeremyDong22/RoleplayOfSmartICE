@@ -1,7 +1,8 @@
 // Task Management page component for staff to view and complete tasks
 import type { FC } from 'react'
 
-import { Box, Container, Typography, Grid, Paper } from '@mui/material'
+import { Box, Container, Typography, Paper } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import { CountdownTimer } from '../../components/Timer/CountdownTimer'
 
 export const TaskManagement: FC = () => {
@@ -16,11 +17,11 @@ export const TaskManagement: FC = () => {
       </Typography>
       
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+        <Grid size ={{ xs: 12, md: 6 }}>
           <CountdownTimer currentTask={null} onTaskAlert={handleTaskAlert} />
         </Grid>
         
-        <Grid item xs={12} md={6}>
+        <Grid size ={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h5" gutterBottom>
               我的任务 My Tasks

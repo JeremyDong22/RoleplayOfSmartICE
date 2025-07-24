@@ -13,11 +13,11 @@ import {
   IconButton,
   Collapse,
   Chip,
-  Grid,
   FormControl,
   InputLabel,
   Paper
 } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import {
   Info as InfoIcon,
   ExpandMore,

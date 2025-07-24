@@ -1,7 +1,8 @@
 // Simple dashboard without authentication for testing
 // Updated to use MUI v7 Grid component with size prop
 import { useState, useEffect } from 'react'
-import { Box, Container, Typography, Paper, List, ListItem, ListItemText, Chip, AppBar, Toolbar, Grid } from '@mui/material'
+import { Box, Container, Typography, Paper, List, ListItem, ListItemText, Chip, AppBar, Toolbar } from '@mui/material'
+import Grid from '@mui/material/Grid'
 import { CountdownTimer } from '../components/Timer/CountdownTimer'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'

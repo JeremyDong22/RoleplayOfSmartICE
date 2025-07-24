@@ -36,56 +36,34 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Debug state changes
-  useEffect(() => {
-    if (floatingTasks.length > 0 || !isLoading) {
-      console.log('\n========== TaskDataContext State Update ==========')
-      console.log('1. isLoading:', isLoading)
-      console.log('2. floatingTasks count:', floatingTasks.length)
-      if (floatingTasks.length > 0) {
-        console.log('3. floatingTasks details:')
-        floatingTasks.forEach(task => {
-          console.log(`   - ${task.id}: ${task.title} (role: ${task.role})`)
-        })
-      }
-      console.log('=================================================\n')
-    }
-  }, [floatingTasks, isLoading])
 
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true)
       setError(null)
       
-      console.log('\n🔄 ========== TaskDataContext.loadData START ==========')
-      console.log('1. Initializing task service...')
-      
       // 初始化任务服务
-      await taskService.initialize()
+      const initialized = await taskService.initialize()
       
-      console.log('2. Task service initialized, fetching data...')
+      if (!initialized) {
+        // 如果初始化失败，显示具体的错误信息
+        setError('无法连接到服务器，请检查网络连接。系统将在5秒后自动重试。')
+        // 5秒后自动重试
+        setTimeout(() => {
+          loadData()
+        }, 5000)
+        return
+      }
       
       // 获取数据
       const periods = taskService.getWorkflowPeriods()
-      console.log(`3. Loaded ${periods.length} periods`)
-      
       const floating = taskService.getFloatingTasks()
-      console.log(`4. Loaded ${floating.length} floating tasks`)
-      if (floating.length > 0) {
-        console.log('3. Floating task details:')
-        floating.forEach(task => {
-          console.log(`   - ${task.id}: ${task.title} (role: ${task.role})`)
-        })
-      }
       
-      console.log('4. Setting state...')
       setWorkflowPeriods(periods)
       setFloatingTasks(floating)
-      console.log('========== TaskDataContext.loadData END ==========\n')
       
       // 订阅更新
       const unsubscribeTasks = taskService.subscribe('tasks', (data) => {
-        console.log('Tasks subscription update received:', data)
         // 当任务更新时，重新获取所有数据
         const updatedPeriods = taskService.getWorkflowPeriods()
         const updatedFloating = taskService.getFloatingTasks()
@@ -93,10 +71,8 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
         // 防止空数据覆盖有效数据
         setFloatingTasks(prev => {
           if (updatedFloating.length > 0 || prev.length === 0) {
-            console.log('Updating floating tasks from subscription:', updatedFloating)
             return updatedFloating
           } else {
-            console.log('Skipping empty floating tasks update to preserve existing data')
             return prev
           }
         })
@@ -105,7 +81,6 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       })
       
       const unsubscribePeriods = taskService.subscribe('periods', (data) => {
-        console.log('Periods subscription update received:', data)
         setWorkflowPeriods(data)
       })
       
@@ -115,9 +90,9 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
         unsubscribePeriods()
       }
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load task data:', err)
-      setError('加载任务数据失败，请刷新页面重试')
+      setError(`加载任务数据失败: ${err.message || '未知错误'}`)
     } finally {
       setIsLoading(false)
     }
@@ -167,22 +142,53 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
         minHeight="100vh"
         flexDirection="column"
         gap={2}
+        sx={{ backgroundColor: '#f5f5f5', padding: 3 }}
       >
-        <Box color="error.main">{error}</Box>
         <Box 
-          component="button" 
-          onClick={refresh}
           sx={{ 
-            px: 2, 
-            py: 1, 
-            bgcolor: 'primary.main',
-            color: 'white',
-            border: 'none',
-            borderRadius: 1,
-            cursor: 'pointer'
+            backgroundColor: 'white',
+            padding: 4,
+            borderRadius: 2,
+            boxShadow: 2,
+            maxWidth: 500,
+            textAlign: 'center'
           }}
         >
-          重试
+          <Box 
+            component="h2" 
+            sx={{ 
+              color: 'error.main',
+              marginBottom: 2,
+              fontSize: '1.5rem'
+            }}
+          >
+            连接错误
+          </Box>
+          <Box sx={{ marginBottom: 3, color: 'text.secondary' }}>
+            {error}
+          </Box>
+          {error.includes('自动重试') ? (
+            <CircularProgress size={24} />
+          ) : (
+            <Box 
+              component="button" 
+              onClick={refresh}
+              sx={{ 
+                px: 2, 
+                py: 1, 
+                bgcolor: 'primary.main',
+                color: 'white',
+                border: 'none',
+                borderRadius: 1,
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: 'primary.dark'
+                }
+              }}
+            >
+              重试
+            </Box>
+          )}
         </Box>
       </Box>
     )
