@@ -236,8 +236,9 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           while (imgIdx <= 10) { // 每个sample最多10张图片
             try {
               const imagePath = `/task-samples/${sampleDir}/sample${sampleIndex}-${imgIdx}.jpg`
-              const imgResponse = await fetch(imagePath)
-              if (imgResponse.ok && imgResponse.headers.get('content-type')?.includes('image')) {
+              // 使用 HEAD 请求检查文件是否存在，避免 404 错误在控制台显示
+              const imgResponse = await fetch(imagePath, { method: 'HEAD' })
+              if (imgResponse.ok) {
                 sample.images.push(imagePath)
                 hasContent = true
               } else {
