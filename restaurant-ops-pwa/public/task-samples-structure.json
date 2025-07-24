@@ -1,0 +1,331 @@
+{
+  "值班经理": {
+    "8-闭店-安防闭店检查": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2.txt"
+      ]
+    },
+    "8-闭店-能源安全检查": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2.txt"
+      ]
+    },
+    "8-闭店-营业数据记录": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2.txt"
+      ]
+    }
+  },
+  "前厅": {
+    ".claude": {
+      "files": [
+        "settings.local.json"
+      ]
+    },
+    "1-开店-召开早会": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "1-开店-开店准备与设备检查": {
+      "files": [
+        "checklist.json"
+      ]
+    },
+    "2 - 开市寻店验收 - 卫生": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1-3.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2.txt",
+        "sample3-1.jpg",
+        "sample3-2.jpg",
+        "sample3.txt",
+        "sample4-1.jpg",
+        "sample4-2.jpg",
+        "sample4.txt",
+        "sample5-1.jpg",
+        "sample5-2.jpg",
+        "sample5-3.jpg",
+        "sample5.txt",
+        "sample6-1.jpg",
+        "sample6.txt",
+        "sample7-1.jpg",
+        "sample7-2.jpg",
+        "sample7-3.jpg",
+        "sample7-4.jpg",
+        "sample7.txt",
+        "sample8-1.jpg",
+        "sample8-2.jpg",
+        "sample8.txt"
+      ]
+    },
+    "2 - 开市寻店验收 - 物资准备": {
+      "files": [
+        "checklist.json"
+      ]
+    },
+    "4-餐后收市午市-安排值班人员": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "4-餐后收市午市-收市清洁检查": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1-3.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2.txt",
+        "sample3-1.jpg",
+        "sample3-2.jpg",
+        "sample3.txt",
+        "sample4-1.jpg",
+        "sample4-2.jpg",
+        "sample4.txt",
+        "sample5-1.jpg",
+        "sample5-2.jpg",
+        "sample5-3.jpg",
+        "sample5.txt",
+        "sample6-1.jpg",
+        "sample6.txt",
+        "sample7-1.jpg",
+        "sample7-2.jpg",
+        "sample7-3.jpg",
+        "sample7-4.jpg",
+        "sample7.txt",
+        "sample8-1.jpg",
+        "sample8-2.jpg",
+        "sample8.txt"
+      ]
+    },
+    "4-餐后收市午市-能源管理": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1.txt"
+      ]
+    },
+    "4-餐后收市午市-营业款核对": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1.txt"
+      ]
+    },
+    "5-餐前准备晚市-召开午会": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "5-餐前准备晚市-开市寻店验收 - 卫生": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1-3.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2.txt",
+        "sample3-1.jpg",
+        "sample3-2.jpg",
+        "sample3.txt",
+        "sample4-1.jpg",
+        "sample4-2.jpg",
+        "sample4.txt",
+        "sample5-1.jpg",
+        "sample5-2.jpg",
+        "sample5-3.jpg",
+        "sample5.txt",
+        "sample6-1.jpg",
+        "sample6.txt",
+        "sample7-1.jpg",
+        "sample7-2.jpg",
+        "sample7-3.jpg",
+        "sample7-4.jpg",
+        "sample7.txt",
+        "sample8-1.jpg",
+        "sample8-2.jpg",
+        "sample8.txt"
+      ]
+    },
+    "5-餐前准备晚市-开市寻店验收 - 物资准备": {
+      "files": [
+        "checklist.json"
+      ]
+    },
+    "7-预打烊晚市-值班安排": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "7-预打烊晚市-收市清洁检查": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1-3.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2.txt",
+        "sample3-1.jpg",
+        "sample3-2.jpg",
+        "sample3.txt",
+        "sample4-1.jpg",
+        "sample4-2.jpg",
+        "sample4.txt",
+        "sample5-1.jpg",
+        "sample5-2.jpg",
+        "sample5-3.jpg",
+        "sample5.txt",
+        "sample6-1.jpg",
+        "sample6.txt",
+        "sample7-1.jpg",
+        "sample7-2.jpg",
+        "sample7-3.jpg",
+        "sample7-4.jpg",
+        "sample7.txt",
+        "sample8-1.jpg",
+        "sample8-2.jpg",
+        "sample8.txt"
+      ]
+    },
+    "8-闭店-当日复盘总结": {
+      "files": [
+        "sample1.txt"
+      ]
+    }
+  },
+  "前厅特殊任务": {
+    "收货验货": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2-3.jpg",
+        "sample2-4.jpg",
+        "sample2.txt"
+      ]
+    }
+  },
+  "后厨": {
+    "1-开店-开店准备与设备检查": {
+      "files": [
+        "checklist.json"
+      ]
+    },
+    "2-餐前准备午市-开市巡店验收": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "2-餐前准备午市-收货验货": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2-3.jpg",
+        "sample2-4.jpg",
+        "sample2-5.jpg",
+        "sample2.txt",
+        "sample3-1.jpg",
+        "sample3.txt"
+      ]
+    },
+    "2-餐前准备午市-食品安全检查": {
+      "files": [
+        "sample1.txt",
+        "sample2.txt",
+        "sample3.txt"
+      ]
+    },
+    "4-餐后收市午市-收市清洁检查": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "5-餐前准备晚市-召开午会": {
+      "files": [
+        "sample1.txt"
+      ]
+    },
+    "5-餐前准备晚市-食材准备": {
+      "files": [
+        "sample1.txt",
+        "sample2.txt",
+        "sample3-1.jpg"
+      ]
+    },
+    "7-预打烊晚市-损耗称重": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2.txt"
+      ]
+    },
+    "7-预打烊晚市-收市清洁检查": {
+      "files": [
+        "sample0.txt",
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1-3.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2.txt",
+        "sample3-1.jpg",
+        "sample3-2.jpg",
+        "sample3.txt",
+        "sample4.txt",
+        "sample5.txt"
+      ]
+    },
+    "7-预打烊晚市-食材下单": {
+      "files": [
+        "sample1.txt",
+        "sample2.txt",
+        "sample3-1.jpg"
+      ]
+    }
+  },
+  "后厨特殊任务": {
+    "交割损耗称重": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1.txt"
+      ]
+    },
+    "收货验货": {
+      "files": [
+        "sample1-1.jpg",
+        "sample1-2.jpg",
+        "sample1.txt",
+        "sample2-1.jpg",
+        "sample2-2.jpg",
+        "sample2-3.jpg",
+        "sample2-4.jpg",
+        "sample2-5.jpg",
+        "sample2.txt"
+      ]
+    }
+  }
+}

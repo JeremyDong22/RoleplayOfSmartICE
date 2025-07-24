@@ -2,8 +2,10 @@
 // 实现三层界面结构：Sample列表 → 相机拍摄 → 照片组列表
 // 支持数据持久化，退出后再进入仍保留拍摄记录
 // 2025-01-22: 更新任务ID映射 - 添加lunch-closing-manager-2/3/4，删除lunch-duty-manager-1/2/3/4
+// 2025-01-25: 使用预生成的文件列表避免404错误
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { loadExistingFiles } from '../../utils/silentFileCheck'
 import {
   Dialog,
   DialogTitle,
@@ -211,60 +213,31 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       const loadSamples = async () => {
         const loadedSamples: Sample[] = []
         let sampleIndex = 1
+        let consecutiveEmpty = 0
         
-        while (sampleIndex <= 20) { // 最多检查20个samples
-          const sample: Sample = { images: [], text: '' }
-          let hasContent = false
+        while (sampleIndex <= 20 && consecutiveEmpty < 3) { // 最多检查20个samples，连续3个空的就停止
+          const files = await loadExistingFiles(sampleDir, sampleIndex)
           
-          // 加载文本 - 使用 HEAD 请求先检查存在性
-          try {
-            const textPath = `/task-samples/${sampleDir}/sample${sampleIndex}.txt`
-            const checkResponse = await fetch(textPath, { method: 'HEAD' })
-            if (checkResponse.ok) {
-              const textResponse = await fetch(textPath)
-              const textContent = await textResponse.text()
-              if (!textContent.includes('<!doctype html>')) {
-                sample.text = textContent.trim()
-                hasContent = true
+          if (files.textFile || files.imageFiles.length > 0) {
+            consecutiveEmpty = 0
+            const sample: Sample = { images: files.imageFiles, text: '' }
+            
+            // 加载文本内容
+            if (files.textFile) {
+              try {
+                const textResponse = await fetch(files.textFile)
+                const textContent = await textResponse.text()
+                if (!textContent.includes('<!doctype html>')) {
+                  sample.text = textContent.trim()
+                }
+              } catch (err) {
+                // 静默处理
               }
             }
-          } catch (err) {
-            // 静默失败 - 文件不存在是正常的
-          }
-          
-          // 加载图片 - 使用 Image 对象预加载，避免 fetch 的 404 错误
-          const imagePromises: Promise<boolean>[] = []
-          
-          const checkImage = (path: string): Promise<boolean> => {
-            return new Promise((resolve) => {
-              const img = new Image()
-              img.onload = () => resolve(true)
-              img.onerror = () => resolve(false)
-              img.src = path
-            })
-          }
-          
-          // 并行检查前10张可能的图片
-          for (let i = 1; i <= 10; i++) {
-            const imagePath = `/task-samples/${sampleDir}/sample${sampleIndex}-${i}.jpg`
-            imagePromises.push(
-              checkImage(imagePath).then(exists => {
-                if (exists) {
-                  sample.images.push(imagePath)
-                  hasContent = true
-                  return true
-                }
-                return false
-              })
-            )
-          }
-          
-          await Promise.all(imagePromises)
-          
-          if (hasContent) {
+            
             loadedSamples.push(sample)
           } else {
-            break
+            consecutiveEmpty++
           }
           
           sampleIndex++
