@@ -216,11 +216,12 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           const sample: Sample = { images: [], text: '' }
           let hasContent = false
           
-          // 加载文本
+          // 加载文本 - 使用 HEAD 请求先检查存在性
           try {
             const textPath = `/task-samples/${sampleDir}/sample${sampleIndex}.txt`
-            const textResponse = await fetch(textPath)
-            if (textResponse.ok) {
+            const checkResponse = await fetch(textPath, { method: 'HEAD' })
+            if (checkResponse.ok) {
+              const textResponse = await fetch(textPath)
               const textContent = await textResponse.text()
               if (!textContent.includes('<!doctype html>')) {
                 sample.text = textContent.trim()
@@ -228,27 +229,37 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
               }
             }
           } catch (err) {
-            // 静默失败
+            // 静默失败 - 文件不存在是正常的
           }
           
-          // 加载图片
-          let imgIdx = 1
-          while (imgIdx <= 10) { // 每个sample最多10张图片
-            try {
-              const imagePath = `/task-samples/${sampleDir}/sample${sampleIndex}-${imgIdx}.jpg`
-              // 使用 HEAD 请求检查文件是否存在，避免 404 错误在控制台显示
-              const imgResponse = await fetch(imagePath, { method: 'HEAD' })
-              if (imgResponse.ok) {
-                sample.images.push(imagePath)
-                hasContent = true
-              } else {
-                break
-              }
-            } catch (err) {
-              break
-            }
-            imgIdx++
+          // 加载图片 - 使用 Image 对象预加载，避免 fetch 的 404 错误
+          const imagePromises: Promise<boolean>[] = []
+          
+          const checkImage = (path: string): Promise<boolean> => {
+            return new Promise((resolve) => {
+              const img = new Image()
+              img.onload = () => resolve(true)
+              img.onerror = () => resolve(false)
+              img.src = path
+            })
           }
+          
+          // 并行检查前10张可能的图片
+          for (let i = 1; i <= 10; i++) {
+            const imagePath = `/task-samples/${sampleDir}/sample${sampleIndex}-${i}.jpg`
+            imagePromises.push(
+              checkImage(imagePath).then(exists => {
+                if (exists) {
+                  sample.images.push(imagePath)
+                  hasContent = true
+                  return true
+                }
+                return false
+              })
+            )
+          }
+          
+          await Promise.all(imagePromises)
           
           if (hasContent) {
             loadedSamples.push(sample)
