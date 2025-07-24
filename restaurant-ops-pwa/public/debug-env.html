@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>环境变量调试</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>环境变量调试页面</h1>
+    <div id="env-info"></div>
+    
+    <script type="module">
+        // 显示所有 VITE_ 开头的环境变量
+        const envInfo = document.getElementById('env-info');
+        
+        const envVars = {
+            'VITE_SUPABASE_URL': import.meta.env.VITE_SUPABASE_URL,
+            'VITE_SUPABASE_ANON_KEY': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'MODE': import.meta.env.MODE,
+            'PROD': import.meta.env.PROD,
+            'DEV': import.meta.env.DEV,
+            'BASE_URL': import.meta.env.BASE_URL
+        };
+        
+        let html = '<h2>环境变量状态：</h2><ul>';
+        
+        for (const [key, value] of Object.entries(envVars)) {
+            const status = value ? '✅' : '❌';
+            const displayValue = value ? (key.includes('KEY') ? '***已设置***' : value) : '未设置';
+            html += `<li>${status} ${key}: ${displayValue}</li>`;
+        }
+        
+        html += '</ul>';
+        
+        // 显示所有 import.meta.env
+        html += '<h2>所有环境变量：</h2>';
+        html += '<pre>' + JSON.stringify(import.meta.env, null, 2) + '</pre>';
+        
+        envInfo.innerHTML = html;
+    </script>
+</body>
+</html>
