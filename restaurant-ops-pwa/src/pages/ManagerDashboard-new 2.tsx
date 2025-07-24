@@ -377,16 +377,23 @@ export const ManagerDashboard: React.FC = () => {
       
       // Check all periods that have passed
       workflowPeriods.forEach(period => {
+        // Skip event-driven periods (pre-closing, closing) - they don't end by time
+        if (period.isEventDriven) return
+        
         const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
         const periodEnd = new Date(now)
         periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
         
         // If this period has ended and it's not the current period
-        // Skip pre-closing period as it doesn't end by time
-        if (now > periodEnd && period.id !== currentPeriod.id && period.id !== 'pre-closing') {
+        if (now > periodEnd && period.id !== currentPeriod.id) {
           // Check for uncompleted tasks using completedTaskIds (same as manual transition)
           period.tasks.manager.forEach((task: TaskTemplate) => {
-            if (task.isNotice) return // Skip notices
+            // Skip notices - they are not actionable tasks
+            if (task.isNotice === true) return
+            // Skip floating tasks - they're always current
+            if (task.isFloating === true) return
+            // Skip tasks without proper structure
+            if (!task.id || !task.title) return
             
             // Use completedTaskIds for consistency with manual transition
             if (!completedTaskIds.includes(task.id)) {
