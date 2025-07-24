@@ -195,11 +195,6 @@ export const ManagerDashboard: React.FC = () => {
     if (!hasInitialized) {
       const savedState = loadState('manager')
       if (savedState) {
-        // Check for invalid stuck state BEFORE applying it
-        if (savedState.isManualClosing && !savedState.isWaitingForNextDay) {
-          savedState.isManualClosing = false
-        }
-        
         setCompletedTaskIds(savedState.completedTaskIds)
         setTaskStatuses(savedState.taskStatuses)
         setNoticeComments(savedState.noticeComments)
