@@ -198,7 +198,21 @@ export const ManagerDashboard: React.FC = () => {
         setCompletedTaskIds(savedState.completedTaskIds)
         setTaskStatuses(savedState.taskStatuses)
         setNoticeComments(savedState.noticeComments)
-        setMissingTasks(savedState.missingTasks)
+        
+        // Check if we're in opening period - if so, don't load old missing tasks
+        const now = testTime || new Date()
+        const currentHour = now.getHours()
+        const currentMinutes = now.getMinutes()
+        const isInOpeningPeriod = currentHour === 10 && currentMinutes >= 0 && currentMinutes <= 30
+        
+        // Only load missing tasks if we're not in the opening period
+        // Opening period should start fresh without previous day's missing tasks
+        if (!isInOpeningPeriod) {
+          setMissingTasks(savedState.missingTasks)
+        } else {
+          setMissingTasks([])
+        }
+        
         setIsManualClosing(savedState.isManualClosing)
         setIsWaitingForNextDay(savedState.isWaitingForNextDay)
         manualClosingRef.current = savedState.isManualClosing
@@ -445,32 +459,40 @@ export const ManagerDashboard: React.FC = () => {
         }
       })
       
-      setMissingTasks(prev => {
-        // Preserve manually added tasks and only update auto-detected ones
-        // Keep all tasks that were manually added (through handleAdvancePeriod)
-        const manuallyAddedTasks = prev.filter(item => {
-          // Check if this task's period has not ended naturally yet
-          const period = workflowPeriods.find(p => p.displayName === item.periodName)
-          if (!period) return true // Keep if period not found
+      // For opening period, we should start fresh with no missing tasks from previous days
+      // Only keep missing tasks from today
+      if (currentPeriod.id === 'opening') {
+        // Clear all missing tasks that are from previous days
+        // Since opening is at 10:00 AM, any missing tasks from before should be cleared
+        setMissingTasks(updatedMissingTasks)
+      } else {
+        setMissingTasks(prev => {
+          // Preserve manually added tasks and only update auto-detected ones
+          // Keep all tasks that were manually added (through handleAdvancePeriod)
+          const manuallyAddedTasks = prev.filter(item => {
+            // Check if this task's period has not ended naturally yet
+            const period = workflowPeriods.find(p => p.displayName === item.periodName)
+            if (!period) return true // Keep if period not found
+            
+            const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+            const periodEnd = new Date(now)
+            periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
+            
+            // Keep tasks from periods that haven't naturally ended yet
+            return now <= periodEnd || period.id === 'pre-closing'
+          })
           
-          const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
-          const periodEnd = new Date(now)
-          periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
+          // Combine manually added tasks with auto-detected ones
+          const combined = [...manuallyAddedTasks, ...updatedMissingTasks]
           
-          // Keep tasks from periods that haven't naturally ended yet
-          return now <= periodEnd || period.id === 'pre-closing'
+          // Remove duplicates based on task ID
+          const uniqueTasks = combined.filter((item, index, self) =>
+            index === self.findIndex(t => t.task.id === item.task.id)
+          )
+          
+          return uniqueTasks
         })
-        
-        // Combine manually added tasks with auto-detected ones
-        const combined = [...manuallyAddedTasks, ...updatedMissingTasks]
-        
-        // Remove duplicates based on task ID
-        const uniqueTasks = combined.filter((item, index, self) =>
-          index === self.findIndex(t => t.task.id === item.task.id)
-        )
-        
-        return uniqueTasks
-      })
+      }
     }
 
     updateMissingTasks()

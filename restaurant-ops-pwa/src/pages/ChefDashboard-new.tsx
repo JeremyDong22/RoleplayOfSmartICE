@@ -199,7 +199,21 @@ export const ChefDashboard: React.FC = () => {
         setCompletedTaskIds(savedState.completedTaskIds)
         setTaskStatuses(savedState.taskStatuses)
         setNoticeComments(savedState.noticeComments)
-        setMissingTasks(savedState.missingTasks)
+        
+        // Check if we're in opening period - if so, don't load old missing tasks
+        const now = testTime || new Date()
+        const currentHour = now.getHours()
+        const currentMinutes = now.getMinutes()
+        const isInOpeningPeriod = currentHour === 10 && currentMinutes >= 0 && currentMinutes <= 30
+        
+        // Only load missing tasks if we're not in the opening period
+        // Opening period should start fresh without previous day's missing tasks
+        if (!isInOpeningPeriod) {
+          setMissingTasks(savedState.missingTasks)
+        } else {
+          setMissingTasks([])
+        }
+        
         setIsManualClosing(savedState.isManualClosing)
         setIsWaitingForNextDay(savedState.isWaitingForNextDay)
         waitingRef.current = savedState.isWaitingForNextDay

@@ -1,8 +1,9 @@
 // Main App component with routing and Realtime integration
-// Updated: 2025-07-24 - Added notification permission component for PWA push notifications
+// Updated: 2025-07-24 - Added login page and protected routes
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
+import { LoginPage } from './pages/Login/LoginPage'
 import { RoleSelection } from './pages/RoleSelection'
 import { ManagerDashboard } from './pages/ManagerDashboard-new'
 import { ChefDashboard } from './pages/ChefDashboard-new'
@@ -18,6 +19,7 @@ import { TestDatabase } from './pages/TestDatabase'
 import TestFloatingTasks from './pages/TestFloatingTasks'
 import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
+import { PrivateRoute } from './components/PrivateRoute'
 
 const theme = createTheme({
   palette: {
@@ -34,19 +36,39 @@ const theme = createTheme({
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <RoleSelection />,
+    element: <LoginPage />,
+  },
+  {
+    path: '/role-selection',
+    element: (
+      <PrivateRoute>
+        <RoleSelection />
+      </PrivateRoute>
+    ),
   },
   {
     path: '/manager',
-    element: <ManagerDashboard />,
+    element: (
+      <PrivateRoute path="/manager">
+        <ManagerDashboard />
+      </PrivateRoute>
+    ),
   },
   {
     path: '/chef',
-    element: <ChefDashboard />,
+    element: (
+      <PrivateRoute path="/chef">
+        <ChefDashboard />
+      </PrivateRoute>
+    ),
   },
   {
     path: '/duty-manager',
-    element: <DutyManagerDashboard />,
+    element: (
+      <PrivateRoute path="/duty-manager">
+        <DutyManagerDashboard />
+      </PrivateRoute>
+    ),
   },
   {
     path: '/test-camera',

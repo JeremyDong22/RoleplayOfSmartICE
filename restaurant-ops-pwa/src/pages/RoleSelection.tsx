@@ -1,15 +1,37 @@
 // Role selection page for choosing between Manager, Chef and Duty Manager
+// Updated: 2025-07-24 - Added authentication check for role access
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, Paper, Button } from '@mui/material'
+import { Box, Container, Typography, Paper, Button, Alert } from '@mui/material'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 import NightlightIcon from '@mui/icons-material/Nightlight'
+import LogoutIcon from '@mui/icons-material/Logout'
+import { authService } from '../services/authService'
+import { useState } from 'react'
 
 export const RoleSelection = () => {
   const navigate = useNavigate()
+  const [error, setError] = useState('')
+  const currentUser = authService.getCurrentUser()
 
   const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager') => {
     console.log(`[Navigation] Attempting to navigate to: /${role}`)
+    
+    // Check if user has permission to access this role
+    const roleCodeMap: Record<string, string> = {
+      'manager': 'manager',
+      'chef': 'chef',
+      'duty-manager': 'duty_manager'
+    }
+    
+    const requiredRole = roleCodeMap[role]
+    if (currentUser?.roleCode !== requiredRole) {
+      // Special case: Manager can also access duty-manager
+      if (!(role === 'duty-manager' && currentUser?.roleCode === 'manager')) {
+        setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
+        return
+      }
+    }
     
     // Store role in localStorage for persistence
     localStorage.setItem('selectedRole', role)
@@ -18,6 +40,11 @@ export const RoleSelection = () => {
     navigate(`/${role}`)
     
     console.log(`[Navigation] Navigation called for: /${role}`)
+  }
+
+  const handleLogout = () => {
+    authService.logout()
+    navigate('/')
   }
 
   return (
@@ -33,8 +60,23 @@ export const RoleSelection = () => {
           py: { xs: 1, sm: 2, md: 3 },
           px: { xs: 1, sm: 2 },
           overflow: 'hidden',
+          position: 'relative'
         }}
       >
+        {/* Logout button in top-right corner */}
+        <Button
+          variant="outlined"
+          startIcon={<LogoutIcon />}
+          onClick={handleLogout}
+          sx={{
+            position: 'absolute',
+            top: 20,
+            right: 20
+          }}
+        >
+          退出登录
+        </Button>
+
         <Typography 
           variant="h3" 
           component="h1" 
@@ -54,10 +96,19 @@ export const RoleSelection = () => {
           align="center" 
           sx={{ 
             fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' },
-            mb: { xs: 2, sm: 4, md: 6 }
+            mb: { xs: 2, sm: 3 }
           }}
         >
           Restaurant Operations Management
+        </Typography>
+
+        {/* User info */}
+        <Typography 
+          variant="h6" 
+          align="center" 
+          sx={{ mb: 2 }}
+        >
+          欢迎，{currentUser?.name} ({currentUser?.role})
         </Typography>
         
         <Typography 
@@ -71,6 +122,16 @@ export const RoleSelection = () => {
         >
           请选择您的角色 / Please select your role
         </Typography>
+
+        {error && (
+          <Alert 
+            severity="error" 
+            onClose={() => setError('')}
+            sx={{ mb: 2, width: '100%', maxWidth: 600 }}
+          >
+            {error}
+          </Alert>
+        )}
 
         <Box 
           sx={{ 
@@ -89,19 +150,20 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: 'pointer',
+                cursor: currentUser?.roleCode === 'manager' ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                '&:hover': {
+                opacity: currentUser?.roleCode === 'manager' ? 1 : 0.5,
+                '&:hover': currentUser?.roleCode === 'manager' ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'primary.light',
                   color: 'white',
-                },
+                } : {},
               }}
               onClick={() => handleRoleSelect('manager')}
             >
@@ -143,19 +205,20 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: 'pointer',
+                cursor: currentUser?.roleCode === 'chef' ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                '&:hover': {
+                opacity: currentUser?.roleCode === 'chef' ? 1 : 0.5,
+                '&:hover': currentUser?.roleCode === 'chef' ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'secondary.light',
                   color: 'white',
-                },
+                } : {},
               }}
               onClick={() => handleRoleSelect('chef')}
             >
@@ -198,19 +261,20 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: 'pointer',
+                cursor: currentUser?.roleCode === 'duty_manager' || currentUser?.roleCode === 'manager' ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                '&:hover': {
+                opacity: currentUser?.roleCode === 'duty_manager' || currentUser?.roleCode === 'manager' ? 1 : 0.5,
+                '&:hover': (currentUser?.roleCode === 'duty_manager' || currentUser?.roleCode === 'manager') ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'info.light',
                   color: 'white',
-                },
+                } : {},
               }}
               onClick={() => handleRoleSelect('duty-manager')}
             >
