@@ -60,6 +60,9 @@ const EditableTimeComponent: React.FC<EditableTimeProps> = ({ testTime, onTimeCh
     if (globalTestTime && globalTestTime.enabled) {
       setIsTestMode(true)
       setTimeOffset(globalTestTime.offset)
+      // Immediately notify parent component
+      const newTime = new Date(Date.now() + globalTestTime.offset)
+      onTimeChange(newTime)
     }
   }, [])
   

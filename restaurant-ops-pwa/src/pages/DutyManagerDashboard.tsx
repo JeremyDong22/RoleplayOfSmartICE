@@ -576,7 +576,7 @@ const DutyManagerDashboard: React.FC = () => {
           <IconButton
             edge="start"
             color="inherit"
-            onClick={handleLogout}
+            onClick={handleBack}
             sx={{ mr: 2 }}
           >
             <ArrowBackIcon />
