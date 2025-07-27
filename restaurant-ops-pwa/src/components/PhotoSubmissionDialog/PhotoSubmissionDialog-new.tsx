@@ -413,7 +413,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // 渲染Sample列表界面
   const renderSampleList = () => (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Typography variant="h6" gutterBottom>
         拍照示例
       </Typography>
@@ -424,84 +424,86 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         </Alert>
       )}
       
-      <Grid container spacing={2}>
-        {samples.length === 0 ? (
-          <Grid size={12}>
-            <Alert severity="info">
-              <Typography>正在加载示例...</Typography>
-            </Alert>
-          </Grid>
-        ) : (
-          samples.map((sample, index) => (
-            <Grid size={12} key={index}>
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                  示例 {index + 1}
-                </Typography>
-                
-                {/* 示例图片 */}
-                {sample.images.length > 0 && (
-                  <Box 
-                    sx={{ 
-                      display: 'flex', 
-                      gap: 1, 
-                      mb: 2,
-                      overflowX: 'auto',
-                      overflowY: 'hidden',
-                      py: 1,
-                      WebkitOverflowScrolling: 'touch', // 提升移动端滚动流畅度
-                      '&::-webkit-scrollbar': { height: '8px' },
-                      '&::-webkit-scrollbar-track': { 
-                        backgroundColor: 'rgba(0,0,0,0.1)',
-                        borderRadius: '4px'
-                      },
-                      '&::-webkit-scrollbar-thumb': { 
-                        backgroundColor: 'rgba(0,0,0,0.3)',
-                        borderRadius: '4px',
-                        '&:hover': {
-                          backgroundColor: 'rgba(0,0,0,0.5)'
-                        }
-                      }
-                    }}
-                  >
-                    {sample.images.map((img, imgIdx) => (
-                      <Box
-                        key={imgIdx}
-                        component="img"
-                        src={img}
-                        alt={`Sample ${index + 1}-${imgIdx + 1}`}
-                        onClick={() => setEnlargedImage(img)}
-                        sx={{
-                          height: 120,
-                          width: 120,
-                          minWidth: 120, // 确保图片不会被压缩
-                          flexShrink: 0, // 防止图片缩小
-                          objectFit: 'cover',
-                          borderRadius: 1,
-                          cursor: 'pointer',
-                          border: '2px solid transparent',
-                          transition: 'border-color 0.2s',
-                          '&:hover': {
-                            borderColor: 'primary.main'
-                          }
-                        }}
-                      />
-                    ))}
-                  </Box>
-                )}
-                
-                {/* 示例描述 */}
-                <Typography variant="body2" color="text.secondary">
-                  {sample.text}
-                </Typography>
-              </Paper>
+      <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
+        <Grid container spacing={2}>
+          {samples.length === 0 ? (
+            <Grid size={12}>
+              <Alert severity="info">
+                <Typography>正在加载示例...</Typography>
+              </Alert>
             </Grid>
-          ))
-        )}
-      </Grid>
+          ) : (
+            samples.map((sample, index) => (
+              <Grid size={12} key={index}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    示例 {index + 1}
+                  </Typography>
+                  
+                  {/* 示例图片 */}
+                  {sample.images.length > 0 && (
+                    <Box 
+                      sx={{ 
+                        display: 'flex', 
+                        gap: 1, 
+                        mb: 2,
+                        overflowX: 'auto',
+                        overflowY: 'hidden',
+                        py: 1,
+                        WebkitOverflowScrolling: 'touch', // 提升移动端滚动流畅度
+                        '&::-webkit-scrollbar': { height: '8px' },
+                        '&::-webkit-scrollbar-track': { 
+                          backgroundColor: 'rgba(0,0,0,0.1)',
+                          borderRadius: '4px'
+                        },
+                        '&::-webkit-scrollbar-thumb': { 
+                          backgroundColor: 'rgba(0,0,0,0.3)',
+                          borderRadius: '4px',
+                          '&:hover': {
+                            backgroundColor: 'rgba(0,0,0,0.5)'
+                          }
+                        }
+                      }}
+                    >
+                      {sample.images.map((img, imgIdx) => (
+                        <Box
+                          key={imgIdx}
+                          component="img"
+                          src={img}
+                          alt={`Sample ${index + 1}-${imgIdx + 1}`}
+                          onClick={() => setEnlargedImage(img)}
+                          sx={{
+                            height: 120,
+                            width: 120,
+                            minWidth: 120, // 确保图片不会被压缩
+                            flexShrink: 0, // 防止图片缩小
+                            objectFit: 'cover',
+                            borderRadius: 1,
+                            cursor: 'pointer',
+                            border: '2px solid transparent',
+                            transition: 'border-color 0.2s',
+                            '&:hover': {
+                              borderColor: 'primary.main'
+                            }
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  )}
+                  
+                  {/* 示例描述 */}
+                  <Typography variant="body2" color="text.secondary">
+                    {sample.text}
+                  </Typography>
+                </Paper>
+              </Grid>
+            ))
+          )}
+        </Grid>
+      </Box>
       
-      {/* 底部按钮 */}
-      <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'center' }}>
+      {/* 底部按钮 - 固定在底部 */}
+      <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', gap: 2, justifyContent: 'center' }}>
         <Button
           variant="contained"
           size="large"
@@ -528,11 +530,17 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // 渲染相机界面
   const renderCamera = () => (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* 顶部工具栏 */}
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* 顶部工具栏 - 固定高度 */}
+      <Box sx={{ 
+        p: 1.5, 
+        borderBottom: 1, 
+        borderColor: 'divider',
+        flexShrink: 0
+      }}>
         <Box display="flex" alignItems="center" justifyContent="space-between">
           <Button
+            size="small"
             startIcon={<ArrowBack />}
             onClick={() => {
               if (currentSessionPhotos.length > 0) {
@@ -545,14 +553,21 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             返回
           </Button>
           
-          <Typography variant="subtitle1">
+          <Typography variant="subtitle2">
             本次已拍: {currentSessionPhotos.length} 张
           </Typography>
         </Box>
       </Box>
       
-      {/* 相机视图 */}
-      <Box sx={{ flex: 1, position: 'relative', bgcolor: 'black' }}>
+      {/* 相机视图 - 固定比例 */}
+      <Box sx={{ 
+        width: '100%',
+        aspectRatio: '4/3',  // 固定4:3比例
+        position: 'relative', 
+        bgcolor: 'black',
+        flexShrink: 0,
+        overflow: 'hidden'
+      }}>
         {cameraError ? (
           <Box
             sx={{
@@ -596,10 +611,19 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         )}
       </Box>
       
-      {/* 底部控制区 */}
-      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+      {/* 底部控制区 - 剩余空间自适应 */}
+      <Box sx={{ 
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        p: 1.5, 
+        borderTop: 1, 
+        borderColor: 'divider',
+        overflow: 'auto',
+        minHeight: 0  // 重要：允许收缩
+      }}>
         {/* Sample选择器 */}
-        <FormControl fullWidth sx={{ mb: 2 }}>
+        <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
           <InputLabel>选择参考示例</InputLabel>
           <Select
             value={selectedSampleIndex}
@@ -608,25 +632,35 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           >
             {samples.map((sample, index) => (
               <MenuItem key={index} value={index}>
-                示例 {index + 1}: {sample.text.substring(0, 30)}...
+                示例 {index + 1}: {sample.text.substring(0, 25)}...
               </MenuItem>
             ))}
           </Select>
         </FormControl>
         
-        {/* 当前sample预览 */}
-        {samples[selectedSampleIndex] && (
-          <Box sx={{ mb: 2 }}>
+        {/* 当前sample预览 - 紧凑布局 */}
+        {samples[selectedSampleIndex] && samples[selectedSampleIndex].images.length > 0 && (
+          <Box sx={{ mb: 1.5 }}>
             <Typography variant="caption" color="text.secondary">
               参考图片 (点击放大)
             </Typography>
             <Box 
               sx={{ 
                 display: 'flex', 
-                gap: 1, 
+                gap: 0.5, 
                 mt: 0.5,
                 overflowX: 'auto',
-                pb: 1
+                overflowY: 'hidden',
+                pb: 0.5,
+                '&::-webkit-scrollbar': { height: '6px' },
+                '&::-webkit-scrollbar-track': { 
+                  backgroundColor: 'rgba(0,0,0,0.1)',
+                  borderRadius: '3px'
+                },
+                '&::-webkit-scrollbar-thumb': { 
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  borderRadius: '3px'
+                }
               }}
             >
               {samples[selectedSampleIndex].images.slice(0, 4).map((img, idx) => (
@@ -637,13 +671,14 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                   alt={`Ref ${idx + 1}`}
                   onClick={() => setEnlargedImage(img)}
                   sx={{
-                    height: 60,
-                    minWidth: 60,
+                    height: 50,
+                    minWidth: 50,
                     objectFit: 'cover',
-                    borderRadius: 1,
+                    borderRadius: 0.5,
                     cursor: 'pointer',
                     border: '1px solid',
-                    borderColor: 'divider'
+                    borderColor: 'divider',
+                    flexShrink: 0
                   }}
                 />
               ))}
@@ -651,11 +686,11 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           </Box>
         )}
         
-        {/* 拍照按钮 */}
-        <Box display="flex" gap={2} justifyContent="center">
+        {/* 拍照按钮 - 保持在中间 */}
+        <Box display="flex" gap={1.5} justifyContent="center" sx={{ mb: 1.5 }}>
           <Button
             variant="contained"
-            size="large"
+            size="medium"
             onClick={capturePhoto}
             startIcon={<CameraAlt />}
             disabled={cameraError}
@@ -666,46 +701,72 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           {currentSessionPhotos.length > 0 && (
             <Button
               variant="outlined"
-              size="large"
+              size="medium"
               onClick={() => setSaveDialogOpen(true)}
             >
-              保存
+              保存 ({currentSessionPhotos.length})
             </Button>
           )}
         </Box>
         
-        {/* 已拍照片预览 */}
+        {/* 已拍照片预览 - 自动填充剩余空间 */}
         {currentSessionPhotos.length > 0 && (
-          <Box sx={{ mt: 2 }}>
+          <Box sx={{ 
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
             <Typography variant="caption" color="text.secondary">
               本次拍摄
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+            <Box sx={{ 
+              display: 'flex', 
+              gap: 0.5, 
+              mt: 0.5, 
+              flexWrap: 'wrap',
+              alignContent: 'flex-start',
+              overflow: 'auto',
+              flex: 1,
+              minHeight: 0,
+              pb: 1
+            }}>
               {currentSessionPhotos.map((photo) => (
                 <Box key={photo.id} sx={{ position: 'relative' }}>
                   <Box
                     component="img"
                     src={photo.image}
                     alt="Captured"
+                    onClick={() => setEnlargedImage(photo.image)}
                     sx={{
-                      width: 60,
-                      height: 60,
+                      width: 50,
+                      height: 50,
                       objectFit: 'cover',
-                      borderRadius: 1
+                      borderRadius: 0.5,
+                      cursor: 'pointer',
+                      border: '1px solid',
+                      borderColor: 'divider'
                     }}
                   />
                   <IconButton
                     size="small"
                     sx={{
                       position: 'absolute',
-                      top: -8,
-                      right: -8,
+                      top: -6,
+                      right: -6,
                       bgcolor: 'background.paper',
+                      width: 20,
+                      height: 20,
+                      border: '1px solid',
+                      borderColor: 'divider',
                       '&:hover': { bgcolor: 'error.light' }
                     }}
-                    onClick={() => deleteSessionPhoto(photo.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteSessionPhoto(photo.id)
+                    }}
                   >
-                    <Delete fontSize="small" />
+                    <Delete sx={{ fontSize: 12 }} />
                   </IconButton>
                 </Box>
               ))}
@@ -718,7 +779,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // 渲染照片列表界面
   const renderPhotoList = () => (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
         <Typography variant="h6">
           已拍摄记录
@@ -731,70 +792,72 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         </Button>
       </Box>
       
-      {photoGroups.length === 0 ? (
-        <Alert severity="info">
-          还没有拍摄任何照片
-        </Alert>
-      ) : (
-        <Grid container spacing={2}>
-          {photoGroups.map((group, index) => (
-            <Grid size={12} key={group.id}>
-              <Paper sx={{ p: 2 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="start" mb={1}>
-                  <Box>
-                    <Typography variant="subtitle2">
-                      组 {index + 1}: {group.sampleRef || '未选择参考'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(group.createdAt).toLocaleString('zh-CN')} · {group.photos.length} 张照片
-                    </Typography>
+      <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
+        {photoGroups.length === 0 ? (
+          <Alert severity="info">
+            还没有拍摄任何照片
+          </Alert>
+        ) : (
+          <Grid container spacing={2}>
+            {photoGroups.map((group, index) => (
+              <Grid size={12} key={group.id}>
+                <Paper sx={{ p: 2 }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="start" mb={1}>
+                    <Box>
+                      <Typography variant="subtitle2">
+                        组 {index + 1}: {group.sampleRef || '未选择参考'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(group.createdAt).toLocaleString('zh-CN')} · {group.photos.length} 张照片
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => deletePhotoGroup(group.id)}
+                      color="error"
+                    >
+                      <Delete />
+                    </IconButton>
                   </Box>
-                  <IconButton
-                    size="small"
-                    onClick={() => deletePhotoGroup(group.id)}
-                    color="error"
-                  >
-                    <Delete />
-                  </IconButton>
-                </Box>
-                
-                {/* 照片预览 */}
-                <Box sx={{ display: 'flex', gap: 1, mb: 1, overflowX: 'auto' }}>
-                  {group.photos.map((photo) => (
-                    <Box
-                      key={photo.id}
-                      component="img"
-                      src={photo.image}
-                      alt="Photo"
-                      onClick={() => setEnlargedImage(photo.image)}
-                      sx={{
-                        height: 80,
-                        minWidth: 80,
-                        objectFit: 'cover',
-                        borderRadius: 1,
-                        cursor: 'pointer'
-                      }}
-                    />
-                  ))}
-                </Box>
-                
-                {/* 评论 */}
-                {group.comment && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <CommentIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
-                      {group.comment}
-                    </Typography>
+                  
+                  {/* 照片预览 */}
+                  <Box sx={{ display: 'flex', gap: 1, mb: 1, overflowX: 'auto' }}>
+                    {group.photos.map((photo) => (
+                      <Box
+                        key={photo.id}
+                        component="img"
+                        src={photo.image}
+                        alt="Photo"
+                        onClick={() => setEnlargedImage(photo.image)}
+                        sx={{
+                          height: 80,
+                          minWidth: 80,
+                          objectFit: 'cover',
+                          borderRadius: 1,
+                          cursor: 'pointer'
+                        }}
+                      />
+                    ))}
                   </Box>
-                )}
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-      )}
+                  
+                  {/* 评论 */}
+                  {group.comment && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <CommentIcon fontSize="small" color="action" />
+                      <Typography variant="body2" color="text.secondary">
+                        {group.comment}
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
       
-      {/* 底部按钮 */}
-      <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'center' }}>
+      {/* 底部按钮 - 固定在底部 */}
+      <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', gap: 2, justifyContent: 'center' }}>
         <Button
           variant="outlined"
           size="large"
@@ -837,7 +900,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         </Box>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column' }}>
+      <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {currentView === 'samples' && renderSampleList()}
         {currentView === 'camera' && renderCamera()}
         {currentView === 'photos' && renderPhotoList()}
