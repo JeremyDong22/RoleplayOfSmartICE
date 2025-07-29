@@ -28,7 +28,8 @@ import { useTaskData } from '../contexts/TaskDataContext'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
 // import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
 import { clearAllAppStorage } from '../utils/clearAllStorage'
-import { getTodayCompletedTaskIds, submitTaskRecord } from '../services/taskRecordService'
+import { getTodayCompletedTaskIds } from '../services/taskRecordService'
+import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
 
 // Pre-load workflow markdown content for browser
@@ -594,27 +595,25 @@ export const ChefDashboard: React.FC = () => {
       try {
         const task = currentTasks.find(t => t.id === taskId)
         if (task) {
-          const submissionData = {
-            user_id: currentUserId,
-            restaurant_id: '野百灵',
-            task_id: taskId,
+          const result = await submitTaskWithMedia({
+            taskId,
+            userId: currentUserId,
+            restaurantId: 1, // 野百灵的ID是1
             date: now.toISOString().split('T')[0],
-            period_id: currentPeriod?.id || '',
-            submission_type: task.uploadRequirement ? 
-              (task.uploadRequirement === '拍照' ? 'photo' : 
-               task.uploadRequirement === '录音' ? 'audio' : 
-               task.uploadRequirement === '记录' ? 'text' : 
-               task.uploadRequirement === '列表' ? 'list' : null) : null,
-            text_content: data?.textInput || data?.evidence?.[0]?.description || '',
-            photo_urls: data?.evidence?.map((item: any) => item.photo || item.image).filter(Boolean) || [],
-            submission_metadata: data
-          }
+            periodId: currentPeriod?.id || '',
+            uploadRequirement: task.uploadRequirement,
+            data
+          })
           
-          await submitTaskRecord(submissionData)
-          console.log('Task submitted to Supabase:', taskId)
+          console.log('[ChefDashboard] Task successfully submitted:', result.id)
         }
       } catch (error) {
-        console.error('Error submitting task to Supabase:', error)
+        console.error('[ChefDashboard] Error submitting task to Supabase:', {
+          error,
+          taskId,
+          userId: currentUserId,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        })
         // Still update local state even if submission fails
       }
     }

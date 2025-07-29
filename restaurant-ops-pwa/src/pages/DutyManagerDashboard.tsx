@@ -164,53 +164,42 @@ const DutyManagerDashboard: React.FC = () => {
     console.log('[DutyManagerDashboard] Review status updated:', reviewStatus)
   }, [reviewStatus])
 
-  // 检查是否有触发的任务
+  // 检查当前时段并自动加载任务
   useEffect(() => {
-    // 如果已经有激活的任务（从localStorage恢复），不需要重新处理trigger
+    // 如果已经有激活的任务（从localStorage恢复），不需要重新处理
     if (state.activeTasks.length > 0 && !state.isWaitingForTrigger) {
       return
     }
     
-    if (!currentTrigger) return
-
-    // 根据触发类型获取对应的任务
-    // last-customer-left-dinner触发closing时段的值班经理任务
-    let targetPeriodId = ''
-    if (currentTrigger.type === 'last-customer-left-dinner') {
-      targetPeriodId = 'closing'
-    } else if (currentTrigger.type === 'last-customer-left-lunch') {
-      targetPeriodId = 'lunch-closing'
-    }
-
-    // 从workflowPeriods中找到目标时段
-    const targetPeriod = workflowPeriods.find(p => p.id === targetPeriodId)
+    // 获取当前时段
+    const currentPeriod = getCurrentPeriod(testTime)
     
-    if (!targetPeriod) {
-      return
+    // 如果当前是闭店时段（22:00-23:30），自动加载值班经理任务
+    if (currentPeriod && currentPeriod.id === 'closing') {
+      const targetPeriod = workflowPeriods.find(p => p.id === 'closing')
+      if (!targetPeriod) return
+      
+      // 获取闭店时段的值班经理任务
+      const dutyTasks = (targetPeriod.tasks as any).dutyManager || []
+      
+      // 获取所有值班经理任务（不再需要prerequisiteTrigger）
+      const closingTasks = dutyTasks.filter((task: any) => {
+        return task.role === 'DutyManager' && 
+               task.uploadRequirement !== '审核'
+      })
+      
+      if (closingTasks.length > 0) {
+        setState(prev => ({
+          ...prev,
+          activeTasks: closingTasks,
+          isWaitingForTrigger: false,
+          currentTrigger: 'last-customer-left-dinner',
+          targetPeriod: targetPeriod,
+          isInClosingPeriod: true,
+        }))
+      }
     }
-
-    // 获取目标时段的值班经理任务
-    const dutyTasks = (targetPeriod.tasks as any).dutyManager || []
-    
-    // 检查是否有被触发的任务
-    const triggeredTasks = dutyTasks.filter((task: any) => {
-      // 确保任务是值班经理任务，不是审核任务
-      return task.prerequisiteTrigger === currentTrigger.type && 
-             task.role === 'DutyManager' && 
-             task.uploadRequirement !== '审核'
-    })
-
-    if (triggeredTasks.length > 0) {
-      setState(prev => ({
-        ...prev,
-        activeTasks: triggeredTasks,
-        isWaitingForTrigger: false,
-        currentTrigger: currentTrigger.type,
-        targetPeriod: targetPeriod,  // 保存目标时段
-        isInClosingPeriod: targetPeriodId === 'closing', // 记录是否进入closing状态
-      }))
-    }
-  }, [currentTrigger, state.activeTasks.length, state.isWaitingForTrigger])
+  }, [currentPeriod, state.activeTasks.length, state.isWaitingForTrigger, testTime])
 
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {
@@ -554,7 +543,7 @@ const DutyManagerDashboard: React.FC = () => {
                 当前状态：待命中
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                下一阶段：等待前厅管理确认客人离开
+                闭店时段（22:00）将自动开始值班任务
               </Typography>
             </Box>
           </Paper>
