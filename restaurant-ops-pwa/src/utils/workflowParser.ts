@@ -609,7 +609,7 @@ export const workflowPeriods: WorkflowPeriod[] = [
     name: 'closing',
     displayName: '闭店',
     startTime: '22:00',
-    endTime: '23:30',
+    endTime: '08:00',
     isEventDriven: false,  // 固定时间进入
     tasks: {
       manager: [
