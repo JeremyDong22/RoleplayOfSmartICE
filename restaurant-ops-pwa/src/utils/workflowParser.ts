@@ -608,8 +608,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
     id: 'closing',
     name: 'closing',
     displayName: '闭店',
-    startTime: '00:00',
-    endTime: '01:00',
+    startTime: '22:30',
+    endTime: '08:00',
     isEventDriven: true,  // 由最后一位客人离店触发，而非固定时间
     tasks: {
       manager: [
@@ -618,8 +618,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
           title: '收据清点保管',
           description: '清点当日收据并存放至指定位置保管',
           timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
+          startTime: '22:30',
+          endTime: '08:00',
           role: 'Manager',
           department: '前厅',
           uploadRequirement: null,
@@ -629,8 +629,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
           title: '现金清点保管',
           description: '清点现金保存至指定位置',
           timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
+          startTime: '22:30',
+          endTime: '08:00',
           role: 'Manager',
           department: '前厅',
           uploadRequirement: null,
@@ -640,8 +640,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
           title: '当日复盘总结',
           description: '门店管理层进行5分钟左右当日问题复盘与总结为第二天晨会做准备',
           timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
+          startTime: '22:30',
+          endTime: '08:00',
           role: 'Manager',
           department: '前厅',
           uploadRequirement: '录音',
@@ -654,8 +654,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
           title: '能源安全检查',
           description: '关闭所有用电设备，检查燃气阀门，确认总电源状态',
           timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
+          startTime: '22:30',
+          endTime: '08:00',
           role: 'DutyManager',
           department: '前厅',
           uploadRequirement: '拍照',
@@ -666,8 +666,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
           title: '安防闭店检查',
           description: '门窗锁闭确认，监控系统启动，报警系统设置',
           timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
+          startTime: '22:30',
+          endTime: '08:00',
           role: 'DutyManager',
           department: '前厅',
           uploadRequirement: '拍照',
@@ -678,8 +678,8 @@ export const workflowPeriods: WorkflowPeriod[] = [
           title: '营业数据记录',
           description: '打印交班单并填写日营业报表数据',
           timeSlot: 'closing',
-          startTime: '22:00',
-          endTime: '23:00',
+          startTime: '22:30',
+          endTime: '08:00',
           role: 'DutyManager',
           department: '前厅',
           uploadRequirement: '拍照',
@@ -698,6 +698,20 @@ export function getCurrentPeriod(testTime?: Date, excludeEventDriven: boolean = 
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
   const currentTimeInMinutes = currentHour * 60 + currentMinute
+  
+  // Special handling for closing period - it should be returned after 22:30 even if event-driven
+  if (!excludeEventDriven) {
+    const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
+    if (closingPeriod) {
+      const [startHour, startMinute] = closingPeriod.startTime.split(':').map(Number)
+      const startInMinutes = startHour * 60 + startMinute
+      
+      // For closing period that spans midnight, handle time comparison specially
+      if (currentTimeInMinutes >= startInMinutes || currentTimeInMinutes < 8 * 60) {
+        return closingPeriod
+      }
+    }
+  }
   
   for (const period of workflowPeriods) {
     // Skip event-driven periods if requested
