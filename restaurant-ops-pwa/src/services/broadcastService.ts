@@ -1,5 +1,6 @@
 // BroadcastChannel service for real-time cross-tab communication
 // This service handles communication between Manager and Chef dashboards
+// DEPRECATED: Commented out to use only Supabase Realtime for cross-device communication
 
 export interface BroadcastMessage {
   type: 'LAST_CUSTOMER_LEFT_LUNCH' | 'LAST_CUSTOMER_LEFT_DINNER' | 'PERIOD_CHANGED' | 'TASK_COMPLETED' | 'STATE_SYNC' | 'CLEAR_ALL_STORAGE'
@@ -8,6 +9,31 @@ export interface BroadcastMessage {
   sender: 'manager' | 'chef' | 'ceo' | 'system'
 }
 
+// Dummy service that does nothing - all communication now goes through Supabase Realtime
+class BroadcastService {
+  // All methods are now no-ops
+  
+  send(type: BroadcastMessage['type'], data?: any, sender?: BroadcastMessage['sender']) {
+    // No-op: Use Supabase Realtime instead
+    console.log('[BroadcastService] Deprecated: Use Supabase Realtime for communication')
+  }
+
+  subscribe(type: BroadcastMessage['type'] | '*', callback: (message: BroadcastMessage) => void): () => void {
+    // No-op: Use Supabase Realtime instead
+    return () => {}
+  }
+
+  setupStorageFallback() {
+    // No-op
+  }
+
+  destroy() {
+    // No-op
+  }
+}
+
+/*
+// Original implementation commented out
 class BroadcastService {
   private channel: BroadcastChannel | null = null
   private listeners: Map<string, Set<(message: BroadcastMessage) => void>> = new Map()
@@ -151,6 +177,7 @@ class BroadcastService {
     this.listeners.clear()
   }
 }
+*/
 
 // Export singleton instance
 export const broadcastService = new BroadcastService()

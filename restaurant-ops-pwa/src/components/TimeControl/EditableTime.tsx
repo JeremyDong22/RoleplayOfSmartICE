@@ -29,7 +29,7 @@ import {
   getCurrentTestTime,
   useGlobalTestTime 
 } from '../../utils/globalTestTime'
-import { broadcastService } from '../../services/broadcastService'
+// import { broadcastService } from '../../services/broadcastService' // Removed: Using only Supabase Realtime
 import { clearAllAppStorage } from '../../utils/clearAllStorage'
 
 interface EditableTimeProps {
@@ -158,8 +158,8 @@ const EditableTimeComponent: React.FC<EditableTimeProps> = ({ testTime, onTimeCh
       // Clear all local storage across all tabs
       clearAllAppStorage()
       
-      // Broadcast to all other tabs to clear their storage
-      broadcastService.send('CLEAR_ALL_STORAGE', {}, 'system')
+      // Broadcast to all other tabs to clear their storage - REMOVED: Using only Supabase Realtime
+      // broadcastService.send('CLEAR_ALL_STORAGE', {}, 'system')
       
       // Call the parent's reset handler if provided
       onResetTasks?.()

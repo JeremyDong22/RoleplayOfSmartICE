@@ -18,7 +18,7 @@ class RealtimeDutyService {
   private userId: string | null = null
   private isInitialized: boolean = false
   private initializationPromise: Promise<void> | null = null
-  private useFallback: boolean = false
+  // private useFallback: boolean = false // Removed: No localStorage fallback
 
   async initialize(userId: string) {
     // 如果已经初始化或正在初始化，返回现有的promise
@@ -88,12 +88,9 @@ class RealtimeDutyService {
       } catch (error) {
         console.error(`[RealtimeDutyService] Initialize attempt ${i + 1} failed:`, error)
         if (i === retries - 1) {
-          // Use fallback mode
-          console.warn('[RealtimeDutyService] ⚠️ Using localStorage fallback (Realtime unavailable)')
-          this.useFallback = true
-          this.isInitialized = true
-          this.startFallbackPolling()
-          return
+          // No fallback - throw error if Realtime is unavailable
+          console.error('[RealtimeDutyService] ❌ Supabase Realtime connection failed after all retries')
+          throw new Error('Supabase Realtime connection failed')
         }
         // Wait before retry
         await new Promise(resolve => setTimeout(resolve, 2000))
@@ -101,6 +98,8 @@ class RealtimeDutyService {
     }
   }
   
+  // Removed: localStorage fallback methods
+  /*
   private startFallbackPolling() {
     // Poll localStorage for messages every second
     setInterval(() => {
@@ -134,6 +133,7 @@ class RealtimeDutyService {
     const recent = messages.slice(-50)
     localStorage.setItem('duty-manager-fallback-messages', JSON.stringify(recent))
   }
+  */
 
   private handleMessage(message: DutyManagerMessage) {
     // 通知所有监听器
@@ -176,21 +176,16 @@ class RealtimeDutyService {
       data
     }
 
-    if (this.useFallback) {
-      // Use localStorage fallback
-      this.storeFallbackMessage(message)
-      // Message sent via fallback
-    } else {
-      try {
-        await this.channel.send({
-          type: 'broadcast',
-          event: 'duty-message',
-          payload: message
-        })
-      } catch (error) {
-        console.error('[RealtimeDutyService] Send failed:', error)
-        throw error
-      }
+    // Only use Supabase Realtime - no fallback
+    try {
+      await this.channel.send({
+        type: 'broadcast',
+        event: 'duty-message',
+        payload: message
+      })
+    } catch (error) {
+      console.error('[RealtimeDutyService] Send failed:', error)
+      throw error
     }
   }
 
@@ -244,12 +239,12 @@ class RealtimeDutyService {
     this.isInitialized = false
     this.initializationPromise = null
     this.userId = null
-    this.useFallback = false
+    // this.useFallback = false // Removed
     
-    // Clear fallback messages on cleanup
-    if (this.useFallback) {
-      localStorage.removeItem('duty-manager-fallback-messages')
-    }
+    // Clear fallback messages on cleanup - Removed
+    // if (this.useFallback) {
+    //   localStorage.removeItem('duty-manager-fallback-messages')
+    // }
   }
 }
 

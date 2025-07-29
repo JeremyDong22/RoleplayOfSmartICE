@@ -26,7 +26,7 @@ import { getCurrentPeriod, getNextPeriod } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { useTaskData } from '../contexts/TaskDataContext'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
-import { broadcastService } from '../services/broadcastService'
+// import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 import { getTodayCompletedTaskIds, submitTaskRecord } from '../services/taskRecordService'
 import { supabase } from '../services/supabase'
@@ -247,18 +247,18 @@ export const ChefDashboard: React.FC = () => {
     }
   }, [hasInitialized])
   
-  // Listen for clear storage broadcast from other tabs
-  useEffect(() => {
-    const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
-      // Clear all storage and reload
-      clearAllAppStorage()
-      window.location.reload()
-    })
-    
-    return () => {
-      unsubscribe()
-    }
-  }, [])
+  // Listen for clear storage broadcast from other tabs - REMOVED: Using only Supabase Realtime
+  // useEffect(() => {
+  //   const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
+  //     // Clear all storage and reload
+  //     clearAllAppStorage()
+  //     window.location.reload()
+  //   })
+  //   
+  //   return () => {
+  //     unsubscribe()
+  //   }
+  // }, [])
   
   // Save state to localStorage whenever key states change
   useEffect(() => {
@@ -355,24 +355,24 @@ export const ChefDashboard: React.FC = () => {
     manualAdvanceRef.current = manuallyAdvancedPeriod
   }, [manuallyAdvancedPeriod])
 
-  // Subscribe to broadcast messages
-  useEffect(() => {
-    const unsubscribe = broadcastService.subscribe('*', (message) => {
-      
-      // Handle lunch customer left message
-      if (message.type === 'LAST_CUSTOMER_LEFT_LUNCH') {
-        // Force refresh the current period to ensure we have the latest state
-        const now = testTime || new Date()
-        const newPeriod = getCurrentPeriod(now)
-        setCurrentPeriod(newPeriod)
-        setNextPeriod(getNextPeriodForChef(now))
-      }
-    })
-    
-    return () => {
-      unsubscribe()
-    }
-  }, [testTime])
+  // Subscribe to broadcast messages - REMOVED: Using only Supabase Realtime
+  // useEffect(() => {
+  //   const unsubscribe = broadcastService.subscribe('*', (message) => {
+  //     
+  //     // Handle lunch customer left message
+  //     if (message.type === 'LAST_CUSTOMER_LEFT_LUNCH') {
+  //       // Force refresh the current period to ensure we have the latest state
+  //       const now = testTime || new Date()
+  //       const newPeriod = getCurrentPeriod(now)
+  //       setCurrentPeriod(newPeriod)
+  //       setNextPeriod(getNextPeriodForChef(now))
+  //     }
+  //   })
+  //   
+  //   return () => {
+  //     unsubscribe()
+  //   }
+  // }, [testTime])
   
   // Safety check: Clear invalid states
   useEffect(() => {
