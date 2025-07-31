@@ -302,12 +302,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                             >
                               {group.photos.map((photo, photoIdx) => {
                                 const isValidPhoto = photo && (photo.startsWith('data:') || photo.startsWith('http'))
-                                console.log(`[ReviewTaskDialog] Photo ${photoIdx} validation:`, {
-                                  photo: photo?.substring(0, 100),
-                                  isValidPhoto,
-                                  startsWithData: photo?.startsWith('data:'),
-                                  startsWithHttp: photo?.startsWith('http')
-                                })
                                 
                                 return (
                                   <Box
