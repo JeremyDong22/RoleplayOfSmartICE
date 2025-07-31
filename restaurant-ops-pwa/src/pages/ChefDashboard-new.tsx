@@ -912,6 +912,7 @@ export const ChefDashboard: React.FC = () => {
                 testTime={testTime}
                 role="chef"
                 dbTaskStatuses={dbTaskStatuses}
+                useDatabase={true}
               />
             </Grid>
           )}

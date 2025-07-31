@@ -1,5 +1,5 @@
 // Task Summary component - shows all tasks with completion status
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import {
   Paper,
   Typography,
@@ -15,7 +15,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  CircularProgress
 } from '@mui/material'
 import {
   CheckCircle,
@@ -29,6 +30,9 @@ import type { TaskTemplate } from '../../utils/workflowParser'
 import { loadWorkflowPeriods, getCurrentPeriod } from '../../utils/workflowParser'
 import TaskSubmissionDialog from '../TaskSubmissionDialog'
 import type { TaskStatusDetail } from '../../services/taskRecordService'
+import { getTaskSummaryStats, subscribeToTaskStats, type TaskSummaryStats } from '../../services/taskSummaryService'
+import { authService } from '../../services/authService'
+import { getRestaurantId } from '../../utils/restaurantSetup'
 
 interface TaskStatus {
   taskId: string
@@ -53,6 +57,7 @@ interface TaskSummaryProps {
   testTime?: Date
   role?: 'manager' | 'chef'
   dbTaskStatuses?: TaskStatusDetail[]  // New prop for database task statuses
+  useDatabase?: boolean  // Flag to enable database mode
 }
 
 export const TaskSummary: React.FC<TaskSummaryProps> = ({
@@ -64,12 +69,48 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   onLateSubmit,
   testTime,
   role = 'manager',
-  dbTaskStatuses = []
+  dbTaskStatuses = [],
+  useDatabase = false
 }) => {
   const [selectedTask, setSelectedTask] = useState<TaskTemplate | null>(null)
   const [taskSubmissionOpen, setTaskSubmissionOpen] = useState(false)
   const [batchSubmitIndex, setBatchSubmitIndex] = useState<number>(-1)
   const [batchSubmitTasks, setBatchSubmitTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
+  const [dbStats, setDbStats] = useState<TaskSummaryStats | null>(null)
+  const [isLoadingStats, setIsLoadingStats] = useState(false)
+  
+  // Load stats from database if enabled
+  useEffect(() => {
+    if (!useDatabase) return
+    
+    const currentUser = authService.getCurrentUser()
+    const restaurantId = getRestaurantId()
+    
+    if (!currentUser || !restaurantId) return
+    
+    const loadStats = async () => {
+      setIsLoadingStats(true)
+      try {
+        const stats = await getTaskSummaryStats(currentUser.id, restaurantId, role, testTime)
+        setDbStats(stats)
+      } catch (error) {
+        console.error('Error loading task stats:', error)
+      } finally {
+        setIsLoadingStats(false)
+      }
+    }
+    
+    loadStats()
+    
+    // Subscribe to real-time updates
+    const unsubscribe = subscribeToTaskStats(currentUser.id, restaurantId, (stats) => {
+      setDbStats(stats)
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [useDatabase, role, testTime])
   
   // console.log('TaskSummary received props:', {
   //   tasksCount: tasks.length,
@@ -97,6 +138,12 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   
   // Calculate completion rate for ALL PERIODS up to current
   const completionRate = useMemo(() => {
+    // Use database stats if available
+    if (useDatabase && dbStats) {
+      return dbStats.overallCompletionRate
+    }
+    
+    // Otherwise, use local calculation
     const workflowPeriods = loadWorkflowPeriods()
     const currentPeriod = getCurrentPeriod(testTime)
     const now = testTime || new Date()
@@ -144,7 +191,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     return totalTasksDue > 0 
       ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
       : 100 // If no tasks due, show 100%
-  }, [completedTaskIds, testTime, role])
+  }, [completedTaskIds, testTime, role, useDatabase, dbStats])
   
   const handleLateSubmitClick = (task: TaskTemplate) => {
     setSelectedTask(task)
@@ -214,13 +261,17 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
           </Typography>
         </Box>
         
-        <Chip 
-          label={`完成率: ${completionRate}%`}
-          color={completionRate === 100 ? 'success' : 'default'}
-          variant={completionRate === 100 ? 'filled' : 'outlined'}
-          size="medium"
-          sx={{ fontWeight: 'medium' }}
-        />
+        {isLoadingStats && useDatabase ? (
+          <CircularProgress size={24} />
+        ) : (
+          <Chip 
+            label={`完成率: ${completionRate}%`}
+            color={completionRate === 100 ? 'success' : 'default'}
+            variant={completionRate === 100 ? 'filled' : 'outlined'}
+            size="medium"
+            sx={{ fontWeight: 'medium' }}
+          />
+        )}
       </Box>
       
       <List disablePadding>
@@ -354,12 +405,12 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         )}
         
         {/* Missing Tasks from Previous Periods */}
-        {missingTasks.length > 0 && (
+        {((useDatabase && dbStats?.previousPeriodsMissing.length) || (!useDatabase && missingTasks.length > 0)) && (
           <>
             <Box sx={{ px: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="overline" color="error" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <History fontSize="small" />
-                缺失任务 ({missingTasks.length})
+                缺失任务 ({useDatabase ? dbStats?.previousPeriodsMissing.length : missingTasks.length})
               </Typography>
               <Button
                 size="small"
@@ -375,7 +426,12 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
                 一键补交
               </Button>
             </Box>
-            {missingTasks.map((item, index) => (
+            {(useDatabase ? dbStats?.previousPeriodsMissing.map((item, index) => {
+              // Convert database format to component format
+              const task = tasks.find(t => t.id === item.taskId)
+              if (!task) return null
+              return { task, periodName: item.periodName }
+            }).filter(Boolean) : missingTasks).map((item, index) => (
               <ListItem 
                 key={`missing-${index}`} 
                 divider

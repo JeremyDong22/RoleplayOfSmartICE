@@ -1276,6 +1276,7 @@ export const ManagerDashboard: React.FC = () => {
                 testTime={testTime}
                 role="manager"
                 dbTaskStatuses={dbTaskStatuses}
+                useDatabase={true}
               />
             </Grid>
           )}
