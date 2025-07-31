@@ -68,10 +68,10 @@ class TaskService {
     
     console.log('[TaskService] Successfully initialized with', this.periodsCache.length, 'periods and', this.tasksCache.size, 'task groups')
     
-    // 暂时禁用实时订阅，排查问题
-    // setTimeout(() => {
-    //   this.subscribeToChanges()
-    // }, 1000)
+    // 启用实时订阅
+    setTimeout(() => {
+      this.subscribeToChanges()
+    }, 1000)
     
     return true
   }
@@ -372,6 +372,25 @@ class TaskService {
         callback(data)
       }
     })
+  }
+
+  /**
+   * 手动刷新所有数据
+   */
+  async refresh(): Promise<boolean> {
+    console.log('[TaskService] Manual refresh triggered')
+    
+    // 重新加载所有数据
+    const periodsLoaded = await this.loadPeriods()
+    const tasksLoaded = await this.loadAllTasks()
+    
+    if (periodsLoaded && tasksLoaded) {
+      // 通知所有监听器数据已更新
+      this.notifyListeners('refresh', this.getWorkflowPeriods())
+      return true
+    }
+    
+    return false
   }
 
   /**
