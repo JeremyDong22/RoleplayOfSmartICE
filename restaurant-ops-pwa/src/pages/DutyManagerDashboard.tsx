@@ -450,7 +450,8 @@ const DutyManagerDashboard: React.FC = () => {
         photosCount: submission.content.photos?.length
       })
       
-      // 保存到数据库
+      // 移除重复的数据库保存，addSubmission 会处理
+      /*
       try {
         const { submitTaskRecord } = await import('../services/taskRecordService')
         const currentDate = new Date().toISOString().split('T')[0]
@@ -474,8 +475,15 @@ const DutyManagerDashboard: React.FC = () => {
         console.error('[DutyManager] Failed to save to database:', dbError)
         // 继续执行，不影响本地功能
       }
+      */
       
-      addSubmission(submission)
+      // 只调用 addSubmission，它会在 Context 中保存到数据库
+      try {
+        await addSubmission(submission)
+      } catch (error) {
+        console.error('[DutyManager] Failed to add submission:', error)
+        throw error
+      }
       }
     } catch (error) {
       console.error('Error in handleTaskComplete:', error)
