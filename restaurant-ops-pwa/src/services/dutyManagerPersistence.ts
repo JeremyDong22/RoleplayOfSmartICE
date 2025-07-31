@@ -72,6 +72,61 @@ export class DutyManagerPersistenceService {
     }
   }
 
+  // 获取值班经理当天的所有任务状态（用于恢复UI状态）
+  async getDutyManagerTaskStatuses(userId: string, restaurantId: string, date?: string) {
+    try {
+      const targetDate = date || new Date().toISOString().split('T')[0]
+      
+      const { data, error } = await supabase
+        .from('roleplay_task_records')
+        .select(`
+          *,
+          task:roleplay_tasks(id, title)
+        `)
+        .eq('user_id', userId)
+        .eq('restaurant_id', restaurantId)
+        .eq('date', targetDate)
+        .in('task_id', ['closing-duty-manager-1', 'closing-duty-manager-2', 'closing-duty-manager-3'])
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // 转换为任务状态映射
+      const taskStatuses: { [taskId: string]: any } = {}
+      const submissions: DutyManagerSubmission[] = []
+      
+      data.forEach(record => {
+        taskStatuses[record.task_id] = {
+          status: record.status,
+          review_status: record.review_status,
+          submittedAt: new Date(record.created_at),
+          reviewedAt: record.reviewed_at ? new Date(record.reviewed_at) : null,
+          reject_reason: record.reject_reason
+        }
+        
+        // 如果任务已提交且未被驳回，添加到submissions
+        if (record.status === 'submitted' && record.review_status !== 'rejected') {
+          submissions.push({
+            taskId: record.task_id,
+            taskTitle: record.task?.title || '',
+            submittedAt: new Date(record.created_at),
+            content: {
+              photos: record.photo_urls,
+              photoGroups: record.submission_metadata?.photoGroups,
+              text: record.text_content,
+              amount: record.submission_metadata?.amount
+            }
+          })
+        }
+      })
+
+      return { taskStatuses, submissions }
+    } catch (error) {
+      console.error('[DutyManagerPersistence] Failed to fetch task statuses:', error)
+      return { taskStatuses: {}, submissions: [] }
+    }
+  }
+
   // 获取待审核的值班经理任务
   async getPendingSubmissions(restaurantId: string, date?: string): Promise<DutyManagerSubmission[]> {
     try {

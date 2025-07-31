@@ -48,6 +48,7 @@ import {
 } from '@mui/icons-material'
 import { useDrag } from '@use-gesture/react'
 import { animated, useSpring } from '@react-spring/web'
+import { checkFileExists } from '../../utils/silentFileCheck'
 
 interface Evidence {
   photo: string
@@ -210,53 +211,51 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
           const sample: Sample = { images: [], text: '' }
           let hasContent = false
           
-          try {
-            const textPath = `/task-samples/${sampleDir}/sample${sampleIndex}.txt`
-            const textResponse = await fetch(textPath)
-            if (textResponse.ok) {
-              const textContent = await textResponse.text()
-              if (!textContent.includes('<!doctype html>')) {
-                sample.text = textContent
-                hasContent = true
+          // Check text file
+          const textPath = `/task-samples/${sampleDir}/sample${sampleIndex}.txt`
+          if (await checkFileExists(textPath)) {
+            try {
+              const textResponse = await fetch(textPath)
+              if (textResponse.ok) {
+                const textContent = await textResponse.text()
+                if (!textContent.includes('<!doctype html>')) {
+                  sample.text = textContent
+                  hasContent = true
+                }
               }
+            } catch (err) {
+              // Silent fail
             }
-          } catch (err) {
-            // Silent fail
           }
           
           let imgIdx = 1
           let foundImage = true
           while (foundImage && imgIdx <= 50) {
-            try {
-              let imagePath = ''
-              if (imgIdx === 1) {
-                const path1 = `/task-samples/${sampleDir}/sample${sampleIndex}.jpg`
-                const response = await fetch(path1)
-                if (response.ok && response.headers.get('content-type')?.includes('image')) {
-                  imagePath = path1
-                } else {
-                  const path2 = `/task-samples/${sampleDir}/sample${sampleIndex}-1.jpg`
-                  const response2 = await fetch(path2)
-                  if (response2.ok && response2.headers.get('content-type')?.includes('image')) {
-                    imagePath = path2
-                  }
-                }
-              } else {
-                const path = `/task-samples/${sampleDir}/sample${sampleIndex}-${imgIdx}.jpg`
-                const response = await fetch(path)
-                if (response.ok && response.headers.get('content-type')?.includes('image')) {
-                  imagePath = path
-                }
-              }
+            let imagePath = ''
+            
+            // Check for image files
+            if (imgIdx === 1) {
+              // Try both naming conventions for first image
+              const path1 = `/task-samples/${sampleDir}/sample${sampleIndex}.jpg`
+              const path2 = `/task-samples/${sampleDir}/sample${sampleIndex}-1.jpg`
               
-              if (imagePath) {
-                sample.images.push(imagePath)
-                hasContent = true
-                imgIdx++
-              } else {
-                foundImage = false
+              if (await checkFileExists(path1)) {
+                imagePath = path1
+              } else if (await checkFileExists(path2)) {
+                imagePath = path2
               }
-            } catch {
+            } else {
+              const path = `/task-samples/${sampleDir}/sample${sampleIndex}-${imgIdx}.jpg`
+              if (await checkFileExists(path)) {
+                imagePath = path
+              }
+            }
+            
+            if (imagePath) {
+              sample.images.push(imagePath)
+              hasContent = true
+              imgIdx++
+            } else {
               foundImage = false
             }
           }

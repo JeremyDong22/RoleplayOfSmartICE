@@ -23,6 +23,8 @@ import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { useDutyManager } from '../contexts/DutyManagerContext'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 import { uploadPhoto } from '../services/storageService'
+import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
+import { authService } from '../services/authService'
 
 interface NoticeComment {
   noticeId: string
@@ -120,10 +122,64 @@ const DutyManagerDashboard: React.FC = () => {
     setCurrentPeriod(period)
   }, [testTime])
   
-  // 标记初始化完成
+  // 从数据库加载任务状态
   useEffect(() => {
-    setIsInitialized(true)
-  }, [])
+    const loadTaskStatusesFromDB = async () => {
+      try {
+        const currentUser = authService.getCurrentUser()
+        if (!currentUser) {
+          console.log('[DutyManagerDashboard] No authenticated user, skip loading from DB')
+          setIsInitialized(true)
+          return
+        }
+
+        const restaurantId = currentUser.restaurantId || localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+        const { taskStatuses, submissions: dbSubmissions } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
+          currentUser.id,
+          restaurantId
+        )
+
+        console.log('[DutyManagerDashboard] Loaded from database:', { taskStatuses, dbSubmissions })
+
+        // 更新已完成的任务ID列表
+        const completedIds = Object.keys(taskStatuses).filter(taskId => 
+          taskStatuses[taskId].status === 'submitted' && 
+          taskStatuses[taskId].review_status !== 'rejected'
+        )
+
+        // 更新状态
+        setState(prev => ({
+          ...prev,
+          completedTaskIds: [...new Set([...prev.completedTaskIds, ...completedIds])],
+          taskStatuses: {
+            ...prev.taskStatuses,
+            ...Object.fromEntries(
+              Object.entries(taskStatuses).map(([taskId, status]) => [
+                taskId,
+                {
+                  completedAt: status.submittedAt,
+                  overdue: false,
+                  evidence: {} // 可以从数据库中恢复更多信息
+                }
+              ])
+            )
+          }
+        }))
+
+        // 如果有提交记录，更新到Context中
+        for (const submission of dbSubmissions) {
+          await addSubmission(submission)
+        }
+
+        setIsInitialized(true)
+      } catch (error) {
+        console.error('[DutyManagerDashboard] Failed to load from database:', error)
+        setIsInitialized(true)
+      }
+    }
+
+    loadTaskStatusesFromDB()
+  }, [addSubmission])
   
   // 保存状态到localStorage
   useEffect(() => {
