@@ -3,29 +3,38 @@
 
 export function checkFileExists(url: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('HEAD', url, true)
-    
-    // 设置超时
-    xhr.timeout = 5000
-    
-    xhr.onload = () => {
-      resolve(xhr.status === 200)
-    }
-    
-    xhr.onerror = () => {
-      resolve(false)
-    }
-    
-    xhr.ontimeout = () => {
-      resolve(false)
-    }
-    
-    // 静默处理所有错误
-    try {
-      xhr.send()
-    } catch {
-      resolve(false)
+    // 使用Image对象来检查图片是否真正存在
+    if (url.endsWith('.jpg') || url.endsWith('.png') || url.endsWith('.jpeg')) {
+      const img = new Image()
+      img.onload = () => resolve(true)
+      img.onerror = () => resolve(false)
+      img.src = url
+    } else {
+      // 对于非图片文件，使用原来的XHR方法
+      const xhr = new XMLHttpRequest()
+      xhr.open('HEAD', url, true)
+      
+      // 设置超时
+      xhr.timeout = 5000
+      
+      xhr.onload = () => {
+        resolve(xhr.status === 200)
+      }
+      
+      xhr.onerror = () => {
+        resolve(false)
+      }
+      
+      xhr.ontimeout = () => {
+        resolve(false)
+      }
+      
+      // 静默处理所有错误
+      try {
+        xhr.send()
+      } catch {
+        resolve(false)
+      }
     }
   })
 }

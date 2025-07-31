@@ -5,6 +5,7 @@ import type { TaskTemplate } from '../utils/workflowParser'
 import { realtimeDutyService } from '../services/realtimeDutyService'
 import { supabase } from '../services/supabase'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
+import { authService } from '../services/authService'
 
 // 照片组结构
 export interface PhotoGroup {
@@ -83,8 +84,8 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   // Initialize realtime service and load data from database
   useEffect(() => {
     const initServices = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user ? user.id : 'mock-user-' + Date.now()
+      const currentUser = authService.getCurrentUser()
+      const userId = currentUser?.id || 'demo-user-' + Date.now()
       
       // Try to initialize realtime service, but don't fail if it's not available
       try {
@@ -175,14 +176,17 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   // localStorage代码已移除，所有数据通过数据库持久化
 
   const setTrigger = async (trigger: DutyManagerTrigger) => {
-    setCurrentTrigger(trigger)
-    
-    // Save to database
+    // Save to database first
     try {
-      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      const currentUser = authService.getCurrentUser()
+      const restaurantId = currentUser?.restaurantId || localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
       await dutyManagerPersistence.saveTrigger(trigger, restaurantId)
+      
+      // Only update state if database save was successful
+      setCurrentTrigger(trigger)
     } catch (error) {
       console.error('Failed to save trigger to database:', error)
+      throw error // Propagate error to UI
     }
     
     // Send via realtime to other devices
@@ -216,49 +220,54 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       photos: submission.content.photos
     })
     
-    // 如果是重新提交，先移除之前的提交记录
-    setSubmissions(prev => {
-      const filtered = prev.filter(s => s.taskId !== submission.taskId)
-      const newSubmissions = [...filtered, submission]
-      console.log('[DutyManagerContext] Updated submissions:', newSubmissions)
-      return newSubmissions
-    })
-    
-    // Save to database
+    // First try to save to database
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'mock-user'
-      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      const currentUser = authService.getCurrentUser()
+      if (!currentUser) {
+        throw new Error('No authenticated user')
+      }
+      const userId = currentUser.id
+      const restaurantId = currentUser.restaurantId || localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
       await dutyManagerPersistence.saveSubmission(submission, userId, restaurantId)
-    } catch (error) {
-      console.error('Failed to save submission to database:', error)
-    }
-    
-    // 如果是重新提交（之前被驳回），清除驳回状态
-    if (reviewStatus[submission.taskId]?.status === 'rejected') {
-      const newReviewData = {
-        status: 'pending' as const,
-        reviewedAt: new Date()
+      
+      // Only update UI state if database save was successful
+      // 如果是重新提交，先移除之前的提交记录
+      setSubmissions(prev => {
+        const filtered = prev.filter(s => s.taskId !== submission.taskId)
+        const newSubmissions = [...filtered, submission]
+        console.log('[DutyManagerContext] Updated submissions:', newSubmissions)
+        return newSubmissions
+      })
+      
+      // 如果是重新提交（之前被驳回），清除驳回状态
+      if (reviewStatus[submission.taskId]?.status === 'rejected') {
+        const newReviewData = {
+          status: 'pending' as const,
+          reviewedAt: new Date()
+        }
+        
+        setReviewStatus(prev => ({
+          ...prev,
+          [submission.taskId]: newReviewData
+        }))
+        
+        // Send via realtime (if available)
+        try {
+          await realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
+        } catch (error) {
+          // Realtime not available, but database update succeeded
+        }
       }
       
-      setReviewStatus(prev => ({
-        ...prev,
-        [submission.taskId]: newReviewData
-      }))
-      
-      // Send via realtime (if available)
+      // Send via realtime to other devices (if available)
       try {
-        await realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
+        await realtimeDutyService.sendSubmission(submission)
       } catch (error) {
         // Realtime not available, but database update succeeded
       }
-    }
-    
-    // Send via realtime to other devices (if available)
-    try {
-      await realtimeDutyService.sendSubmission(submission)
     } catch (error) {
-      // Realtime not available, but database update succeeded
+      console.error('[DutyManager] Failed to save to database:', error)
+      throw error // Propagate error to UI
     }
   }
 
@@ -294,8 +303,11 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     
     // 更新数据库中的审核状态
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const reviewerId = user?.id || 'mock-reviewer'
+      const currentUser = authService.getCurrentUser()
+      if (!currentUser) {
+        throw new Error('No authenticated user for review')
+      }
+      const reviewerId = currentUser.id
       await dutyManagerPersistence.updateReviewStatus(taskId, status, reviewerId, reason)
     } catch (error) {
       console.error('[DutyManagerContext] Failed to save review to database:', error)

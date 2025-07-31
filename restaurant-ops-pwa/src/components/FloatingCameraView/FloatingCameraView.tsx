@@ -561,7 +561,12 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
                 <Box
                   component="img"
                   src={currentImage}
-                  alt={`Sample ${currentSampleIndex + 1}-${currentImageIndex + 1}`}
+                  alt={`示例图片`}
+                  onError={(e) => {
+                    // 隐藏加载失败的图片
+                    const target = e.target as HTMLImageElement
+                    target.style.display = 'none'
+                  }}
                   sx={{
                     width: '100%',
                     height: '100%',

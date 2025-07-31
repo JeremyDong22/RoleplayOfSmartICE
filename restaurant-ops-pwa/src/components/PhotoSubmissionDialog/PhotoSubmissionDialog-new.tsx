@@ -39,7 +39,9 @@ import {
   Delete,
   ArrowBack,
   // Image as ImageIcon,
-  Comment as CommentIcon
+  Comment as CommentIcon,
+  FlashOn,
+  FlashOff
 } from '@mui/icons-material'
 
 // 视图类型
@@ -104,6 +106,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   const [currentSessionPhotos, setCurrentSessionPhotos] = useState<Photo[]>([])
   // const [isCapturing, setIsCapturing] = useState(true)
   const [cameraError, setCameraError] = useState(false)
+  const [flashEnabled, setFlashEnabled] = useState(false)
+  const [flashSupported, setFlashSupported] = useState(false)
   
   // 已保存的照片组
   const [photoGroups, setPhotoGroups] = useState<PhotoGroup[]>([])
@@ -271,9 +275,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 }
+          facingMode: 'environment'
         } 
       })
       
@@ -287,12 +289,40 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             setCameraError(true)
           })
         }
+        
+        // 检查是否支持闪光灯
+        const track = stream.getVideoTracks()[0]
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {}
+        if (capabilities.torch) {
+          // 设备支持闪光灯
+          setFlashSupported(true)
+          track.applyConstraints({
+            advanced: [{ torch: flashEnabled }]
+          })
+        } else {
+          setFlashSupported(false)
+        }
       }
     } catch (error) {
       // console.error('Failed to start camera:', error)
       setCameraError(true)
     }
-  }, [])
+  }, [flashEnabled])
+  
+  // 切换闪光灯
+  const toggleFlash = useCallback(() => {
+    if (streamRef.current) {
+      const track = streamRef.current.getVideoTracks()[0]
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {}
+      if (capabilities.torch) {
+        const newFlashState = !flashEnabled
+        setFlashEnabled(newFlashState)
+        track.applyConstraints({
+          advanced: [{ torch: newFlashState }]
+        })
+      }
+    }
+  }, [flashEnabled])
   
   // 启动相机（当进入相机视图时）
   useEffect(() => {
@@ -408,6 +438,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     stopCamera()
     setSamples([])
     setCurrentView('samples')
+    setFlashEnabled(false)
     onClose()
   }
   
@@ -470,8 +501,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                           key={imgIdx}
                           component="img"
                           src={img}
-                          alt={`Sample ${index + 1}-${imgIdx + 1}`}
+                          alt={`示例图片 ${imgIdx + 1}`}
                           onClick={() => setEnlargedImage(img)}
+                          onError={(e) => {
+                            // 隐藏加载失败的图片
+                            const target = e.target as HTMLImageElement
+                            target.style.display = 'none'
+                          }}
                           sx={{
                             height: 120,
                             width: 120,
@@ -553,19 +589,35 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             返回
           </Button>
           
-          <Typography variant="subtitle2">
-            本次已拍: {currentSessionPhotos.length} 张
-          </Typography>
+          <Box display="flex" alignItems="center" gap={1}>
+            {flashSupported && (
+              <IconButton
+                onClick={toggleFlash}
+                size="small"
+                sx={{ 
+                  color: flashEnabled ? 'warning.main' : 'text.secondary',
+                  bgcolor: flashEnabled ? 'action.hover' : 'transparent'
+                }}
+              >
+                {flashEnabled ? <FlashOn /> : <FlashOff />}
+              </IconButton>
+            )}
+            <Typography variant="subtitle2">
+              本次已拍: {currentSessionPhotos.length} 张
+            </Typography>
+          </Box>
         </Box>
       </Box>
       
-      {/* 相机视图 - 固定比例 */}
+      {/* 相机视图 - 动态比例 */}
       <Box sx={{ 
         width: '100%',
-        aspectRatio: '4/3',  // 固定4:3比例
+        flex: 1,  // 占用剩余空间
         position: 'relative', 
         bgcolor: 'black',
-        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         overflow: 'hidden'
       }}>
         {cameraError ? (
@@ -600,7 +652,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'cover'
+                objectFit: 'contain'  // 改为contain以显示完整画面
               }}
             />
             <canvas
@@ -611,16 +663,15 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         )}
       </Box>
       
-      {/* 底部控制区 - 剩余空间自适应 */}
+      {/* 底部控制区 - 自动高度 */}
       <Box sx={{ 
-        flex: 1,
         display: 'flex',
         flexDirection: 'column',
         p: 1.5, 
         borderTop: 1, 
         borderColor: 'divider',
         overflow: 'auto',
-        minHeight: 0  // 重要：允许收缩
+        maxHeight: '40%'  // 最多占用40%高度
       }}>
         {/* Sample选择器 */}
         <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
