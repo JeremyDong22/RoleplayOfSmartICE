@@ -1,5 +1,5 @@
 // Main App component with routing and Realtime integration
-// Updated: 2025-07-24 - Added login page and protected routes
+// Updated: 2025-07-31 - Added restaurant initialization
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -21,6 +21,7 @@ import TestTaskUpload from './pages/TestTaskUpload'
 import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
+import { initializeRestaurant } from './utils/restaurantSetup'
 
 const theme = createTheme({
   palette: {
@@ -100,6 +101,9 @@ function App() {
   useEffect(() => {
     // 初始化Storage
     initializeStorage()
+    
+    // 初始化餐厅设置
+    initializeRestaurant()
     
     // 模拟用户登录后启动 Realtime
     // const initRealtime = async () => {

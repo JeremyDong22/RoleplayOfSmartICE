@@ -1,8 +1,10 @@
 // 值班经理任务触发上下文 - 用于管理前厅和值班经理之间的通信
+// 更新：集成数据库持久化，支持离线查看任务提交
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import type { TaskTemplate } from '../utils/workflowParser'
 import { realtimeDutyService } from '../services/realtimeDutyService'
 import { supabase } from '../services/supabase'
+import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 
 // 照片组结构
 export interface PhotoGroup {
@@ -35,12 +37,12 @@ interface DutyManagerContextType {
   // 触发状态
   currentTrigger: DutyManagerTrigger | null
   setTrigger: (trigger: DutyManagerTrigger) => Promise<void>
-  clearTrigger: () => void
+  clearTrigger: () => Promise<void>
   
   // 任务提交状态
   submissions: DutyManagerSubmission[]
-  addSubmission: (submission: DutyManagerSubmission) => void
-  clearSubmissions: () => void
+  addSubmission: (submission: DutyManagerSubmission) => Promise<void>
+  clearSubmissions: () => Promise<void>
   
   // 审核状态
   reviewStatus: {
@@ -50,7 +52,7 @@ interface DutyManagerContextType {
       reason?: string
     }
   }
-  updateReviewStatus: (taskId: string, status: 'approved' | 'rejected', reason?: string) => void
+  updateReviewStatus: (taskId: string, status: 'approved' | 'rejected', reason?: string) => Promise<void>
 }
 
 const DutyManagerContext = createContext<DutyManagerContextType | undefined>(undefined)
@@ -78,25 +80,48 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     }
   }>({})
 
-  // Initialize realtime service
+  // Initialize realtime service and load data from database
   useEffect(() => {
-    const initRealtime = async () => {
+    const initServices = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          await realtimeDutyService.initialize(user.id)
-        } else {
-          // For testing without authentication, use a mock user ID
-          // No authenticated user, using mock user for testing
-          await realtimeDutyService.initialize('mock-user-' + Date.now())
+        const userId = user ? user.id : 'mock-user-' + Date.now()
+        
+        // Initialize realtime service
+        await realtimeDutyService.initialize(userId)
+        
+        // Load data from database instead of localStorage
+        const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+        
+        // Load trigger status from database
+        const trigger = await dutyManagerPersistence.getCurrentTrigger(restaurantId)
+        if (trigger) {
+          setCurrentTrigger(trigger)
+        }
+        
+        // Load pending submissions from database
+        const pendingSubmissions = await dutyManagerPersistence.getPendingSubmissions(restaurantId)
+        if (pendingSubmissions.length > 0) {
+          console.log('[DutyManagerContext] Loaded submissions from database:', pendingSubmissions)
+          setSubmissions(pendingSubmissions)
+          
+          // Initialize review status for loaded submissions
+          const reviewStatuses: any = {}
+          pendingSubmissions.forEach(sub => {
+            reviewStatuses[sub.taskId] = {
+              status: 'pending',
+              reviewedAt: new Date()
+            }
+          })
+          setReviewStatus(reviewStatuses)
         }
       } catch (error) {
-        console.error('Error initializing realtime service:', error)
-        // Fallback to mock user
+        console.error('Error initializing services:', error)
+        // Fallback to mock user for realtime
         await realtimeDutyService.initialize('mock-user-' + Date.now())
       }
     }
-    initRealtime()
+    initServices()
     
     return () => {
       realtimeDutyService.cleanup()
@@ -141,76 +166,21 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     }
   }, [])
 
-  // 从localStorage恢复状态
-  useEffect(() => {
-    const savedTrigger = localStorage.getItem('dutyManagerTrigger')
-    if (savedTrigger) {
-      try {
-        const trigger = JSON.parse(savedTrigger)
-        trigger.triggeredAt = new Date(trigger.triggeredAt)
-        setCurrentTrigger(trigger)
-      } catch (e) {
-        // Failed to parse saved trigger
-      }
-    }
+  // 移除localStorage相关代码，数据已从数据库加载
 
-    const savedSubmissions = localStorage.getItem('dutyManagerSubmissions')
-    if (savedSubmissions) {
-      try {
-        const subs = JSON.parse(savedSubmissions)
-        subs.forEach((s: any) => {
-          s.submittedAt = new Date(s.submittedAt)
-        })
-        console.log('[DutyManagerContext] Restored submissions from localStorage:', subs)
-        setSubmissions(subs)
-      } catch (e) {
-        console.error('[DutyManagerContext] Failed to parse saved submissions:', e)
-      }
-    }
-
-    const savedReviewStatus = localStorage.getItem('dutyManagerReviewStatus')
-    if (savedReviewStatus) {
-      try {
-        const status = JSON.parse(savedReviewStatus)
-        Object.keys(status).forEach(key => {
-          if (status[key].reviewedAt) {
-            status[key].reviewedAt = new Date(status[key].reviewedAt)
-          }
-        })
-        setReviewStatus(status)
-      } catch (e) {
-        // Failed to parse saved review status
-      }
-    }
-  }, [])
-
-  // 保存到localStorage
-  useEffect(() => {
-    if (currentTrigger) {
-      localStorage.setItem('dutyManagerTrigger', JSON.stringify(currentTrigger))
-    } else {
-      localStorage.removeItem('dutyManagerTrigger')
-    }
-  }, [currentTrigger])
-
-  useEffect(() => {
-    if (submissions.length > 0) {
-      localStorage.setItem('dutyManagerSubmissions', JSON.stringify(submissions))
-    } else {
-      localStorage.removeItem('dutyManagerSubmissions')
-    }
-  }, [submissions])
-
-  useEffect(() => {
-    if (Object.keys(reviewStatus).length > 0) {
-      localStorage.setItem('dutyManagerReviewStatus', JSON.stringify(reviewStatus))
-    } else {
-      localStorage.removeItem('dutyManagerReviewStatus')
-    }
-  }, [reviewStatus])
+  // localStorage代码已移除，所有数据通过数据库持久化
 
   const setTrigger = async (trigger: DutyManagerTrigger) => {
     setCurrentTrigger(trigger)
+    
+    // Save to database
+    try {
+      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      await dutyManagerPersistence.saveTrigger(trigger, restaurantId)
+    } catch (error) {
+      console.error('Failed to save trigger to database:', error)
+    }
+    
     // Send via realtime to other devices
     try {
       await realtimeDutyService.sendTrigger(trigger)
@@ -219,14 +189,22 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     }
   }
 
-  const clearTrigger = () => {
+  const clearTrigger = async () => {
     setCurrentTrigger(null)
     // 同时清除相关的提交和审核状态
     setSubmissions([])
     setReviewStatus({})
+    
+    // Clear in database
+    try {
+      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      await dutyManagerPersistence.clearDailySubmissions(restaurantId)
+    } catch (error) {
+      console.error('Failed to clear trigger in database:', error)
+    }
   }
 
-  const addSubmission = (submission: DutyManagerSubmission) => {
+  const addSubmission = async (submission: DutyManagerSubmission) => {
     console.log('[DutyManagerContext] addSubmission called with:', {
       taskId: submission.taskId,
       content: submission.content,
@@ -241,6 +219,16 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       console.log('[DutyManagerContext] Updated submissions:', newSubmissions)
       return newSubmissions
     })
+    
+    // Save to database
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const userId = user?.id || 'mock-user'
+      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      await dutyManagerPersistence.saveSubmission(submission, userId, restaurantId)
+    } catch (error) {
+      console.error('Failed to save submission to database:', error)
+    }
     
     // 如果是重新提交（之前被驳回），清除驳回状态
     if (reviewStatus[submission.taskId]?.status === 'rejected') {
@@ -262,8 +250,17 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     realtimeDutyService.sendSubmission(submission)
   }
 
-  const clearSubmissions = () => {
+  const clearSubmissions = async () => {
     setSubmissions([])
+    
+    // Clear in database
+    try {
+      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      await dutyManagerPersistence.clearDailySubmissions(restaurantId)
+    } catch (error) {
+      console.error('Failed to clear submissions in database:', error)
+    }
+    
     // Send via realtime
     realtimeDutyService.clearSubmissions()
   }
@@ -281,21 +278,9 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     
     // 更新数据库中的审核状态
     try {
-      const { reviewTaskRecord } = await import('../services/taskRecordService')
-      
-      // 查找对应的任务记录（通过task_id查找最新的submitted记录）
-      const { data: records } = await supabase
-        .from('roleplay_task_records')
-        .select('id')
-        .eq('task_id', taskId)
-        .eq('status', 'submitted')
-        .order('created_at', { ascending: false })
-        .limit(1)
-      
-      if (records && records.length > 0) {
-        await reviewTaskRecord(records[0].id, status, reason)
-        console.log(`[DutyManagerContext] Task ${taskId} review saved to database`)
-      }
+      const { data: { user } } = await supabase.auth.getUser()
+      const reviewerId = user?.id || 'mock-reviewer'
+      await dutyManagerPersistence.updateReviewStatus(taskId, status, reviewerId, reason)
     } catch (error) {
       console.error('[DutyManagerContext] Failed to save review to database:', error)
     }
