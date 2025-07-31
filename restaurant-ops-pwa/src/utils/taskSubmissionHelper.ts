@@ -8,7 +8,7 @@ import { uploadPhoto, uploadAudio } from '../services/storageService'
 interface TaskSubmissionData {
   taskId: string
   userId: string
-  restaurantId: number
+  restaurantId: string
   date: string
   periodId: string
   uploadRequirement?: string | null
