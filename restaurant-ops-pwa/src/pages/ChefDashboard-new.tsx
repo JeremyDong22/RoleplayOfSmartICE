@@ -31,6 +31,7 @@ import { clearAllAppStorage } from '../utils/clearAllStorage'
 import { getTodayCompletedTaskIds } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
+import { getRestaurantId } from '../utils/restaurantSetup'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -563,34 +564,8 @@ export const ChefDashboard: React.FC = () => {
   
   const handleTaskComplete = async (taskId: string, data: any) => {
     const now = testTime || new Date()
-    setTaskStatuses(prev => [
-      ...prev.filter(s => s.taskId !== taskId),
-      {
-        taskId,
-        completed: true,
-        completedAt: now,
-        overdue: false,
-        evidence: data // Store evidence data with task status
-      }
-    ])
     
-    const newCompletedIds = [...completedTaskIds, taskId]
-    setCompletedTaskIds(newCompletedIds)
-    
-    // Evidence data submitted
-    
-    // Check if this is the last task in pre-closing period for chef
-    if (currentPeriod?.id === 'pre-closing') {
-      const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
-      const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
-      
-      if (allCompleted) {
-        // All pre-closing tasks completed, show completion message
-        setShowPreClosingComplete(true)
-      }
-    }
-    
-    // Submit task data to Supabase
+    // Submit task data to Supabase FIRST
     if (currentUserId) {
       try {
         const task = currentTasks.find(t => t.id === taskId)
@@ -598,7 +573,7 @@ export const ChefDashboard: React.FC = () => {
           const result = await submitTaskWithMedia({
             taskId,
             userId: currentUserId,
-            restaurantId: 1, // 野百灵的ID是1
+            restaurantId: getRestaurantId(), // Get restaurant UUID from localStorage
             date: now.toISOString().split('T')[0],
             periodId: currentPeriod?.id || '',
             uploadRequirement: task.uploadRequirement,
@@ -606,6 +581,32 @@ export const ChefDashboard: React.FC = () => {
           })
           
           console.log('[ChefDashboard] Task successfully submitted:', result.id)
+          
+          // Only update local state after successful database save
+          setTaskStatuses(prev => [
+            ...prev.filter(s => s.taskId !== taskId),
+            {
+              taskId,
+              completed: true,
+              completedAt: now,
+              overdue: false,
+              evidence: data // Store evidence data with task status
+            }
+          ])
+          
+          const newCompletedIds = [...completedTaskIds, taskId]
+          setCompletedTaskIds(newCompletedIds)
+          
+          // Check if this is the last task in pre-closing period for chef
+          if (currentPeriod?.id === 'pre-closing') {
+            const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
+            const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
+            
+            if (allCompleted) {
+              // All pre-closing tasks completed, show completion message
+              setShowPreClosingComplete(true)
+            }
+          }
         }
       } catch (error) {
         console.error('[ChefDashboard] Error submitting task to Supabase:', {
@@ -614,7 +615,35 @@ export const ChefDashboard: React.FC = () => {
           userId: currentUserId,
           errorMessage: error instanceof Error ? error.message : 'Unknown error'
         })
-        // Still update local state even if submission fails
+        // Don't update local state if submission fails
+        alert('任务提交失败，请重试！Task submission failed, please try again!')
+        throw error // Re-throw to prevent marking as complete
+      }
+    } else {
+      // Still allow local completion if no user is logged in (for testing)
+      setTaskStatuses(prev => [
+        ...prev.filter(s => s.taskId !== taskId),
+        {
+          taskId,
+          completed: true,
+          completedAt: now,
+          overdue: false,
+          evidence: data
+        }
+      ])
+      
+      const newCompletedIds = [...completedTaskIds, taskId]
+      setCompletedTaskIds(newCompletedIds)
+      
+      // Check if this is the last task in pre-closing period for chef
+      if (currentPeriod?.id === 'pre-closing') {
+        const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
+        const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
+        
+        if (allCompleted) {
+          // All pre-closing tasks completed, show completion message
+          setShowPreClosingComplete(true)
+        }
       }
     }
   }

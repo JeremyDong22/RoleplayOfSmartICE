@@ -37,6 +37,7 @@ import { getTodayCompletedTaskIds, getCompletedTasksInRange } from '../services/
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
 import { authService } from '../services/authService'
+import { getRestaurantId } from '../utils/restaurantSetup'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -762,23 +763,7 @@ export const ManagerDashboard: React.FC = () => {
       addSubmission(submission)
     }
     
-    // 更新任务状态
-    console.log('[ManagerDashboard] Updating task statuses...');
-    setTaskStatuses(prev => [
-      ...prev.filter(s => s.taskId !== taskId),
-      {
-        taskId,
-        completed: true,
-        completedAt: now,
-        overdue: false,
-        evidence: data // Store evidence data with task status
-      }
-    ])
-    
-    setCompletedTaskIds(prev => [...prev, taskId])
-    console.log('[ManagerDashboard] Task marked as completed locally');
-    
-    // Submit task data to Supabase with media upload
+    // Submit task data to Supabase with media upload FIRST
     console.log('[ManagerDashboard] Checking if should submit to database...');
     console.log('[ManagerDashboard] currentUserId:', currentUserId);
     console.log('[ManagerDashboard] task exists:', !!task);
@@ -790,7 +775,7 @@ export const ManagerDashboard: React.FC = () => {
         console.log('[ManagerDashboard] Calling submitTaskWithMedia with:', {
           taskId,
           userId: currentUserId,
-          restaurantId: 1,
+          restaurantId: getRestaurantId(),
           date: now.toISOString().split('T')[0],
           periodId: currentPeriod?.id || '',
           uploadRequirement: task.uploadRequirement,
@@ -801,7 +786,7 @@ export const ManagerDashboard: React.FC = () => {
         const result = await submitTaskWithMedia({
           taskId,
           userId: currentUserId,
-          restaurantId: 1, // 野百灵的ID是1
+          restaurantId: getRestaurantId(), // Get restaurant UUID from localStorage
           date: now.toISOString().split('T')[0],
           periodId: currentPeriod?.id || '',
           uploadRequirement: task.uploadRequirement,
@@ -809,6 +794,22 @@ export const ManagerDashboard: React.FC = () => {
         })
         
         console.log('[ManagerDashboard] Task successfully submitted to database:', result.id)
+        
+        // Only update local state after successful database save
+        console.log('[ManagerDashboard] Updating task statuses...');
+        setTaskStatuses(prev => [
+          ...prev.filter(s => s.taskId !== taskId),
+          {
+            taskId,
+            completed: true,
+            completedAt: now,
+            overdue: false,
+            evidence: data // Store evidence data with task status
+          }
+        ])
+        
+        setCompletedTaskIds(prev => [...prev, taskId])
+        console.log('[ManagerDashboard] Task marked as completed locally');
       } catch (error) {
         console.error('[ManagerDashboard] ERROR submitting task to database:', {
           error,
@@ -817,12 +818,26 @@ export const ManagerDashboard: React.FC = () => {
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
           errorStack: error instanceof Error ? error.stack : 'No stack trace'
         })
-        // Still update local state even if submission fails
+        // Don't update local state if submission fails
+        alert('任务提交失败，请重试！Task submission failed, please try again!')
+        throw error // Re-throw to prevent marking as complete
       }
     } else {
       console.log('[ManagerDashboard] NOT submitting to database because:');
       console.log('[ManagerDashboard] - currentUserId is:', currentUserId);
       console.log('[ManagerDashboard] - task is:', task);
+      // Still allow local completion if no user is logged in (for testing)
+      setTaskStatuses(prev => [
+        ...prev.filter(s => s.taskId !== taskId),
+        {
+          taskId,
+          completed: true,
+          completedAt: now,
+          overdue: false,
+          evidence: data
+        }
+      ])
+      setCompletedTaskIds(prev => [...prev, taskId])
     }
     
     console.log('[ManagerDashboard] ===== TASK COMPLETE END =====');
@@ -869,7 +884,7 @@ export const ManagerDashboard: React.FC = () => {
           const result = await submitTaskWithMedia({
             taskId,
             userId: currentUserId,
-            restaurantId: 1, // 野百灵的ID是1
+            restaurantId: getRestaurantId(), // Get restaurant UUID from localStorage
             date: now.toISOString().split('T')[0],
             periodId: currentPeriod?.id || '',
             uploadRequirement: task.uploadRequirement,

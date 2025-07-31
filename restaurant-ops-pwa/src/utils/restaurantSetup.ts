@@ -43,3 +43,13 @@ export async function initializeRestaurant() {
     return restaurantId
   }
 }
+
+// Get current restaurant ID
+export function getRestaurantId(): string {
+  const id = localStorage.getItem('selectedRestaurantId')
+  if (!id || id === 'default-restaurant') {
+    // Return the hardcoded UUID if no valid ID is found
+    return 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a'
+  }
+  return id
+}
