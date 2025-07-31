@@ -147,6 +147,18 @@ const DutyManagerDashboard: React.FC = () => {
           taskStatuses[taskId].review_status !== 'rejected'
         )
 
+        // 构建审核状态映射
+        const reviewStatuses: any = {}
+        Object.entries(taskStatuses).forEach(([taskId, status]) => {
+          if (status.status === 'submitted') {
+            reviewStatuses[taskId] = {
+              status: status.review_status || 'pending',
+              reviewedAt: status.reviewedAt || status.submittedAt,
+              reason: status.reject_reason
+            }
+          }
+        })
+
         // 更新状态
         setState(prev => ({
           ...prev,
@@ -165,6 +177,9 @@ const DutyManagerDashboard: React.FC = () => {
             )
           }
         }))
+
+        // 设置审核状态
+        setReviewStatus(reviewStatuses)
 
         // 不需要再调用 addSubmission，因为数据已经在数据库中
         // Context 初始化时会自动从数据库加载这些提交

@@ -113,13 +113,25 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         if (pendingSubmissions.length > 0) {
           console.log('[DutyManagerContext] Loaded submissions from database:', pendingSubmissions)
           setSubmissions(pendingSubmissions)
+        }
+        
+        // Load task statuses to get review status
+        const currentUser = authService.getCurrentUser()
+        if (currentUser) {
+          const { taskStatuses } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
+            currentUser.id,
+            restaurantId
+          )
           
-          // Initialize review status for loaded submissions
+          // Initialize review status from loaded task statuses
           const reviewStatuses: any = {}
-          pendingSubmissions.forEach(sub => {
-            reviewStatuses[sub.taskId] = {
-              status: 'pending',
-              reviewedAt: new Date()
+          Object.entries(taskStatuses).forEach(([taskId, status]) => {
+            if (status.status === 'submitted') {
+              reviewStatuses[taskId] = {
+                status: status.review_status || 'pending',
+                reviewedAt: status.reviewedAt || status.submittedAt,
+                reason: status.reject_reason
+              }
             }
           })
           setReviewStatus(reviewStatuses)

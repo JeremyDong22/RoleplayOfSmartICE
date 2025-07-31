@@ -127,7 +127,7 @@ export class DutyManagerPersistenceService {
     }
   }
 
-  // 获取待审核的值班经理任务
+  // 获取待审核和被驳回的值班经理任务
   async getPendingSubmissions(restaurantId: string, date?: string): Promise<DutyManagerSubmission[]> {
     try {
       const query = supabase
@@ -137,7 +137,7 @@ export class DutyManagerPersistenceService {
           task:roleplay_tasks(id, title)
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('review_status', 'pending')
+        .in('review_status', ['pending', 'rejected'])
         .in('task_id', ['closing-duty-manager-1', 'closing-duty-manager-2', 'closing-duty-manager-3'])
         .order('created_at', { ascending: false })
 
