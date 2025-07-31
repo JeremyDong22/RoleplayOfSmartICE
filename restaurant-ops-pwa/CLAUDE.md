@@ -141,6 +141,14 @@ Use `size` prop instead of `xs/sm/md/lg` props.
    - Notices are displayed separately from actionable tasks
    - Only non-notice tasks count toward completion
 
+4. **Floating Tasks Behavior** (Updated 2025-01-31):
+   - Floating tasks (`isFloating: true`) can be submitted multiple times
+   - They don't get marked as completed in `completedTaskIds`
+   - They don't count toward completion rate
+   - They don't block closing/waiting transitions
+   - Each submission creates a new record in Supabase
+   - UI shows success message after each submission
+
 ## Common Issues and Solutions
 
 1. **Infinite Loop in useEffect**: Usually caused by including array length in dependencies. Use specific IDs or primitive values instead.

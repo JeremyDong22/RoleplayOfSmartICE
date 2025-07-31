@@ -28,7 +28,7 @@ import { useTaskData } from '../contexts/TaskDataContext'
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
 // import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
 import { clearAllAppStorage } from '../utils/clearAllStorage'
-import { getTodayCompletedTaskIds } from '../services/taskRecordService'
+import { getTodayCompletedTaskIds, getTodayTaskStatuses, type TaskStatusDetail } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
 import { getRestaurantId } from '../utils/restaurantSetup'
@@ -118,24 +118,12 @@ const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
 3. **异常情况处理**：遇异常情况，及时通知人员进行协助解决并与前厅沟通预防出餐慢导致客诉
 4. **次日备货准备**：高峰日可提前在无出餐压力的情况下，进行第二天部分原材料备货工作
 
-## 预打烊（晚市）（21:30起）
-### 前厅
-1. 收市准备：先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作
-2. 值班安排：安排值班人员
-3. 用餐安排：其他人员陆续进行晚餐就餐
-### 后厨
-1. 食材下单：检查当日库存情况，制定第二天的食材用量
-2. 收市准备：先收市再休息，提前安排人员进行卫生清扫、原材料半成品收纳保存、物资物品收纳等工作
-3. 值班安排：安排值班人员
-4. 用餐安排：其他人员陆续进行晚餐就餐
-
-## 闭店（最后一桌客人离店后）
+## 闭店（21:30起）
 1. 收据清点保管：清点当日收据并存放至指定位置保管
 2. 营业数据记录：打印交班单并填写日营业报表数据
-3. 现金清点保管：清点现金保存至指定位置
-4. 当日复盘总结：门店管理层进行5分钟左右当日问题复盘与总结为第二天晨会做准备
-5. 能源安全检查：关闭并检查门店水电气能源，确保门店能源安全
-6. 安防闭店检查：锁好抽屉、门窗进行闭店上报，确保无明火，安防系统开启`
+3. 当日复盘总结：门店管理层进行5分钟左右当日问题复盘与总结为第二天晨会做准备
+4. 能源安全检查：关闭并检查门店水电气能源，确保门店能源安全
+5. 安防闭店检查：锁好抽屉、门窗进行闭店上报，确保无明火，安防系统开启`
 
 // Make it available globally for markdownParser
 if (!(window as any).WORKFLOW_MARKDOWN_CONTENT) {
@@ -186,6 +174,7 @@ export const ChefDashboard: React.FC = () => {
     const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
     const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
     const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
+    const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
     const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
     const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
     
@@ -209,6 +198,10 @@ export const ChefDashboard: React.FC = () => {
         // Load today's completed tasks
         const completedIds = await getTodayCompletedTaskIds(user.id)
         setCompletedTaskIds(completedIds)
+        
+        // Load today's task statuses for TaskSummary
+        const taskStatuses = await getTodayTaskStatuses(user.id)
+        setDbTaskStatuses(taskStatuses)
         
         // For now, still load some state from localStorage (will be removed later)
         const savedState = loadState('chef')
@@ -278,14 +271,14 @@ export const ChefDashboard: React.FC = () => {
     }
   }, [completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, testTime, hasInitialized])
   
-  // Helper function to get next period for Chef (only special case for pre-closing)
+  // Helper function to get next period for Chef (only special case for closing)
   const getNextPeriodForChef = (currentTime?: Date) => {
     const current = getCurrentPeriod(currentTime)
     const normalNext = getNextPeriod(currentTime)
     
-    // Special case: if we're in pre-closing and next would be closing, skip to opening
-    if (current?.id === 'pre-closing' && normalNext?.id === 'closing') {
-      // Chef skips closing period and goes directly to opening (next day)
+    // Special case: if we're in closing, show opening as next period
+    if (current?.id === 'closing' && normalNext?.id === 'opening') {
+      // Chef shows opening as next period after closing
       return workflowPeriods.find(p => p.id === 'opening') || null
     }
     
@@ -451,7 +444,7 @@ export const ChefDashboard: React.FC = () => {
       
       // Check all periods that have passed
       workflowPeriods.forEach(period => {
-        // Skip event-driven periods (pre-closing, closing) - they don't end by time
+        // Skip event-driven periods - they don't end by time
         if (period.isEventDriven) return
         
         const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
@@ -493,7 +486,7 @@ export const ChefDashboard: React.FC = () => {
           periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
           
           // Keep tasks from periods that haven't naturally ended yet
-          return now <= periodEnd || period.id === 'pre-closing'
+          return now <= periodEnd
         })
         
         // Combine manually added tasks with auto-detected ones
@@ -520,7 +513,7 @@ export const ChefDashboard: React.FC = () => {
   
   // Overdue status update effect
   useEffect(() => {
-    if (!currentPeriod || currentPeriod.id === 'pre-closing') return
+    if (!currentPeriod || currentPeriod.id === 'closing') return
     
     const updateOverdueStatus = () => {
       const now = testTime || new Date()
@@ -583,29 +576,42 @@ export const ChefDashboard: React.FC = () => {
           console.log('[ChefDashboard] Task successfully submitted:', result.id)
           
           // Only update local state after successful database save
-          setTaskStatuses(prev => [
-            ...prev.filter(s => s.taskId !== taskId),
-            {
-              taskId,
-              completed: true,
-              completedAt: now,
-              overdue: false,
-              evidence: data // Store evidence data with task status
-            }
-          ])
-          
-          const newCompletedIds = [...completedTaskIds, taskId]
-          setCompletedTaskIds(newCompletedIds)
-          
-          // Check if this is the last task in pre-closing period for chef
-          if (currentPeriod?.id === 'pre-closing') {
-            const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
-            const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
+          // 注意：floating tasks不需要记录完成状态，因为它们可以无限提交
+          if (!task.isFloating) {
+            setTaskStatuses(prev => [
+              ...prev.filter(s => s.taskId !== taskId),
+              {
+                taskId,
+                completed: true,
+                completedAt: now,
+                overdue: false,
+                evidence: data // Store evidence data with task status
+              }
+            ])
             
-            if (allCompleted) {
-              // All pre-closing tasks completed, show completion message
-              setShowPreClosingComplete(true)
+            const newCompletedIds = [...completedTaskIds, taskId]
+            setCompletedTaskIds(newCompletedIds)
+            
+            // Refresh task statuses from database for TaskSummary
+            const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
+            setDbTaskStatuses(updatedTaskStatuses)
+            
+            // Check if this is the last task in closing period for chef
+            if (currentPeriod?.id === 'closing') {
+              const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
+              const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
+              
+              if (allCompleted) {
+                // All closing tasks completed, show completion message
+                setShowPreClosingComplete(true)
+              }
             }
+          } else {
+            console.log('[ChefDashboard] Floating task submitted but not marked as completed (can be resubmitted)')
+            
+            // Still refresh task statuses for floating tasks
+            const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
+            setDbTaskStatuses(updatedTaskStatuses)
           }
         }
       } catch (error) {
@@ -635,13 +641,13 @@ export const ChefDashboard: React.FC = () => {
       const newCompletedIds = [...completedTaskIds, taskId]
       setCompletedTaskIds(newCompletedIds)
       
-      // Check if this is the last task in pre-closing period for chef
-      if (currentPeriod?.id === 'pre-closing') {
+      // Check if this is the last task in closing period for chef
+      if (currentPeriod?.id === 'closing') {
         const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
         const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
         
         if (allCompleted) {
-          // All pre-closing tasks completed, show completion message
+          // All closing tasks completed, show completion message
           setShowPreClosingComplete(true)
         }
       }
@@ -691,12 +697,7 @@ export const ChefDashboard: React.FC = () => {
   // Removed handleLastCustomerLeft as it's not used for Chef
   
   const handleClosingComplete = () => {
-    // Check floating tasks first
-    const incompleteFloatingTasks = floatingTasks.filter(task => !completedTaskIds.includes(task.id))
-    if (incompleteFloatingTasks.length > 0) {
-      alert(`请先完成特殊任务：${incompleteFloatingTasks.map(t => t.title).join('、')}`)
-      return
-    }
+    // 移除了对floating tasks的检查，因为它们不是强制性的
     
     // Check if there are any missing tasks
     if (missingTasks.length > 0) {
@@ -865,14 +866,14 @@ export const ChefDashboard: React.FC = () => {
                   onAdvancePeriod={handleAdvancePeriod}
                 />
                 
-                {/* Show completion message and button for chef when pre-closing tasks are done */}
-                {currentPeriod.id === 'pre-closing' && showPreClosingComplete && (
+                {/* Show completion message and button for chef when closing tasks are done */}
+                {currentPeriod.id === 'closing' && showPreClosingComplete && (
                   <Paper elevation={2} sx={{ p: 3, mt: 3, textAlign: 'center' }}>
                     <Typography variant="h6" gutterBottom sx={{ color: 'success.main' }}>
                       当前状态已完成
                     </Typography>
                     <Typography variant="body2" color="text.secondary" paragraph>
-                      所有预打烊任务已完成
+                      所有闭店任务已完成
                     </Typography>
                     <Button
                       variant="contained"
@@ -910,6 +911,7 @@ export const ChefDashboard: React.FC = () => {
                 onLateSubmit={handleLateSubmit}
                 testTime={testTime}
                 role="chef"
+                dbTaskStatuses={dbTaskStatuses}
               />
             </Grid>
           )}

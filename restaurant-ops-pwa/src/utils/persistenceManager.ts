@@ -4,14 +4,10 @@
 interface PersistedState {
   completedTaskIds: string[]
   taskStatuses: any[]
-  noticeComments: any[]
   missingTasks: any[]
-  isManualClosing: boolean
-  isWaitingForNextDay: boolean
   manuallyAdvancedPeriod?: string | null // Track manually advanced period
   currentPeriodId?: string | null // Track current period ID for manual transitions
   testTime?: string | null // Store test time for development
-  preClosingTasks?: any[] // Pre-closing tasks to display during closing period
   lastSaveDate: string // ISO date string to track when data was saved
 }
 
@@ -29,14 +25,10 @@ export const saveState = (role: 'manager' | 'chef', state: Partial<PersistedStat
     const dataToSave: PersistedState = {
       completedTaskIds: state.completedTaskIds ?? existingData?.completedTaskIds ?? [],
       taskStatuses: state.taskStatuses ?? existingData?.taskStatuses ?? [],
-      noticeComments: state.noticeComments ?? existingData?.noticeComments ?? [],
       missingTasks: state.missingTasks ?? existingData?.missingTasks ?? [],
-      isManualClosing: state.isManualClosing ?? existingData?.isManualClosing ?? false,
-      isWaitingForNextDay: state.isWaitingForNextDay ?? existingData?.isWaitingForNextDay ?? false,
       manuallyAdvancedPeriod: state.manuallyAdvancedPeriod ?? existingData?.manuallyAdvancedPeriod ?? null,
       currentPeriodId: state.currentPeriodId ?? existingData?.currentPeriodId ?? null,
       testTime: state.testTime ?? existingData?.testTime ?? null,
-      preClosingTasks: state.preClosingTasks ?? existingData?.preClosingTasks ?? [],
       lastSaveDate: new Date().toISOString()
     }
     

@@ -28,6 +28,7 @@ import {
 import type { TaskTemplate } from '../../utils/workflowParser'
 import { loadWorkflowPeriods, getCurrentPeriod } from '../../utils/workflowParser'
 import TaskSubmissionDialog from '../TaskSubmissionDialog'
+import type { TaskStatusDetail } from '../../services/taskRecordService'
 
 interface TaskStatus {
   taskId: string
@@ -51,6 +52,7 @@ interface TaskSummaryProps {
   onLateSubmit: (taskId: string, data?: any) => void
   testTime?: Date
   role?: 'manager' | 'chef'
+  dbTaskStatuses?: TaskStatusDetail[]  // New prop for database task statuses
 }
 
 export const TaskSummary: React.FC<TaskSummaryProps> = ({
@@ -61,7 +63,8 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   noticeComments,
   onLateSubmit,
   testTime,
-  role = 'manager'
+  role = 'manager',
+  dbTaskStatuses = []
 }) => {
   const [selectedTask, setSelectedTask] = useState<TaskTemplate | null>(null)
   const [taskSubmissionOpen, setTaskSubmissionOpen] = useState(false)
@@ -73,20 +76,23 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   //   missingTasksCount: missingTasks.length,
   //   missingTasks: missingTasks
   // })
-  // Filter out notices
-  const regularTasks = tasks.filter(t => !t.isNotice)
+  // Filter out notices and floating tasks (they don't appear in summary)
+  const regularTasks = tasks.filter(t => !t.isNotice && !t.isFloating)
+  
+  // Use database task statuses if available, otherwise fall back to local statuses
+  const effectiveTaskStatuses = dbTaskStatuses.length > 0 ? dbTaskStatuses : taskStatuses
   
   // Group tasks by status
   const completedTasks = regularTasks.filter(task => 
-    taskStatuses.find(s => s.taskId === task.id && s.completed)
+    effectiveTaskStatuses.find(s => s.taskId === task.id && s.completed)
   )
   
   const overdueTasks = regularTasks.filter(task => 
-    taskStatuses.find(s => s.taskId === task.id && s.overdue && !s.completed)
+    effectiveTaskStatuses.find(s => s.taskId === task.id && s.overdue && !s.completed)
   )
   
   const pendingTasks = regularTasks.filter(task => 
-    !taskStatuses.find(s => s.taskId === task.id && (s.completed || s.overdue))
+    !effectiveTaskStatuses.find(s => s.taskId === task.id && (s.completed || s.overdue))
   )
   
   // Calculate completion rate for ALL PERIODS up to current
@@ -111,6 +117,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       if ((now >= periodStart || period.id === currentPeriod?.id) && 
           !(role === 'chef' && period.id === 'closing')) {
         
+        // 排除floating tasks，因为它们不计入完成率
         const periodTasks = period.tasks[role].filter(t => !t.isNotice && !t.isFloating)
         totalTasksDue += periodTasks.length
         
@@ -123,14 +130,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       }
     })
     
-    // Also count floating tasks (they're always due)
-    const floatingTasks = tasks.filter(t => t.isFloating && !t.isNotice)
-    totalTasksDue += floatingTasks.length
-    floatingTasks.forEach(task => {
-      if (completedTaskIds.includes(task.id)) {
-        totalTasksCompleted++
-      }
-    })
+    // Floating tasks不计入完成率统计，因为它们可以无限提交
     
     // console.log('[Completion Rate]', {
     //   totalTasksDue,

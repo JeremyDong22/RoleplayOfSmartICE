@@ -3,6 +3,7 @@
 // 负责任务提交、审核、查询等数据库操作
 
 import { supabase } from './supabase'
+import { canCloseBusinessCycle } from './businessCycleService'
 
 export interface TaskRecord {
   id?: string
@@ -32,11 +33,26 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     throw new Error('user_id is required in taskData')
   }
 
+  // 获取用户角色信息
+  const { data: userData } = await supabase
+    .from('roleplay_users')
+    .select('role_code')
+    .eq('id', taskData.user_id)
+    .single()
+
   const record: Partial<TaskRecord> = {
     ...taskData,
     status: 'submitted',
-    review_status: taskData.task_id?.includes('duty-manager') ? 'pending' : undefined,
+    // Manager任务自动approved，duty-manager任务需要审核
+    review_status: userData?.role_code === 'manager' ? 'approved' : 
+                   taskData.task_id?.includes('duty-manager') ? 'pending' : undefined,
     created_at: new Date().toISOString()
+  }
+  
+  // 如果是Manager任务且自动approved，设置审核信息
+  if (userData?.role_code === 'manager' && record.review_status === 'approved') {
+    record.reviewed_by = taskData.user_id
+    record.reviewed_at = new Date().toISOString()
   }
   
   console.log('[TaskRecordService] Inserting record:', record);
@@ -240,4 +256,45 @@ export async function uploadTaskMedia(
     .getPublicUrl(path)
 
   return publicUrl
+}
+
+// 获取今日的任务状态详情（用于任务汇总）
+export interface TaskStatusDetail {
+  taskId: string
+  completed: boolean
+  completedAt?: Date
+  overdue: boolean
+  submissionType?: string
+  reviewStatus?: string
+}
+
+export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDetail[]> {
+  const today = new Date().toISOString().split('T')[0]
+  
+  const { data, error } = await supabase
+    .from('roleplay_task_records')
+    .select('task_id, status, created_at, submission_type, review_status')
+    .eq('user_id', userId)
+    .eq('date', today)
+  
+  if (error) {
+    console.error('Error fetching task statuses:', error)
+    return []
+  }
+  
+  // Convert to TaskStatusDetail format
+  return data?.map(record => ({
+    taskId: record.task_id,
+    completed: record.status === 'submitted' || record.status === 'completed',
+    completedAt: record.created_at ? new Date(record.created_at) : undefined,
+    overdue: false, // This needs to be calculated based on task period
+    submissionType: record.submission_type,
+    reviewStatus: record.review_status
+  })) || []
+}
+
+// 验证是否可以闭店
+export async function validateCanClose(restaurantId: string): Promise<{ canClose: boolean; reason?: string }> {
+  const today = new Date().toISOString().split('T')[0]
+  return canCloseBusinessCycle(restaurantId, today)
 }
