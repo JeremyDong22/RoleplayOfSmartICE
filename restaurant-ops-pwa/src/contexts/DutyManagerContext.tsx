@@ -83,14 +83,20 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   // Initialize realtime service and load data from database
   useEffect(() => {
     const initServices = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      const userId = user ? user.id : 'mock-user-' + Date.now()
+      
+      // Try to initialize realtime service, but don't fail if it's not available
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        const userId = user ? user.id : 'mock-user-' + Date.now()
-        
-        // Initialize realtime service
         await realtimeDutyService.initialize(userId)
-        
-        // Load data from database instead of localStorage
+        console.log('[DutyManagerContext] Realtime service connected')
+      } catch (error) {
+        console.warn('[DutyManagerContext] Realtime service not available, continuing with database-only mode:', error)
+        // Continue without realtime - database persistence will still work
+      }
+      
+      // Load data from database (this always works)
+      try {
         const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
         
         // Load trigger status from database
@@ -116,9 +122,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
           setReviewStatus(reviewStatuses)
         }
       } catch (error) {
-        console.error('Error initializing services:', error)
-        // Fallback to mock user for realtime
-        await realtimeDutyService.initialize('mock-user-' + Date.now())
+        console.error('[DutyManagerContext] Error loading data from database:', error)
       }
     }
     initServices()
@@ -242,12 +246,20 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         [submission.taskId]: newReviewData
       }))
       
-      // Send via realtime
-      realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
+      // Send via realtime (if available)
+      try {
+        await realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
+      } catch (error) {
+        // Realtime not available, but database update succeeded
+      }
     }
     
-    // Send via realtime to other devices
-    realtimeDutyService.sendSubmission(submission)
+    // Send via realtime to other devices (if available)
+    try {
+      await realtimeDutyService.sendSubmission(submission)
+    } catch (error) {
+      // Realtime not available, but database update succeeded
+    }
   }
 
   const clearSubmissions = async () => {
@@ -261,8 +273,12 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       console.error('Failed to clear submissions in database:', error)
     }
     
-    // Send via realtime
-    realtimeDutyService.clearSubmissions()
+    // Send via realtime (if available)
+    try {
+      await realtimeDutyService.clearSubmissions()
+    } catch (error) {
+      // Realtime not available, but database update succeeded
+    }
   }
 
   const updateReviewStatus = async (taskId: string, status: 'approved' | 'rejected', reason?: string) => {
@@ -291,8 +307,12 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       setSubmissions(prev => prev.filter(s => s.taskId !== taskId))
     }
     
-    // Send via realtime to other devices
-    realtimeDutyService.sendReviewStatus(taskId, reviewData)
+    // Send via realtime to other devices (if available)
+    try {
+      await realtimeDutyService.sendReviewStatus(taskId, reviewData)
+    } catch (error) {
+      // Realtime not available, but database update succeeded
+    }
   }
 
   const value: DutyManagerContextType = {

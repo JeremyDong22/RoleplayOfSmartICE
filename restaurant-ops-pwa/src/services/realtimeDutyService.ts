@@ -159,14 +159,24 @@ class RealtimeDutyService {
 
   // 发送消息
   async send(type: DutyManagerMessage['type'], data: any) {
-    // 等待初始化完成
-    if (!this.isInitialized && this.initializationPromise) {
-      await this.initializationPromise
+    // 如果服务未初始化，直接返回（数据库仍然会工作）
+    if (!this.isInitialized) {
+      console.warn('[RealtimeDutyService] Service not initialized, skipping realtime broadcast')
+      return
     }
     
-    if (!this.channel || !this.userId || !this.isInitialized) {
-      console.error('[RealtimeDutyService] Not initialized')
-      throw new Error('Realtime service not initialized')
+    // 等待初始化完成
+    if (this.initializationPromise) {
+      try {
+        await this.initializationPromise
+      } catch {
+        // 初始化失败，但不影响数据库操作
+        return
+      }
+    }
+    
+    if (!this.channel || !this.userId) {
+      return
     }
 
     const message: DutyManagerMessage = {
@@ -176,7 +186,7 @@ class RealtimeDutyService {
       data
     }
 
-    // Only use Supabase Realtime - no fallback
+    // Try to send via Supabase Realtime
     try {
       await this.channel.send({
         type: 'broadcast',
@@ -184,8 +194,8 @@ class RealtimeDutyService {
         payload: message
       })
     } catch (error) {
-      console.error('[RealtimeDutyService] Send failed:', error)
-      throw error
+      console.warn('[RealtimeDutyService] Send failed, but database operation succeeded:', error)
+      // 不抛出错误，让数据库操作继续
     }
   }
 
