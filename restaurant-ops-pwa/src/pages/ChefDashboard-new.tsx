@@ -293,6 +293,9 @@ export const ChefDashboard: React.FC = () => {
       // Check waitingRef first for immediate feedback
       if (waitingRef.current || isWaitingForNextDay) {
         const current = getCurrentPeriod(testTime)
+        // Still update next period for display even in waiting state
+        setNextPeriod(getNextPeriodForChef(testTime))
+        
         // Only exit waiting state if we've reached opening time (10:00)
         if (current && current.id === 'opening') {
           waitingRef.current = false
@@ -893,7 +896,11 @@ export const ChefDashboard: React.FC = () => {
                 )}
               </>
             ) : (
-              <ClosedPeriodDisplay nextPeriod={nextPeriod} testTime={testTime} />
+              <ClosedPeriodDisplay 
+                nextPeriod={nextPeriod} 
+                testTime={testTime} 
+                currentStatus={isWaitingForNextDay ? '等待开店' : undefined} 
+              />
             )}
           </Grid>
 

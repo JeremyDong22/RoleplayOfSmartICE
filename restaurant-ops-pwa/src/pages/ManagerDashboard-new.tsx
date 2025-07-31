@@ -322,6 +322,9 @@ export const ManagerDashboard: React.FC = () => {
       // IMPORTANT: Check waiting state FIRST before manual advance
       // If we're in waiting state, only exit if we've reached opening time
       if (isWaitingForNextDay) {
+        // Still update next period for display even in waiting state
+        setNextPeriod(next)
+        
         if (current && current.id === 'opening') {
           setIsWaitingForNextDay(false)
           setIsManualClosing(false)
@@ -1259,7 +1262,11 @@ export const ManagerDashboard: React.FC = () => {
                 reviewStatus={reviewStatus}
               />
             ) : (
-              <ClosedPeriodDisplay nextPeriod={nextPeriod} testTime={testTime} />
+              <ClosedPeriodDisplay 
+                nextPeriod={nextPeriod} 
+                testTime={testTime} 
+                currentStatus={isWaitingForNextDay ? '等待开店' : undefined} 
+              />
             )}
           </Grid>
 

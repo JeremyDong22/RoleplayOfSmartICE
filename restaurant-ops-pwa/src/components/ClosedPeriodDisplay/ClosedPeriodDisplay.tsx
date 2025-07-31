@@ -7,9 +7,10 @@ import type { WorkflowPeriod } from '../../utils/workflowParser'
 interface ClosedPeriodDisplayProps {
   nextPeriod: WorkflowPeriod | null
   testTime?: Date
+  currentStatus?: string  // Optional current status text
 }
 
-export const ClosedPeriodDisplay: React.FC<ClosedPeriodDisplayProps> = ({ nextPeriod, testTime }) => {
+export const ClosedPeriodDisplay: React.FC<ClosedPeriodDisplayProps> = ({ nextPeriod, testTime, currentStatus }) => {
   const [timeUntilNext, setTimeUntilNext] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
   
   useEffect(() => {
@@ -65,7 +66,7 @@ export const ClosedPeriodDisplay: React.FC<ClosedPeriodDisplayProps> = ({ nextPe
             whiteSpace: 'nowrap'
           }}
         >
-          当前状态：{nextPeriod ? '休息中' : '非营业时间'}
+          当前状态：{currentStatus || (nextPeriod ? '休息中' : '非营业时间')}
         </Typography>
         
         {/* Next Period Name or Non-business message - also absolute, but closer to the circle */}
