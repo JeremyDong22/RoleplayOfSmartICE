@@ -166,10 +166,9 @@ const DutyManagerDashboard: React.FC = () => {
           }
         }))
 
-        // 如果有提交记录，更新到Context中
-        for (const submission of dbSubmissions) {
-          await addSubmission(submission)
-        }
+        // 不需要再调用 addSubmission，因为数据已经在数据库中
+        // Context 初始化时会自动从数据库加载这些提交
+        // 避免重复保存导致无限循环
 
         setIsInitialized(true)
       } catch (error) {
@@ -179,7 +178,7 @@ const DutyManagerDashboard: React.FC = () => {
     }
 
     loadTaskStatusesFromDB()
-  }, [addSubmission])
+  }, []) // 移除 addSubmission 依赖，避免循环
   
   // 保存状态到localStorage
   useEffect(() => {

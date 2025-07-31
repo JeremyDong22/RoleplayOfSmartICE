@@ -8,6 +8,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   base: '/',
   server: {
+    https: true,
     hmr: {
       port: 5173,
       host: 'localhost'
