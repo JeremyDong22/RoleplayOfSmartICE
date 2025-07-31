@@ -1180,10 +1180,7 @@ export const ManagerDashboard: React.FC = () => {
     // 清除本地存储
     clearState('manager')
     
-    // 清除值班经理相关的存储
-    localStorage.removeItem('dutyManagerTrigger')
-    localStorage.removeItem('dutyManagerSubmissions')
-    localStorage.removeItem('dutyManagerReviewStatus')
+    // 值班经理数据现在通过数据库管理，无需清理localStorage
     
     // 清除Context中的值班经理数据
     clearTrigger()

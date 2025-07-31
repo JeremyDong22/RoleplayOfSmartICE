@@ -765,10 +765,7 @@ export const ChefDashboard: React.FC = () => {
     // 清除本地存储
     clearState('chef')
     
-    // 清除值班经理相关的存储（以防万一）
-    localStorage.removeItem('dutyManagerTrigger')
-    localStorage.removeItem('dutyManagerSubmissions')
-    localStorage.removeItem('dutyManagerReviewStatus')
+    // 值班经理数据现在通过数据库管理，无需清理localStorage
     
     // 保持当前时段不变，但重新初始化
     const now = testTime || new Date()

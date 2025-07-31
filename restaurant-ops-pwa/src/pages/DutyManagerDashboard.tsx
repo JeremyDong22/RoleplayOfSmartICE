@@ -485,11 +485,8 @@ const DutyManagerDashboard: React.FC = () => {
 
   // 返回到角色选择页面
   const handleBack = () => {
-    // 清理值班经理相关的存储
-    localStorage.removeItem('dutyManagerTrigger')
-    localStorage.removeItem('dutyManagerSubmissions')
-    localStorage.removeItem('dutyManagerReviewStatus')
-    localStorage.removeItem('dutyManagerDashboardState')
+    // 值班经理数据现在通过数据库管理
+    localStorage.removeItem('dutyManagerDashboardState') // 仅保留页面状态清理
     
     // 清除Context中的数据
     clearTrigger()
