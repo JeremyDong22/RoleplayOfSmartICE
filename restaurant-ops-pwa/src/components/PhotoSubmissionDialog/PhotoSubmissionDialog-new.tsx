@@ -178,8 +178,32 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     if (open && taskId) {
       // 优先使用传入的初始照片组（用于重新提交被驳回的任务）
       if (initialPhotoGroups && initialPhotoGroups.length > 0) {
-        setPhotoGroups(initialPhotoGroups)
+        // 转换外部传入的照片组格式（string[] -> Photo[]）
+        const convertedGroups = initialPhotoGroups.map(group => ({
+          id: group.id || `group-${Date.now()}-${Math.random()}`,
+          photos: (group.photos || []).map((photoUrl, index) => ({
+            id: `photo-${Date.now()}-${index}`,
+            image: photoUrl,
+            timestamp: Date.now()
+          })),
+          sampleRef: group.sampleRef,
+          sampleIndex: group.sampleIndex,
+          comment: group.comment || '',
+          createdAt: Date.now()
+        }))
+        
+        setPhotoGroups(convertedGroups)
         console.log(`[PhotoDialog] Using ${initialPhotoGroups.length} initial photo groups from rejected submission`)
+        console.log('[PhotoDialog] Initial photo groups detail:', initialPhotoGroups)
+        console.log('[PhotoDialog] Converted photo groups:', convertedGroups)
+        initialPhotoGroups.forEach((group, index) => {
+          console.log(`[PhotoDialog] Group ${index + 1}:`, {
+            id: group.id,
+            photosCount: group.photos?.length || 0,
+            photos: group.photos,
+            firstPhotoUrl: group.photos?.[0]?.substring(0, 100) + '...'
+          })
+        })
       } else {
         // 否则从localStorage加载之前保存的照片组
         try {

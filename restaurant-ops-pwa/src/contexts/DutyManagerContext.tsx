@@ -112,6 +112,14 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         const pendingSubmissions = await dutyManagerPersistence.getPendingSubmissions(restaurantId)
         if (pendingSubmissions.length > 0) {
           console.log('[DutyManagerContext] Loaded submissions from database:', pendingSubmissions)
+          pendingSubmissions.forEach(sub => {
+            console.log('[DutyManagerContext] Submission detail for task', sub.taskId, {
+              photoGroups: sub.content.photoGroups,
+              photos: sub.content.photos,
+              firstPhotoGroupPhotos: sub.content.photoGroups?.[0]?.photos,
+              firstPhotoUrl: sub.content.photos?.[0]
+            })
+          })
           setSubmissions(pendingSubmissions)
         }
         
