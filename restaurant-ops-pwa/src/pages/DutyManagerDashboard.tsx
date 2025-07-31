@@ -49,7 +49,7 @@ const DutyManagerDashboard: React.FC = () => {
   const [testTime, setTestTime] = useState<Date | null>(null)
   const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
   
-  // 从localStorage恢复状态
+  // 从localStorage恢复状态（只恢复基本状态，不恢复任务完成状态）
   const loadSavedState = (): DutyManagerState => {
     try {
       const savedState = localStorage.getItem('dutyManagerDashboardState')
@@ -58,13 +58,6 @@ const DutyManagerDashboard: React.FC = () => {
         console.log('[DutyManagerDashboard] Loading saved state:', parsed)
         
         // 恢复日期对象
-        if (parsed.taskStatuses && typeof parsed.taskStatuses === 'object' && parsed.taskStatuses !== null) {
-          Object.keys(parsed.taskStatuses).forEach(key => {
-            if (parsed.taskStatuses[key] && parsed.taskStatuses[key].completedAt) {
-              parsed.taskStatuses[key].completedAt = new Date(parsed.taskStatuses[key].completedAt)
-            }
-          })
-        }
         if (parsed.noticeComments) {
           parsed.noticeComments.forEach((comment: any) => {
             comment.timestamp = new Date(comment.timestamp)
@@ -85,6 +78,9 @@ const DutyManagerDashboard: React.FC = () => {
               activeTasks: fullTasks,
               targetPeriod: targetPeriod,
               isWaitingForTrigger: false, // 确保设置为false，因为有激活的任务
+              // 重要：不从localStorage恢复任务完成状态，这些将从数据库加载
+              completedTaskIds: [],
+              taskStatuses: {},
             }
             console.log('[DutyManagerDashboard] Restored state with full tasks:', restoredState)
             return restoredState
@@ -96,8 +92,17 @@ const DutyManagerDashboard: React.FC = () => {
           parsed.isWaitingForTrigger = false
         }
         
-        console.log('[DutyManagerDashboard] Final restored state:', parsed)
-        return parsed
+        // 重要：清除可能存在的任务完成状态，这些应该从数据库加载
+        console.log('[DutyManagerDashboard] Final restored state (without completion status):', {
+          ...parsed,
+          completedTaskIds: [],
+          taskStatuses: {},
+        })
+        return {
+          ...parsed,
+          completedTaskIds: [],
+          taskStatuses: {},
+        }
       }
     } catch (e) {
       console.error('[DutyManagerDashboard] Failed to load saved state:', e)
@@ -203,17 +208,20 @@ const DutyManagerDashboard: React.FC = () => {
     // 只在有意义的状态改变时保存
     if (state.activeTasks.length > 0 || !state.isWaitingForTrigger) {
       const stateToSave = {
-        ...state,
-        // 保存简化的任务信息，恢复时会重新获取完整数据
+        // 只保存基本的页面状态，不保存任务完成状态
         activeTasks: state.activeTasks.map(task => ({
           id: task.id,
           title: task.title,
         })),
-        // 保存简化的targetPeriod信息
         targetPeriod: state.targetPeriod ? {
           id: state.targetPeriod.id,
           displayName: state.targetPeriod.displayName,
         } : undefined,
+        isWaitingForTrigger: state.isWaitingForTrigger,
+        currentTrigger: state.currentTrigger,
+        noticeComments: state.noticeComments,
+        isInClosingPeriod: state.isInClosingPeriod,
+        // 重要：不保存 completedTaskIds 和 taskStatuses
       }
       console.log('[DutyManagerDashboard] Saving state:', stateToSave)
       localStorage.setItem('dutyManagerDashboardState', JSON.stringify(stateToSave))

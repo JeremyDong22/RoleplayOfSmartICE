@@ -25,16 +25,21 @@ export interface TaskRecord {
 
 // 提交任务（包括值班经理任务）
 export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user) throw new Error('User not authenticated')
+  console.log('[TaskRecordService] submitTaskRecord called with:', taskData);
+  
+  // Check if user_id is already provided in taskData
+  if (!taskData.user_id) {
+    throw new Error('user_id is required in taskData')
+  }
 
   const record: Partial<TaskRecord> = {
     ...taskData,
-    user_id: user.user.id,
     status: 'submitted',
     review_status: taskData.task_id?.includes('duty-manager') ? 'pending' : undefined,
     created_at: new Date().toISOString()
   }
+  
+  console.log('[TaskRecordService] Inserting record:', record);
 
   const { data, error } = await supabase
     .from('roleplay_task_records')
@@ -42,7 +47,12 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('[TaskRecordService] Database insert error:', error);
+    throw error
+  }
+  
+  console.log('[TaskRecordService] Insert successful:', data);
   return data
 }
 

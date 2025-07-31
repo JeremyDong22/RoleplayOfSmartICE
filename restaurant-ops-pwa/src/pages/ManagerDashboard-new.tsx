@@ -36,6 +36,7 @@ import notificationService from '../services/notificationService'
 import { getTodayCompletedTaskIds, getCompletedTasksInRange } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
+import { authService } from '../services/authService'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -201,18 +202,20 @@ export const ManagerDashboard: React.FC = () => {
   useEffect(() => {
     async function loadFromDatabase() {
       try {
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          console.error('No authenticated user')
+        // Get current user from authService instead of supabase.auth
+        const currentUser = authService.getCurrentUser()
+        console.log('[ManagerDashboard] Current user from authService:', currentUser)
+        if (!currentUser) {
+          console.error('[ManagerDashboard] No authenticated user from authService')
           setIsLoadingFromDb(false)
           return
         }
         
-        setCurrentUserId(user.id)
+        setCurrentUserId(currentUser.id)
+        console.log('[ManagerDashboard] Set currentUserId to:', currentUser.id)
         
         // Load today's completed tasks
-        const completedIds = await getTodayCompletedTaskIds(user.id)
+        const completedIds = await getTodayCompletedTaskIds(currentUser.id)
         setCompletedTaskIds(completedIds)
         
         // For now, still load some state from localStorage (will be removed later)
@@ -370,8 +373,8 @@ export const ManagerDashboard: React.FC = () => {
         return
       }
       
-      const current = getCurrentPeriod(testTime)
-      const next = getNextPeriod(testTime)
+      const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
+      const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
       
       // IMPORTANT: Check waiting state FIRST before manual advance
       // If we're in waiting state, only exit if we've reached opening time
@@ -711,28 +714,36 @@ export const ManagerDashboard: React.FC = () => {
   }, [testTime, currentPeriod])
   
   const handleTaskComplete = async (taskId: string, data: any) => {
+    console.log('[ManagerDashboard] ===== TASK COMPLETE START =====');
+    console.log('[ManagerDashboard] Task ID:', taskId);
+    console.log('[ManagerDashboard] Received data:', data);
+    
     const now = testTime || new Date()
     
     // 检查是否是审核任务
     const task = currentTasks.find(t => t.id === taskId)
+    console.log('[ManagerDashboard] Found task:', task);
+    console.log('[ManagerDashboard] Current user ID:', currentUserId);
+    console.log('[ManagerDashboard] Current period:', currentPeriod?.id);
+    
     if (task && task.uploadRequirement === '审核' && task.linkedTasks) {
       // 处理审核通过逻辑
-      // console.log(`Approving review task ${taskId}, updating linked tasks:`, task.linkedTasks)
+      console.log(`[ManagerDashboard] Approving review task ${taskId}, updating linked tasks:`, task.linkedTasks)
       
       // 更新被审核的值班经理任务状态为通过
       task.linkedTasks.forEach(linkedTaskId => {
-        // console.log(`Updating linked task ${linkedTaskId} status to approved`)
+        console.log(`[ManagerDashboard] Updating linked task ${linkedTaskId} status to approved`)
         updateReviewStatus(linkedTaskId, 'approved')
       })
     }
     
     // 检查是否是值班经理任务
     if (task && task.role === 'DutyManager' && data) {
-      // console.log('[ManagerDashboard] Processing DutyManager task submission:', {
-      //   taskId,
-      //   taskTitle: task.title,
-      //   data
-      // })
+      console.log('[ManagerDashboard] Processing DutyManager task submission:', {
+        taskId,
+        taskTitle: task.title,
+        data
+      })
       
       // 将值班经理任务的提交数据添加到Context
       const submission: DutyManagerSubmission = {
@@ -747,11 +758,12 @@ export const ManagerDashboard: React.FC = () => {
         }
       }
       
-      // console.log('[ManagerDashboard] Adding submission to DutyManagerContext:', submission)
+      console.log('[ManagerDashboard] Adding submission to DutyManagerContext:', submission)
       addSubmission(submission)
     }
     
     // 更新任务状态
+    console.log('[ManagerDashboard] Updating task statuses...');
     setTaskStatuses(prev => [
       ...prev.filter(s => s.taskId !== taskId),
       {
@@ -764,10 +776,28 @@ export const ManagerDashboard: React.FC = () => {
     ])
     
     setCompletedTaskIds(prev => [...prev, taskId])
+    console.log('[ManagerDashboard] Task marked as completed locally');
     
     // Submit task data to Supabase with media upload
+    console.log('[ManagerDashboard] Checking if should submit to database...');
+    console.log('[ManagerDashboard] currentUserId:', currentUserId);
+    console.log('[ManagerDashboard] task exists:', !!task);
+    console.log('[ManagerDashboard] task uploadRequirement:', task?.uploadRequirement);
+    
     if (currentUserId && task) {
+      console.log('[ManagerDashboard] Submitting to database...');
       try {
+        console.log('[ManagerDashboard] Calling submitTaskWithMedia with:', {
+          taskId,
+          userId: currentUserId,
+          restaurantId: 1,
+          date: now.toISOString().split('T')[0],
+          periodId: currentPeriod?.id || '',
+          uploadRequirement: task.uploadRequirement,
+          hasData: !!data,
+          dataKeys: data ? Object.keys(data) : []
+        });
+        
         const result = await submitTaskWithMedia({
           taskId,
           userId: currentUserId,
@@ -778,17 +808,24 @@ export const ManagerDashboard: React.FC = () => {
           data
         })
         
-        console.log('[ManagerDashboard] Task successfully submitted:', result.id)
+        console.log('[ManagerDashboard] Task successfully submitted to database:', result.id)
       } catch (error) {
-        console.error('[ManagerDashboard] Error submitting task to Supabase:', {
+        console.error('[ManagerDashboard] ERROR submitting task to database:', {
           error,
           taskId,
           userId: currentUserId,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : 'No stack trace'
         })
         // Still update local state even if submission fails
       }
+    } else {
+      console.log('[ManagerDashboard] NOT submitting to database because:');
+      console.log('[ManagerDashboard] - currentUserId is:', currentUserId);
+      console.log('[ManagerDashboard] - task is:', task);
     }
+    
+    console.log('[ManagerDashboard] ===== TASK COMPLETE END =====');
   }
   
   const handleNoticeComment = (noticeId: string, comment: string) => {
@@ -1157,7 +1194,7 @@ export const ManagerDashboard: React.FC = () => {
     
     // Force transition to next period
     setCurrentPeriod(nextPeriod)
-    setNextPeriod(getNextPeriod(testTime))
+    setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, testTime))
   }
 
   // 添加重置任务功能（用于测试）
@@ -1187,9 +1224,9 @@ export const ManagerDashboard: React.FC = () => {
     
     // 保持当前时段不变，但重新初始化
     const now = testTime || new Date()
-    const newPeriod = getCurrentPeriod(now)
+    const newPeriod = getCurrentPeriodFromDatabase(workflowPeriods, now)
     setCurrentPeriod(newPeriod)
-    setNextPeriod(getNextPeriod(now))
+    setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, now))
   }, [testTime, clearTrigger])
   
   // When in closing period, concatenate pre-closing tasks with closing tasks and review tasks

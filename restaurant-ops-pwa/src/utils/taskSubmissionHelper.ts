@@ -28,11 +28,17 @@ export async function submitTaskWithMedia({
   data
 }: TaskSubmissionData) {
   try {
+    console.log('[TaskSubmissionHelper] ===== SUBMISSION START =====');
     console.log('[TaskSubmissionHelper] Processing task submission:', {
       taskId,
       userId,
+      restaurantId,
+      date,
+      periodId,
       uploadRequirement,
-      hasData: !!data
+      hasData: !!data,
+      dataKeys: data ? Object.keys(data) : [],
+      dataContent: data
     })
 
     // 准备提交数据
@@ -44,6 +50,14 @@ export async function submitTaskWithMedia({
       period_id: periodId,
       submission_metadata: data
     }
+    
+    console.log('[TaskSubmissionHelper] Initial submission data:', {
+      user_id: userId,
+      restaurant_id: restaurantId,
+      task_id: taskId,
+      date,
+      period_id: periodId
+    });
 
     // 根据上传需求类型处理数据
     if (uploadRequirement === '拍照' && data?.evidence) {
@@ -90,19 +104,23 @@ export async function submitTaskWithMedia({
       submissionData.text_content = JSON.stringify(data)
     } else {
       // 普通任务，无需上传
+      console.log('[TaskSubmissionHelper] Regular task without upload requirement');
       submissionData.submission_type = null
     }
 
     // 提交到数据库
-    console.log('[TaskSubmissionHelper] Submitting to database:', {
+    console.log('[TaskSubmissionHelper] Final submission data before database:', {
       taskId,
       submissionType: submissionData.submission_type,
       hasPhotos: submissionData.photo_urls?.length || 0,
-      hasAudio: !!submissionData.audio_url
+      hasAudio: !!submissionData.audio_url,
+      fullData: submissionData
     })
     
+    console.log('[TaskSubmissionHelper] Calling submitTaskRecord...');
     const result = await submitTaskRecord(submissionData)
     console.log('[TaskSubmissionHelper] Submission successful:', result.id)
+    console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
     
     return result
   } catch (error) {

@@ -104,8 +104,9 @@ export class DutyManagerPersistenceService {
           reject_reason: record.reject_reason
         }
         
-        // 如果任务已提交且未被驳回，添加到submissions
-        if (record.status === 'submitted' && record.review_status !== 'rejected') {
+        // 如果任务已提交（包括被驳回的），添加到submissions
+        // 这样用户可以看到之前的提交内容来进行修改
+        if (record.status === 'submitted') {
           submissions.push({
             taskId: record.task_id,
             taskTitle: record.task?.title || '',

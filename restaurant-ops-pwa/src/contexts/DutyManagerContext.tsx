@@ -178,9 +178,8 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
           [taskId]: reviewData
         }))
         
-        if (reviewData.status === 'rejected') {
-          setSubmissions(prev => prev.filter(s => s.taskId !== taskId))
-        }
+        // 注意：不要清除被驳回任务的提交记录
+        // 用户需要看到之前的提交内容（特别是照片）来知道如何修改
       }
     })
     
@@ -342,11 +341,8 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       console.error('[DutyManagerContext] Failed to save review to database:', error)
     }
     
-    // 如果是驳回，清除该任务的提交记录
-    if (status === 'rejected') {
-      // Clear submission for rejected task
-      setSubmissions(prev => prev.filter(s => s.taskId !== taskId))
-    }
+    // 注意：不要清除被驳回任务的提交记录
+    // 用户需要看到之前的提交内容（特别是照片）来知道如何修改
     
     // Send via realtime to other devices (if available)
     try {

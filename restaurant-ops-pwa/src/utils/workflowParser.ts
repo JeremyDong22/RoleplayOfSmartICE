@@ -791,6 +791,61 @@ export function getFloatingTasks(role: 'Manager' | 'Chef' | 'DutyManager'): Task
   return floatingTasks.filter(task => task.role === role)
 }
 
+// Get current workflow period based on time using database periods
+export function getCurrentPeriodFromDatabase(periods: WorkflowPeriod[], testTime?: Date, excludeEventDriven: boolean = false): WorkflowPeriod | null {
+  const now = testTime || new Date()
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const currentTimeInMinutes = currentHour * 60 + currentMinute
+  
+  for (const period of periods) {
+    // Skip event-driven periods if requested
+    if (excludeEventDriven && period.isEventDriven) {
+      continue
+    }
+    
+    const [startHour, startMinute] = period.startTime.split(':').map(Number)
+    const [endHour, endMinute] = period.endTime.split(':').map(Number)
+    const startInMinutes = startHour * 60 + startMinute
+    let endInMinutes = endHour * 60 + endMinute
+    
+    // Handle periods that span midnight
+    if (endInMinutes < startInMinutes) {
+      // Period spans midnight
+      if (currentTimeInMinutes >= startInMinutes || currentTimeInMinutes < endInMinutes) {
+        return period
+      }
+    } else {
+      // Normal period within same day
+      if (currentTimeInMinutes >= startInMinutes && currentTimeInMinutes < endInMinutes) {
+        return period
+      }
+    }
+  }
+  // If no period matches, we're outside business hours
+  return null
+}
+
+// Get the next upcoming period using database periods
+export function getNextPeriodFromDatabase(periods: WorkflowPeriod[], testTime?: Date): WorkflowPeriod | null {
+  const now = testTime || new Date()
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const currentTimeInMinutes = currentHour * 60 + currentMinute
+  
+  for (const period of periods) {
+    const [startHour, startMinute] = period.startTime.split(':').map(Number)
+    const startInMinutes = startHour * 60 + startMinute
+    
+    if (currentTimeInMinutes < startInMinutes) {
+      return period
+    }
+  }
+  
+  // If we're past all periods, return tomorrow's first period
+  return periods[0]
+}
+
 // Get business status based on current time
 export function getBusinessStatus(testTime?: Date): {
   status: 'closed' | 'opening' | 'operating' | 'closing'
