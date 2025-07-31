@@ -1,6 +1,6 @@
 // 值班经理任务触发上下文 - 用于管理前厅和值班经理之间的通信
 // 更新：集成数据库持久化，支持离线查看任务提交
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
 import type { TaskTemplate } from '../utils/workflowParser'
 import { realtimeDutyService } from '../services/realtimeDutyService'
 import { supabase } from '../services/supabase'
@@ -79,7 +79,9 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       reviewedAt?: Date
       reason?: string
     }
-  }>({})
+  }>({})  
+  const [isInitialized, setIsInitialized] = useState(false)
+  const submissionInProgressRef = useRef<Set<string>>(new Set()) // 防止重复提交
 
   // Initialize realtime service and load data from database
   useEffect(() => {
@@ -122,11 +124,15 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
           })
           setReviewStatus(reviewStatuses)
         }
+        setIsInitialized(true)
       } catch (error) {
         console.error('[DutyManagerContext] Error loading data from database:', error)
+        setIsInitialized(true)
       }
     }
-    initServices()
+    if (!isInitialized) {
+      initServices()
+    }
     
     return () => {
       realtimeDutyService.cleanup()
@@ -213,6 +219,14 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   }
 
   const addSubmission = async (submission: DutyManagerSubmission) => {
+    // 防止重复提交
+    if (submissionInProgressRef.current.has(submission.taskId)) {
+      console.log('[DutyManagerContext] Submission already in progress for:', submission.taskId)
+      return
+    }
+    
+    submissionInProgressRef.current.add(submission.taskId)
+    
     console.log('[DutyManagerContext] addSubmission called with:', {
       taskId: submission.taskId,
       content: submission.content,
@@ -268,6 +282,9 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     } catch (error) {
       console.error('[DutyManager] Failed to save to database:', error)
       throw error // Propagate error to UI
+    } finally {
+      // 清除进行中标记
+      submissionInProgressRef.current.delete(submission.taskId)
     }
   }
 
