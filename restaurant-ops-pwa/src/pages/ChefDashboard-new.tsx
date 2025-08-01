@@ -864,7 +864,7 @@ export const ChefDashboard: React.FC = () => {
                   testTime={testTime}
                   onComplete={handleTaskComplete}
                   onComment={handleNoticeComment}
-                  onLastCustomerLeft={undefined}
+                  // Removed: onLastCustomerLeft - duty tasks auto-assigned
                   onClosingComplete={undefined} // Chef doesn't need closing button in TaskCountdown
                   onAdvancePeriod={handleAdvancePeriod}
                 />

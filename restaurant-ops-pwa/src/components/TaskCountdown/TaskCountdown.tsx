@@ -2,9 +2,8 @@
 // Updated: Fixed free dragging in Embla Carousel by removing containScroll constraints,
 // adjusting flex properties, and using minHeight instead of fixed height to allow users 
 // to swipe freely between all task cards at any time
-// Updated: Redesigned SwipeableLastCustomerCard with iPhone-style "slide to unlock" interface,
-// featuring green success colors, shimmer effects, clean design, and premium animations.
-// Removed confusing animated dots and replaced with elegant sliding button interaction
+// Updated: Removed SwipeableLastCustomerCard and all sliding functionality for duty assignment
+// as duty tasks are now automatically assigned based on time, not manual swipe actions
 // Updated: Added confirmation dialog for "提前进入下一阶段" button and hid it during
 // pre-closing period to prevent accidental advancement
 // Updated: Implemented snap-to-center animation with magnetic effect. Cards now automatically
@@ -61,257 +60,7 @@ import RateReviewIcon from '@mui/icons-material/RateReview'
 import PendingActionsIcon from '@mui/icons-material/PendingActions'
 import { specialTaskTheme } from '../../theme/specialTaskTheme'
 
-// Swipeable card component for last customer confirmation - iPhone-style slide to unlock
-const SwipeableLastCustomerCard: React.FC<{ onConfirm: () => void; text?: string; isConfirmed?: boolean }> = ({ onConfirm, text = '预打烊完成，安排值班人员', isConfirmed: externalIsConfirmed = false }) => {
-  const [dragX, setDragX] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const [isConfirmed, setIsConfirmed] = useState(externalIsConfirmed)
-  const containerRef = React.useRef<HTMLDivElement>(null)
-  const startXRef = React.useRef(0)
-  
-  // Update isConfirmed when external prop changes
-  useEffect(() => {
-    setIsConfirmed(externalIsConfirmed)
-  }, [externalIsConfirmed])
-  
-  const [containerWidth, setContainerWidth] = useState(300)
-  const SWIPE_THRESHOLD = 0.4 // Swipe 40% to confirm
-  
-  // Calculate container width
-  useEffect(() => {
-    if (containerRef.current) {
-      const width = containerRef.current.offsetWidth
-      setContainerWidth(width)
-    }
-  }, [])
-  
-  const handleStart = (clientX: number) => {
-    if (isConfirmed) return
-    setIsDragging(true)
-    startXRef.current = clientX - dragX
-  }
-  
-  const handleMove = (clientX: number) => {
-    if (!isDragging || isConfirmed) return
-    const newX = clientX - startXRef.current
-    // Only allow dragging to the right
-    if (newX >= 0) {
-      setDragX(Math.min(newX, containerWidth))
-    }
-  }
-  
-  const handleEnd = () => {
-    if (!isDragging || isConfirmed) return
-    setIsDragging(false)
-    
-    // Check if we've swiped enough
-    if (dragX >= containerWidth * SWIPE_THRESHOLD) {
-      // Trigger confirmation
-      setIsConfirmed(true)
-      setDragX(containerWidth)
-      // Add a small delay before calling onConfirm for visual feedback
-      setTimeout(() => {
-        onConfirm()
-      }, 400)
-    } else {
-      // Snap back
-      setDragX(0)
-    }
-  }
-  
-  // Mouse events
-  const handleMouseDown = (e: React.MouseEvent) => handleStart(e.clientX)
-  const handleMouseMove = (e: React.MouseEvent) => handleMove(e.clientX)
-  const handleMouseUp = () => handleEnd()
-  
-  // Touch events
-  const handleTouchStart = (e: React.TouchEvent) => handleStart(e.touches[0].clientX)
-  const handleTouchMove = (e: React.TouchEvent) => handleMove(e.touches[0].clientX)
-  const handleTouchEnd = () => handleEnd()
-  
-  // Add global mouse/touch end listeners
-  useEffect(() => {
-    const handleGlobalEnd = () => {
-      if (isDragging) {
-        handleEnd()
-      }
-    }
-    
-    if (isDragging) {
-      document.addEventListener('mouseup', handleGlobalEnd)
-      document.addEventListener('touchend', handleGlobalEnd)
-      
-      return () => {
-        document.removeEventListener('mouseup', handleGlobalEnd)
-        document.removeEventListener('touchend', handleGlobalEnd)
-      }
-    }
-  }, [isDragging, dragX])
-  
-  const progress = dragX / containerWidth
-  
-  return (
-    <Box
-      ref={containerRef}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      sx={{
-        mb: 3,
-        position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 2,
-        cursor: isConfirmed ? 'default' : 'grab',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        touchAction: 'pan-y',
-        '&:active': {
-          cursor: isConfirmed ? 'default' : 'grabbing'
-        }
-      }}
-    >
-      {/* Background layer */}
-      <Paper 
-        elevation={2}
-        sx={{
-          position: 'relative',
-          height: 80,
-          display: 'flex',
-          alignItems: 'center',
-          overflow: 'hidden',
-          background: theme => isConfirmed 
-            ? theme.palette.success.main
-            : `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.08)}, ${alpha(theme.palette.success.main, 0.15)})`,
-          border: theme => `1px solid ${alpha(theme.palette.success.main, isConfirmed ? 0.5 : 0.2)}`,
-          transition: 'all 0.3s ease',
-        }}
-      >
-        {/* Progress fill */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            background: theme => alpha(theme.palette.success.main, 0.1),
-            transform: `translateX(${-100 + progress * 100}%)`,
-            transition: isDragging ? 'none' : 'transform 0.3s ease',
-          }}
-        />
-        
-        {/* Content container */}
-        <Box
-          sx={{
-            position: 'relative',
-            width: '100%',
-            px: 3,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transform: `translateX(${dragX}px)`,
-            transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-          }}
-        >
-          {/* Text content */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              opacity: isConfirmed ? 0 : 1,
-              transition: 'opacity 0.3s ease',
-            }}
-          >
-            <Typography
-              variant="h6"
-              sx={{
-                color: theme => isConfirmed ? 'white' : theme.palette.success.main,
-                fontWeight: 600,
-                fontSize: '1.1rem',
-              }}
-            >
-              {text}
-            </Typography>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                color: theme => alpha(theme.palette.success.main, 0.7),
-              }}
-            >
-              <Typography variant="body2">
-                滑动确认
-              </Typography>
-              <Box
-                component="span"
-                sx={{
-                  fontSize: 18,
-                  animation: 'slideArrow 1.5s ease-in-out infinite',
-                  '@keyframes slideArrow': {
-                    '0%, 100%': { transform: 'translateX(0)' },
-                    '50%': { transform: 'translateX(4px)' }
-                  }
-                }}
-              >
-                →
-              </Box>
-            </Box>
-          </Box>
-          
-          {/* Success state */}
-          {isConfirmed && (
-            <Box
-              sx={{
-                position: 'absolute',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                color: 'white',
-                animation: 'fadeIn 0.3s ease-out',
-                '@keyframes fadeIn': {
-                  '0%': { opacity: 0 },
-                  '100%': { opacity: 1 }
-                }
-              }}
-            >
-              <CheckCircle sx={{ fontSize: 24 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                已确认
-              </Typography>
-            </Box>
-          )}
-        </Box>
-        
-        {/* Visual hint arrow on the right */}
-        {!isConfirmed && !isDragging && (
-          <Box
-            sx={{
-              position: 'absolute',
-              right: 20,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: theme => alpha(theme.palette.success.main, 0.3),
-              fontSize: 24,
-              animation: 'pulse 2s ease-in-out infinite',
-              '@keyframes pulse': {
-                '0%, 100%': { opacity: 0.3 },
-                '50%': { opacity: 0.6 }
-              }
-            }}
-          >
-            →
-          </Box>
-        )}
-      </Paper>
-    </Box>
-  )
-}
+// Removed SwipeableLastCustomerCard component - no longer needed as duty tasks are automatically assigned
 
 interface TaskCountdownProps {
   period: WorkflowPeriod
@@ -321,8 +70,7 @@ interface TaskCountdownProps {
   testTime?: Date
   onComplete: (taskId: string, data: any) => void
   onComment: (noticeId: string, comment: string) => void
-  onLastCustomerLeft?: () => void
-  onLastCustomerLeftLunch?: () => void
+  // Removed: onLastCustomerLeft and onLastCustomerLeftLunch - duty tasks now auto-assigned
   onClosingComplete?: () => void
   onAdvancePeriod?: () => void
   onReviewReject?: (taskId: string, reason: string) => void
@@ -345,8 +93,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   testTime,
   onComplete,
   onComment,
-  onLastCustomerLeft,
-  onLastCustomerLeftLunch,
+  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch,
   onClosingComplete,
   onAdvancePeriod,
   onReviewReject,
@@ -964,22 +711,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
         </Paper>
       )}
 
-      {/* Swipe Card for Lunch Closing Period (Manager Only) */}
-      {period?.id === 'lunch-closing' && onLastCustomerLeftLunch && (
-        <SwipeableLastCustomerCard 
-          onConfirm={onLastCustomerLeftLunch} 
-          text="收市完成安排值班人员"
-          isConfirmed={localStorage.getItem('lunch-closing-confirmed') === 'true'}
-        />
-      )}
-      
-      {/* Swipe Card for Pre-closing Period (Manager Only) */}
-      {period?.id === 'pre-closing' && onLastCustomerLeft && (
-        <SwipeableLastCustomerCard 
-          onConfirm={onLastCustomerLeft}
-          isConfirmed={localStorage.getItem('pre-closing-confirmed') === 'true'}
-        />
-      )}
+      {/* Removed: Swipe cards for duty assignment - tasks now automatically assigned based on time */}
 
       {/* Closing Complete Button - Shows in same position as swipe card */}
       {period?.id === 'closing' && onClosingComplete && (

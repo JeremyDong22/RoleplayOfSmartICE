@@ -56,11 +56,10 @@ The application uses a complex state management system for handling restaurant o
 
 ### Critical Logic Patterns
 
-1. **Swipe to Close Flow** (Manager only):
+1. **Automatic Duty Task Assignment** (Updated):
    ```
-   Pre-closing period → Swipe card appears → User swipes right → 
-   handleLastCustomerLeft() → Collect uncompleted tasks → 
-   Set isManualClosing=true → Transition to closing period
+   Closing period (22:00) → Duty tasks automatically appear for Duty Manager →
+   Manager receives audit tasks to review Duty Manager submissions
    ```
 
 2. **Chef Pre-closing Completion**:
@@ -153,7 +152,7 @@ Use `size` prop instead of `xs/sm/md/lg` props.
 
 1. **Infinite Loop in useEffect**: Usually caused by including array length in dependencies. Use specific IDs or primitive values instead.
 
-2. **Swipe Card Not Appearing**: Check that `onLastCustomerLeft` prop is passed (only for Manager role) and period is 'pre-closing'.
+2. **Duty Tasks Not Appearing**: Check that the current time is in the closing period (22:00) and that the Duty Manager role is selected.
 
 3. **Missing Tasks Not Updating**: Ensure the missing tasks update effect isn't running during manual closing mode.
 
