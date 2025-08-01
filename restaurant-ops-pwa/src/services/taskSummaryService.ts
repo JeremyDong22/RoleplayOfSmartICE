@@ -60,7 +60,6 @@ export async function getTaskSummaryStats(
     const { data: taskDefs, error: defsError } = await supabase
       .from('roleplay_tasks')
       .select('id, title, period_id, role_code, is_notice, is_floating')
-      .eq('restaurant_id', restaurantId)
       .eq('role_code', role)
     
     if (defsError) throw defsError

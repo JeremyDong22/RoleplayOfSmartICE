@@ -678,13 +678,6 @@ const DutyManagerDashboard: React.FC = () => {
                   reviewStatus={reviewStatus}  // 传递审核状态
                   previousSubmissions={submissions.reduce((acc, sub) => {
                     // 将submissions转换为TaskCountdown期望的格式
-                    console.log('[DutyManagerDashboard] Processing submission for task:', sub.taskId, {
-                      photoGroups: sub.content.photoGroups,
-                      photos: sub.content.photos,
-                      hasPhotoGroups: !!sub.content.photoGroups,
-                      photoGroupsLength: sub.content.photoGroups?.length,
-                      photosLength: sub.content.photos?.length
-                    })
                     acc[sub.taskId] = {
                       photoGroups: sub.content.photoGroups || [],
                       photos: sub.content.photos || [],

@@ -60,12 +60,31 @@ export async function submitTaskWithMedia({
     });
 
     // 根据上传需求类型处理数据
-    if (uploadRequirement === '拍照' && data?.evidence) {
+    if (uploadRequirement === '拍照' && data) {
       submissionData.submission_type = 'photo'
       submissionData.photo_urls = []
       
+      // 处理不同格式的evidence数据
+      let evidenceArray: any[] = []
+      
+      if (data.evidence) {
+        // 如果evidence是对象且包含evidence属性（嵌套格式）
+        if (data.evidence.evidence && Array.isArray(data.evidence.evidence)) {
+          evidenceArray = data.evidence.evidence
+        }
+        // 如果evidence直接是数组
+        else if (Array.isArray(data.evidence)) {
+          evidenceArray = data.evidence
+        }
+        // 如果data本身包含evidence属性但不是数组，可能是错误格式
+        else {
+          console.warn('[TaskSubmissionHelper] Evidence is not in expected format:', data.evidence)
+          evidenceArray = []
+        }
+      }
+      
       // 上传照片到Storage
-      for (const item of data.evidence) {
+      for (const item of evidenceArray) {
         const photoData = item.photo || item.image
         if (photoData && photoData.startsWith('data:')) {
           console.log('[TaskSubmissionHelper] Uploading photo for task:', taskId)
@@ -82,8 +101,8 @@ export async function submitTaskWithMedia({
       }
       
       // 添加描述文本
-      if (data.evidence[0]?.description) {
-        submissionData.text_content = data.evidence[0].description
+      if (evidenceArray.length > 0 && evidenceArray[0]?.description) {
+        submissionData.text_content = evidenceArray[0].description
       }
     } else if (uploadRequirement === '录音' && data?.audioBlob) {
       submissionData.submission_type = 'audio'
