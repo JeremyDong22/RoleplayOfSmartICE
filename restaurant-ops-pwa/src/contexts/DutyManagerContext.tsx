@@ -6,6 +6,7 @@ import { realtimeDutyService } from '../services/realtimeDutyService'
 import { supabase } from '../services/supabase'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
+import { restaurantConfigService } from '../services/restaurantConfigService'
 
 // 照片组结构
 export interface PhotoGroup {
@@ -54,6 +55,9 @@ interface DutyManagerContextType {
     }
   }
   updateReviewStatus: (taskId: string, status: 'approved' | 'rejected', reason?: string) => Promise<void>
+  
+  // 刷新状态
+  refreshFromDatabase: () => Promise<void>
 }
 
 const DutyManagerContext = createContext<DutyManagerContextType | undefined>(undefined)
@@ -82,6 +86,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   }>({})  
   const [isInitialized, setIsInitialized] = useState(false)
   const submissionInProgressRef = useRef<Set<string>>(new Set()) // 防止重复提交
+  const realtimeInitRef = useRef(false) // 防止重复初始化 Realtime
 
   // Initialize realtime service and load data from database
   useEffect(() => {
@@ -90,17 +95,19 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       const userId = currentUser?.id || 'demo-user-' + Date.now()
       
       // Try to initialize realtime service, but don't fail if it's not available
-      try {
-        await realtimeDutyService.initialize(userId)
-        console.log('[DutyManagerContext] Realtime service connected')
-      } catch (error) {
-        console.warn('[DutyManagerContext] Realtime service not available, continuing with database-only mode:', error)
-        // Continue without realtime - database persistence will still work
+      if (!realtimeInitRef.current) {
+        realtimeInitRef.current = true
+        try {
+          await realtimeDutyService.initialize(userId)
+        } catch (error) {
+          console.warn('[DutyManagerContext] Realtime service not available, continuing with database-only mode:', error)
+          // Continue without realtime - database persistence will still work
+        }
       }
       
       // Load data from database (this always works)
       try {
-        const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+        const restaurantId = await restaurantConfigService.getRestaurantId() || ''
         
         // Load trigger status from database
         const trigger = await dutyManagerPersistence.getCurrentTrigger(restaurantId)
@@ -111,15 +118,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         // Load pending submissions from database
         const pendingSubmissions = await dutyManagerPersistence.getPendingSubmissions(restaurantId)
         if (pendingSubmissions.length > 0) {
-          console.log('[DutyManagerContext] Loaded submissions from database:', pendingSubmissions)
-          pendingSubmissions.forEach(sub => {
-            console.log('[DutyManagerContext] Submission detail for task', sub.taskId, {
-              photoGroups: sub.content.photoGroups,
-              photos: sub.content.photos,
-              firstPhotoGroupPhotos: sub.content.photoGroups?.[0]?.photos,
-              firstPhotoUrl: sub.content.photos?.[0]
-            })
-          })
+          // 已从数据库加载提交记录
           setSubmissions(pendingSubmissions)
         }
         
@@ -154,31 +153,42 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       initServices()
     }
     
+    // Don't cleanup on unmount - keep the connection alive
+    // Only cleanup when the entire app unmounts
     return () => {
-      realtimeDutyService.cleanup()
+      // console.log('[DutyManagerContext] Component unmounting, but keeping Realtime connection')
+      // Don't call cleanup here to prevent connection drops
     }
   }, [])
 
   // Subscribe to realtime messages
   useEffect(() => {
+    // 设置 Realtime 监听器
+    
     // Subscribe to realtime messages from other devices
     const unsubscribeRealtime = realtimeDutyService.subscribe('*', (message) => {
-      // Process realtime messages
+      // 处理 Realtime 消息
       
       if (message.type === 'TRIGGER' && message.data?.trigger) {
+        // 处理 TRIGGER 消息
         const trigger = message.data.trigger
         trigger.triggeredAt = new Date(trigger.triggeredAt)
         setCurrentTrigger(trigger)
       } else if (message.type === 'SUBMISSION' && message.data?.submission) {
+        // 处理 SUBMISSION 消息
         const submission = message.data.submission
         submission.submittedAt = new Date(submission.submittedAt)
         setSubmissions(prev => {
           const filtered = prev.filter(s => s.taskId !== submission.taskId)
-          return [...filtered, submission]
+          const newSubmissions = [...filtered, submission]
+          // 更新 submissions
+          return newSubmissions
         })
       } else if (message.type === 'CLEAR_SUBMISSIONS') {
+        // 处理 CLEAR_SUBMISSIONS 消息
         setSubmissions([])
       } else if (message.type === 'REVIEW_STATUS' && message.data?.taskId) {
+        // 处理 REVIEW_STATUS 消息
         const { taskId, reviewData } = message.data
         reviewData.reviewedAt = new Date(reviewData.reviewedAt)
         setReviewStatus(prev => ({
@@ -204,7 +214,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     // Save to database first
     try {
       const currentUser = authService.getCurrentUser()
-      const restaurantId = currentUser?.restaurantId || localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      const restaurantId = currentUser?.restaurantId || await restaurantConfigService.getRestaurantId() || ''
       await dutyManagerPersistence.saveTrigger(trigger, restaurantId)
       
       // Only update state if database save was successful
@@ -230,7 +240,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     
     // Clear in database
     try {
-      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      const restaurantId = await restaurantConfigService.getRestaurantId() || ''
       await dutyManagerPersistence.clearDailySubmissions(restaurantId)
     } catch (error) {
       console.error('Failed to clear trigger in database:', error)
@@ -240,18 +250,12 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   const addSubmission = async (submission: DutyManagerSubmission) => {
     // 防止重复提交
     if (submissionInProgressRef.current.has(submission.taskId)) {
-      console.log('[DutyManagerContext] Submission already in progress for:', submission.taskId)
       return
     }
     
     submissionInProgressRef.current.add(submission.taskId)
     
-    console.log('[DutyManagerContext] addSubmission called with:', {
-      taskId: submission.taskId,
-      content: submission.content,
-      photoGroups: submission.content.photoGroups,
-      photos: submission.content.photos
-    })
+    // 处理任务提交
     
     // First try to save to database
     try {
@@ -260,7 +264,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         throw new Error('No authenticated user')
       }
       const userId = currentUser.id
-      const restaurantId = currentUser.restaurantId || localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      const restaurantId = currentUser.restaurantId || await restaurantConfigService.getRestaurantId() || ''
       await dutyManagerPersistence.saveSubmission(submission, userId, restaurantId)
       
       // Only update UI state if database save was successful
@@ -268,28 +272,26 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
       setSubmissions(prev => {
         const filtered = prev.filter(s => s.taskId !== submission.taskId)
         const newSubmissions = [...filtered, submission]
-        console.log('[DutyManagerContext] Updated submissions:', newSubmissions)
+        // 更新提交列表
         return newSubmissions
       })
       
-      // 如果是重新提交（之前被驳回），清除驳回状态
-      if (reviewStatus[submission.taskId]?.status === 'rejected') {
-        const newReviewData = {
-          status: 'pending' as const,
-          reviewedAt: new Date()
-        }
-        
-        setReviewStatus(prev => ({
-          ...prev,
-          [submission.taskId]: newReviewData
-        }))
-        
-        // Send via realtime (if available)
-        try {
-          await realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
-        } catch (error) {
-          // Realtime not available, but database update succeeded
-        }
+      // 设置审核状态为待审核（无论是新提交还是重新提交）
+      const newReviewData = {
+        status: 'pending' as const,
+        reviewedAt: new Date()
+      }
+      
+      setReviewStatus(prev => ({
+        ...prev,
+        [submission.taskId]: newReviewData
+      }))
+      
+      // Send via realtime (if available)
+      try {
+        await realtimeDutyService.sendReviewStatus(submission.taskId, newReviewData)
+      } catch (error) {
+        // Realtime not available, but database update succeeded
       }
       
       // Send via realtime to other devices (if available)
@@ -312,7 +314,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     
     // Clear in database
     try {
-      const restaurantId = localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
+      const restaurantId = await restaurantConfigService.getRestaurantId() || ''
       await dutyManagerPersistence.clearDailySubmissions(restaurantId)
     } catch (error) {
       console.error('Failed to clear submissions in database:', error)
@@ -360,6 +362,71 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     }
   }
 
+  // 从数据库刷新状态
+  const refreshFromDatabase = async () => {
+    // 从数据库刷新状态
+    try {
+      const restaurantId = await restaurantConfigService.getRestaurantId() || ''
+      const currentUser = authService.getCurrentUser()
+      
+      if (currentUser) {
+        // 重新加载任务状态
+        const { taskStatuses } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
+          currentUser.id,
+          restaurantId
+        )
+        
+        // 清空现有状态，完全从数据库重建
+        const reviewStatuses: any = {}
+        const allSubmissions: DutyManagerSubmission[] = []
+        
+        // 从数据库记录重建状态
+        Object.entries(taskStatuses).forEach(([taskId, status]) => {
+          if (status.status === 'submitted') {
+            // 设置审核状态
+            reviewStatuses[taskId] = {
+              status: status.review_status || 'pending',
+              reviewedAt: status.reviewedAt || status.submittedAt,
+              reason: status.reject_reason
+            }
+            
+            // 如果任务已提交，添加到提交列表
+            // 从taskStatuses中获取提交信息
+            const record = (status as any)
+            if (record.submissionData) {
+              allSubmissions.push({
+                taskId: taskId,
+                taskTitle: record.taskTitle || '',
+                submittedAt: status.submittedAt,
+                content: record.submissionData
+              })
+            }
+          }
+        })
+        
+        // 获取今天的待审核任务
+        const pendingSubmissions = await dutyManagerPersistence.getPendingSubmissions(restaurantId)
+        
+        // 合并提交记录（优先使用 pendingSubmissions 的数据）
+        const submissionMap = new Map<string, DutyManagerSubmission>()
+        pendingSubmissions.forEach(sub => submissionMap.set(sub.taskId, sub))
+        allSubmissions.forEach(sub => {
+          if (!submissionMap.has(sub.taskId)) {
+            submissionMap.set(sub.taskId, sub)
+          }
+        })
+        
+        // 更新状态 - 完全覆盖 Realtime 的状态
+        setReviewStatus(reviewStatuses)
+        setSubmissions(Array.from(submissionMap.values()))
+        
+        // 数据库刷新完成
+      }
+    } catch (error) {
+      console.error('[DutyManagerContext] Error refreshing from database:', error)
+    }
+  }
+
   const value: DutyManagerContextType = {
     currentTrigger,
     setTrigger,
@@ -369,6 +436,7 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
     clearSubmissions,
     reviewStatus,
     updateReviewStatus,
+    refreshFromDatabase,
   }
 
   return (

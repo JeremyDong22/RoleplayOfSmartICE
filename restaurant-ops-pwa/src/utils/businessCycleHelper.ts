@@ -85,7 +85,12 @@ export async function getUserBusinessCycleProgress(userId: string, restaurantId:
   // 获取用户的角色
   const { data: userData } = await supabase
     .from('roleplay_users')
-    .select('role_code')
+    .select(`
+      id,
+      roleplay_roles!inner (
+        role_code
+      )
+    `)
     .eq('id', userId)
     .single()
   
@@ -93,11 +98,13 @@ export async function getUserBusinessCycleProgress(userId: string, restaurantId:
     return null
   }
   
+  const userRoleCode = userData.roleplay_roles?.role_code
+  
   // 获取该角色的所有任务
   const { data: roleTasks } = await supabase
     .from('roleplay_tasks')
     .select('id, title')
-    .eq('role_code', userData.role_code)
+    .eq('role_code', userRoleCode)
     .eq('is_active', true)
     .eq('is_notice', false)
     .not('is_floating', 'eq', true)
@@ -116,7 +123,7 @@ export async function getUserBusinessCycleProgress(userId: string, restaurantId:
   const completedTasks = roleTasks?.filter(t => completedTaskIds.has(t.id)).length || 0
   
   return {
-    role: userData.role_code,
+    role: userRoleCode,
     totalTasks,
     completedTasks,
     pendingTasks: totalTasks - completedTasks,

@@ -51,6 +51,12 @@ export async function submitTaskWithMedia({
       submission_metadata: data
     }
     
+    // If there's a late submission reason, include it and mark as late
+    if (data?.lateReason || data?.lateExplanation) {
+      submissionData.makeup_reason = data.lateReason || data.lateExplanation
+      submissionData.is_late = true
+    }
+    
     console.log('[TaskSubmissionHelper] Initial submission data:', {
       user_id: userId,
       restaurant_id: restaurantId,

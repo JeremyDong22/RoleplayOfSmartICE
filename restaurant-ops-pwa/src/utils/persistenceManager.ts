@@ -3,8 +3,8 @@
 
 interface PersistedState {
   completedTaskIds: string[]
-  taskStatuses: any[]
-  missingTasks: any[]
+  taskStatuses: Array<{ taskId: string; status: string; completedAt?: number; overdue?: boolean }>
+  missingTasks: Array<{ id: string; title: string; periodName: string; uploadRequirement?: string | null }>
   manuallyAdvancedPeriod?: string | null // Track manually advanced period
   currentPeriodId?: string | null // Track current period ID for manual transitions
   testTime?: string | null // Store test time for development

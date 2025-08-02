@@ -24,7 +24,7 @@ import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 interface FloatingTaskCardProps {
   tasks: TaskTemplate[]
   completedTaskIds: string[]
-  onTaskComplete: (taskId: string, evidence?: any) => void
+  onTaskComplete: (taskId: string, evidence?: unknown) => void
   showWarning?: boolean
 }
 
@@ -48,7 +48,7 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
     }
   }
 
-  const handlePhotoSubmit = (evidence: any[]) => {
+  const handlePhotoSubmit = (evidence: unknown[]) => {
     onTaskComplete(selectedTaskId, evidence)
     setPhotoDialogOpen(false)
     setSelectedTaskId('')

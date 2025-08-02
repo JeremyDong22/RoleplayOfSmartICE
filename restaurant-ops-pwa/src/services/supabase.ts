@@ -9,6 +9,17 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
+// Add logging to debug Realtime connection
+console.log('[Supabase] Initializing client with:', {
+  url: supabaseUrl,
+  hasAnonKey: !!supabaseAnonKey,
+  realtimeConfig: {
+    params: {
+      eventsPerSecond: 10
+    }
+  }
+})
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -17,9 +28,13 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   realtime: {
     params: {
       eventsPerSecond: 10
-    }
+    },
+    log_level: 'debug' // Enable debug logging for Realtime
   }
 })
+
+// Log when Supabase client is created
+console.log('[Supabase] Client created successfully')
 
 // Helper function to upload files to storage
 export const uploadFile = async (

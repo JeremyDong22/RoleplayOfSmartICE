@@ -16,7 +16,7 @@ import {
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
-import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked'
+// import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked' // Unused import
 
 interface ListItem {
   id: string
@@ -30,6 +30,16 @@ interface ListSubmissionDialogProps {
   onSubmit: (data: { items: ListItem[] }) => void
   taskName: string
   sampleDir?: string
+  samples?: {
+    samples: Array<{
+      index: number
+      text: string
+      images: string[]
+      checklist?: {
+        items: string[]
+      }
+    }>
+  } | null
 }
 
 export default function ListSubmissionDialog({
@@ -38,16 +48,31 @@ export default function ListSubmissionDialog({
   onSubmit,
   taskName,
   sampleDir,
+  samples,
 }: ListSubmissionDialogProps) {
   const [items, setItems] = useState<ListItem[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Load checklist items from sample files
+  // Load checklist items from props or sample files
   useEffect(() => {
-    if (open && sampleDir) {
-      loadChecklistItems()
+    if (open) {
+      // Extract checklist from samples structure
+      const checklistSample = samples?.samples?.find(s => s.checklist)
+      if (checklistSample?.checklist?.items) {
+        // Use checklist data from samples
+        setItems(
+          checklistSample.checklist.items.map((text: string, index: number) => ({
+            id: `item-${index}`,
+            text,
+            status: 'unchecked' as const,
+          }))
+        )
+      } else if (sampleDir) {
+        // Fallback to loading from sample files
+        loadChecklistItems()
+      }
     }
-  }, [open, sampleDir])
+  }, [open, sampleDir, samples, loadChecklistItems])
 
   const loadChecklistItems = async () => {
     if (!sampleDir) return

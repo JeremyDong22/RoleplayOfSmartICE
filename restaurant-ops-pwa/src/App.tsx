@@ -22,6 +22,7 @@ import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
 import { initializeRestaurant } from './utils/restaurantSetup'
+import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 
 const theme = createTheme({
   palette: {
@@ -91,6 +92,10 @@ const router = createBrowserRouter([
   {
     path: '/test-upload',
     element: <TestTaskUpload />,
+  },
+  {
+    path: '/test-realtime-debug',
+    element: <TestRealtimeDebug />,
   },
 ])
 

@@ -14,7 +14,6 @@ import {
 } from '@mui/material'
 import {
   LocalShipping,
-  CheckCircle,
   ExpandMore,
   ExpandLess,
   PhotoCamera,
@@ -27,15 +26,14 @@ import { specialTaskTheme } from '../../theme/specialTaskTheme'
 interface FloatingTaskCardProps {
   tasks: TaskTemplate[]
   completedTaskIds: string[] // 保留接口兼容性，但不使用
-  onTaskComplete: (taskId: string, evidence?: any) => void
+  onTaskComplete: (taskId: string, evidence?: unknown) => void
   showWarning?: boolean
 }
 
 export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
   tasks,
-  completedTaskIds, // 保留参数但不使用
-  onTaskComplete,
-  showWarning = false
+  completedTaskIds: _completedTaskIds, // 保留参数但不使用
+  onTaskComplete
 }) => {
   const [expanded, setExpanded] = useState(true)
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false)
@@ -53,7 +51,7 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
     }
   }
 
-  const handlePhotoSubmit = (evidence: any[]) => {
+  const handlePhotoSubmit = (evidence: unknown[]) => {
     const task = tasks.find(t => t.id === selectedTaskId)
     onTaskComplete(selectedTaskId, evidence)
     setPhotoDialogOpen(false)

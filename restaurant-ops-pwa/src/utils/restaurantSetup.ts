@@ -1,55 +1,22 @@
-// 餐厅设置工具
-// 用于初始化餐厅相关配置
+/**
+ * 餐厅设置工具 - 已迁移到 restaurantConfigService
+ * 保留此文件仅为向后兼容
+ * @deprecated 请使用 restaurantConfigService
+ */
 
-import { supabase } from '../services/supabase'
+import { restaurantConfigService } from '../services/restaurantConfigService'
 
+/**
+ * @deprecated 使用 restaurantConfigService.initialize()
+ */
 export async function initializeRestaurant() {
-  try {
-    // 检查是否已设置餐厅ID
-    const existingId = localStorage.getItem('selectedRestaurantId')
-    if (existingId && existingId !== 'default-restaurant') {
-      return existingId
-    }
-
-    // 获取野百灵餐厅信息
-    const { data, error } = await supabase
-      .from('roleplay_restaurants')
-      .select('id, name')
-      .eq('name', '野百灵')
-      .single()
-
-    if (error) {
-      console.error('Failed to fetch restaurant:', error)
-      // 使用硬编码的ID作为后备
-      const restaurantId = 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a'
-      localStorage.setItem('selectedRestaurantId', restaurantId)
-      return restaurantId
-    }
-
-    if (data) {
-      localStorage.setItem('selectedRestaurantId', data.id)
-      localStorage.setItem('selectedRestaurantName', data.name)
-      console.log('[RestaurantSetup] Initialized restaurant:', data.name, data.id)
-      return data.id
-    }
-
-    // 如果没有找到餐厅，使用默认值
-    return 'default-restaurant'
-  } catch (error) {
-    console.error('[RestaurantSetup] Error initializing restaurant:', error)
-    // 使用硬编码的ID作为后备
-    const restaurantId = 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a'
-    localStorage.setItem('selectedRestaurantId', restaurantId)
-    return restaurantId
-  }
+  const config = await restaurantConfigService.initialize()
+  return config?.id || null
 }
 
-// Get current restaurant ID
-export function getRestaurantId(): string {
-  const id = localStorage.getItem('selectedRestaurantId')
-  if (!id || id === 'default-restaurant') {
-    // Return the hardcoded UUID if no valid ID is found
-    return 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a'
-  }
-  return id
+/**
+ * @deprecated 使用 restaurantConfigService.getRestaurantId()
+ */
+export async function getRestaurantId(): Promise<string | null> {
+  return await restaurantConfigService.getRestaurantId()
 }

@@ -26,11 +26,8 @@ export const RoleSelection = () => {
     
     const requiredRole = roleCodeMap[role]
     if (currentUser?.roleCode !== requiredRole) {
-      // Special case: Manager can also access duty-manager
-      if (!(role === 'duty-manager' && currentUser?.roleCode === 'manager')) {
-        setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
-        return
-      }
+      setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
+      return
     }
     
     // Store role in localStorage for persistence
@@ -261,15 +258,15 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: currentUser?.roleCode === 'duty_manager' || currentUser?.roleCode === 'manager' ? 'pointer' : 'not-allowed',
+                cursor: currentUser?.roleCode === 'duty_manager' ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: currentUser?.roleCode === 'duty_manager' || currentUser?.roleCode === 'manager' ? 1 : 0.5,
-                '&:hover': (currentUser?.roleCode === 'duty_manager' || currentUser?.roleCode === 'manager') ? {
+                opacity: currentUser?.roleCode === 'duty_manager' ? 1 : 0.5,
+                '&:hover': (currentUser?.roleCode === 'duty_manager') ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'info.light',

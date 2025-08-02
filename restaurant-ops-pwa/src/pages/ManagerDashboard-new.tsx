@@ -14,7 +14,8 @@ import {
   Typography,
   CircularProgress,
   Alert,
-  Button
+  Button,
+  Paper
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -24,22 +25,23 @@ import { TaskSummary } from '../components/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
 import { FloatingTaskCard } from '../components/FloatingTaskCard'
-import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase, workflowPeriods } from '../utils/workflowParser'
+import { NoticeContainer } from '../components/NoticeContainer/NoticeContainer'
+import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { useTaskData } from '../contexts/TaskDataContext'
-import { saveState, loadState, clearState } from '../utils/persistenceManager'
 import { useDutyManager, type DutyManagerSubmission } from '../contexts/DutyManagerContext'
 // import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 import notificationService from '../services/notificationService'
-import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuses, type TaskStatusDetail } from '../services/taskRecordService'
+import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuses, getTodayApprovedDutyManagerTasks, validateCanClose, type TaskStatusDetail } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
 import { authService } from '../services/authService'
 import { getRestaurantId } from '../utils/restaurantSetup'
-import { submitNoticeResponse, getTodayNoticeResponses } from '../services/noticeResponseService'
-import { recordPeriodTransition, hasManuallyClosedToday, getLatestTransition } from '../services/periodTransitionService'
+import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
+// import { submitNoticeResponse, getTodayNoticeResponses } from '../services/noticeResponseService'
+// import { recordPeriodTransition, hasManuallyClosedToday, getLatestTransition } from '../services/periodTransitionService'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -154,17 +156,12 @@ export const ManagerDashboard: React.FC = () => {
   const selectedRole = localStorage.getItem('selectedRole')
   
   const navigate = useNavigate()
-  const { submissions, updateReviewStatus, reviewStatus, clearTrigger, addSubmission } = useDutyManager()
+  const { submissions, updateReviewStatus, reviewStatus, clearTrigger, addSubmission, refreshFromDatabase } = useDutyManager()
   
   // 从数据库获取任务数据
   const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
   
-  // 监听值班经理的提交状态变化，实时更新UI
-  useEffect(() => {
-    // 当submissions变化时，触发组件重新渲染
-    // submissions 是从 DutyManagerContext 中获取的，会通过实时服务自动更新
-    console.log('[ManagerDashboard] Duty manager submissions updated:', submissions)
-  }, [submissions])
+  // 移除频繁的 submissions 监听
   
   // Redirect to role selection if no role is selected
   useEffect(() => {
@@ -183,7 +180,7 @@ export const ManagerDashboard: React.FC = () => {
   const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
   const manualClosingRef = useRef(false) // Ref to prevent race conditions
   const waitingRef = useRef(false) // Ref for waiting state
-  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded from localStorage
+  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded initial data
   const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
   const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
   const [reviewTasks, setReviewTasks] = useState<TaskTemplate[]>([]) // Store review tasks for duty manager
@@ -191,74 +188,122 @@ export const ManagerDashboard: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
   const [currentPeriodId, setCurrentPeriodId] = useState<string | null>(null) // Track current period ID for persistence
   const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
-  // 过滤只显示 Manager 的浮动任务
-  const floatingTasks = allFloatingTasks.filter(task => task.role === 'Manager')
+  const [dbState, setDbState] = useState<RestaurantState | null>(null) // Restaurant state from database
+  const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
+  const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
+  
+  // 过滤只显示 Manager 的浮动任务，排除 manual-closing
+  const floatingTasks = allFloatingTasks.filter(task => 
+    task.role === 'Manager' && task.id !== 'manual-closing'
+  )
   
   
+  // Load restaurant state from database
+  useEffect(() => {
+    if (!currentUserId) {
+      return
+    }
+    
+    const loadState = async () => {
+      const restaurantId = await getRestaurantId()
+      if (!restaurantId) {
+        return
+      }
+      
+      const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
+      
+      if (state) {
+        setDbState(state)
+        setIsWaitingForNextDay(state.isWaitingForNextDay)
+        setIsManualClosing(state.isManualClosing)
+        setCanManualClose(state.canManualClose)
+        
+        // Update refs for immediate access
+        waitingRef.current = state.isWaitingForNextDay
+        manualClosingRef.current = state.isManualClosing
+      }
+    }
+    
+    loadState()
+  }, [currentUserId, testTime]) // 添加 testTime 依赖
+  
+  // Function to load approved duty manager tasks and update review task completion
+  const loadApprovedDutyManagerTasks = async () => {
+    const restaurantId = await getRestaurantId()
+    
+    if (!restaurantId || !currentUserId) {
+      return []
+    }
+    
+    const approvedDutyTasks = await getTodayApprovedDutyManagerTasks(restaurantId)
+    
+    // Add review tasks to completedIds if their linked tasks are approved
+    const reviewTasksToAdd: string[] = []
+    
+    // Map duty manager tasks to their review tasks dynamically
+    const dutyToReviewMap: { [key: string]: string } = {}
+    
+    // Generate mappings for all periods that have duty manager tasks
+    workflowPeriods.forEach(period => {
+      const dutyTasks = period.tasks?.dutyManager || []
+      dutyTasks.forEach(dutyTask => {
+        dutyToReviewMap[dutyTask.id] = `review-${dutyTask.id}`
+      })
+    })
+    
+    approvedDutyTasks.forEach(dutyTaskId => {
+      const reviewTaskId = dutyToReviewMap[dutyTaskId]
+      if (reviewTaskId) {
+        reviewTasksToAdd.push(reviewTaskId)
+      }
+    })
+    
+    
+    return reviewTasksToAdd
+  }
+
   // Load completed tasks from Supabase on mount
   useEffect(() => {
     async function loadFromDatabase() {
       try {
+        // 首先刷新 DutyManagerContext 的数据库状态
+        await refreshFromDatabase()
+        
         // Get current user from authService instead of supabase.auth
         const currentUser = authService.getCurrentUser()
-        console.log('[ManagerDashboard] Current user from authService:', currentUser)
+        // console.log('[ManagerDashboard] Current user from authService:', currentUser)
         if (!currentUser) {
-          console.error('[ManagerDashboard] No authenticated user from authService')
+          // console.error('[ManagerDashboard] No authenticated user from authService')
           setIsLoadingFromDb(false)
           return
         }
         
         setCurrentUserId(currentUser.id)
-        console.log('[ManagerDashboard] Set currentUserId to:', currentUser.id)
+        // console.log('[ManagerDashboard] Set currentUserId to:', currentUser.id)
         
         // Load today's completed tasks
         const completedIds = await getTodayCompletedTaskIds(currentUser.id)
-        setCompletedTaskIds(completedIds)
+        
+        // Load approved duty manager tasks to determine review task completion
+        const reviewTasksToAdd = await loadApprovedDutyManagerTasks()
+        
+        setCompletedTaskIds([...completedIds, ...reviewTasksToAdd])
         
         // Load today's task statuses for TaskSummary
         const taskStatuses = await getTodayTaskStatuses(currentUser.id)
         setDbTaskStatuses(taskStatuses)
         
-        // Load today's notice responses from Supabase
-        const noticeResponses = await getTodayNoticeResponses(currentUser.id)
-        const comments = noticeResponses.map(resp => ({
-          noticeId: resp.task_id,
-          comment: resp.response_content,
-          timestamp: new Date(resp.created_at || resp.timestamp)
-        }))
-        setNoticeComments(comments)
-        
-        // Check if manually closed today
-        const manuallyClosedToday = await hasManuallyClosedToday(currentUser.id)
-        setIsManualClosing(manuallyClosedToday)
-        manualClosingRef.current = manuallyClosedToday
-        
-        // Get latest transition to determine if waiting for next day
-        const latestTransition = await getLatestTransition(currentUser.id)
-        const isWaiting = latestTransition?.period_id === 'closing' && 
-                         (latestTransition.action === 'enter' || latestTransition.action === 'manual_close')
-        setIsWaitingForNextDay(isWaiting)
-        
-        // Load minimal state from localStorage
-        const savedState = loadState('manager')
-        if (savedState) {
-          setManuallyAdvancedPeriod(savedState.manuallyAdvancedPeriod || null)
-          manualAdvanceRef.current = savedState.manuallyAdvancedPeriod || null
-          setCurrentPeriodId(savedState.currentPeriodId || null)
-          
-          if (savedState.testTime) {
-            setTestTime(new Date(savedState.testTime))
-          }
-        }
-        
         // Check for global test time
         const globalTestTime = getCurrentTestTime()
-        if (globalTestTime && !savedState?.testTime) {
+        if (globalTestTime) {
           setTestTime(globalTestTime)
         }
         
+        // Clear missing tasks on fresh load to prevent stale data
+        setMissingTasks([])
+        
       } catch (error) {
-        console.error('Error loading from database:', error)
+        // console.error('Error loading from database:', error)
       } finally {
         setIsLoadingFromDb(false)
         setHasInitialized(true)
@@ -268,108 +313,87 @@ export const ManagerDashboard: React.FC = () => {
     if (!hasInitialized) {
       loadFromDatabase()
     }
-  }, [hasInitialized])
+  }, [hasInitialized, refreshFromDatabase])
+  
+  // 移除频繁的审核状态监听，只在初始加载时从数据库获取
   
   // Listen for clear storage broadcast from other tabs - REMOVED: Using only Supabase Realtime
-  // useEffect(() => {
-  //   const unsubscribe = broadcastService.subscribe('CLEAR_ALL_STORAGE', (message) => {
-  //     // Clear all storage and reload
-  //     clearAllAppStorage()
-  //     window.location.reload()
-  //   })
-  //   
-  //   return () => {
-  //     unsubscribe()
-  //   }
-  // }, [])
   
-  // Save state to localStorage (only essential UI state)
-  useEffect(() => {
-    if (hasInitialized) {
-      saveState('manager', {
-        completedTaskIds: [], // No longer save completed tasks to localStorage
-        taskStatuses: [], // No longer save task statuses to localStorage
-        missingTasks: [], // No longer save missing tasks to localStorage
-        manuallyAdvancedPeriod,
-        currentPeriodId: currentPeriod?.id || null,
-        testTime: testTime?.toISOString() || null
-      })
-    }
-  }, [manuallyAdvancedPeriod, currentPeriod?.id, testTime, hasInitialized])
-  
-  // Period update effect
+  // Period update effect - now primarily uses database state
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null
     let lastPeriodId = currentPeriod?.id // Track last period to detect changes
     
-    const updatePeriods = () => {
-      // Skip all updates if we're in manual closing mode (check ref for immediate value)
-      if (manualClosingRef.current || isManualClosing) {
-        // However, if we don't have a current period yet and we're in manual closing,
-        // we need to restore the saved period
-        if (!currentPeriod && currentPeriodId && workflowPeriods.length > 0) {
-          const savedPeriod = workflowPeriods.find(p => p.id === currentPeriodId)
-          if (savedPeriod) {
-            setCurrentPeriod(savedPeriod)
-          }
+    const updatePeriods = async () => {
+      // Use database state if available
+      if (dbState) {
+        // If database says we're waiting, respect that
+        if (dbState.isWaitingForNextDay) {
+          setIsWaitingForNextDay(true)
+          waitingRef.current = true
+          // Clear current period to show waiting display
+          setCurrentPeriod(null)
+          // Set next period to opening for display
+          const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
+          setNextPeriod(openingPeriod || null)
+          return
         }
-        return
-      }
-      
-      const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
-      const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
-      
-      // IMPORTANT: Check waiting state FIRST before manual advance
-      // If we're in waiting state, only exit if we've reached opening time
-      if (isWaitingForNextDay) {
-        // Still update next period for display even in waiting state
-        setNextPeriod(next)
         
-        if (current && current.id === 'opening') {
-          setIsWaitingForNextDay(false)
-          setIsManualClosing(false)
-          manualClosingRef.current = false
-          // Clear any lingering manual advance state
-          setManuallyAdvancedPeriod(null)
-          manualAdvanceRef.current = null
-          setCurrentPeriod(current)
-          setNextPeriod(next)
-          
-          // Send notification for new period
-          if (lastPeriodId !== current.id) {
-            const taskCount = current.tasks.manager.filter(t => !t.isNotice).length
-            notificationService.sendPeriodStartNotification(current.displayName, taskCount)
-            lastPeriodId = current.id
+        // If database says we're in manual closing, respect that
+        if (dbState.isManualClosing) {
+          // console.log('[ManagerDashboard] Database says manual closing')
+          setIsManualClosing(true)
+          manualClosingRef.current = true
+          // Get closing period
+          const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
+          if (closingPeriod) {
+            setCurrentPeriod(closingPeriod)
+            // Also update next period
+            const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+            setNextPeriod(next)
+          }
+          return
+        }
+        
+        // Normal operation - use database current period and calculate next
+        if (dbState.currentPeriodId) {
+          const currentFromDb = workflowPeriods.find(p => p.id === dbState.currentPeriodId)
+          if (currentFromDb) {
+            // Check if period changed
+            if (lastPeriodId && lastPeriodId !== currentFromDb.id) {
+              // Reload state when period changes
+              const restaurantId = await getRestaurantId()
+              if (restaurantId) {
+                const newState = await restaurantStateService.getCurrentState(restaurantId, testTime)
+                if (newState) {
+                  setIsManualClosing(newState.isManualClosing)
+                  setIsWaitingForNextDay(newState.isWaitingForNextDay)
+                  waitingRef.current = newState.isWaitingForNextDay
+                  manualClosingRef.current = newState.isManualClosing
+                }
+              }
+            }
+            lastPeriodId = currentFromDb.id
+            setCurrentPeriod(currentFromDb)
+            const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+            setNextPeriod(next)
           }
         } else {
-          // Update periods even in waiting state to reflect time changes
+          // No current period from database - we're in waiting state
+          setCurrentPeriod(null)
+          const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
+          setNextPeriod(openingPeriod || null)
+        }
+      } else {
+        // No database state available yet
+        // console.log('[ManagerDashboard] No database state available, waiting...')
+        // Still calculate periods based on time for display purposes
+        const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
+        const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+        if (current) {
           setCurrentPeriod(current)
           setNextPeriod(next)
         }
-        // Still waiting, don't update state flags
-        return
-      }
-      
-      // Check if we have a manually advanced period
-      if (manualAdvanceRef.current || manuallyAdvancedPeriod) {
-        // Check if actual time has caught up to the manually advanced period
-        if (current?.id === manualAdvanceRef.current || current?.id === manuallyAdvancedPeriod) {
-          setManuallyAdvancedPeriod(null)
-          manualAdvanceRef.current = null
-        } else {
-          return // Don't update periods while manually advanced
-        }
-      }
-      
-      // Normal automatic period updates
-      setCurrentPeriod(current)
-      setNextPeriod(next)
-      
-      // Send notification if period changed
-      if (current && lastPeriodId !== current.id) {
-        const taskCount = current.tasks.manager.filter(t => !t.isNotice).length
-        notificationService.sendPeriodStartNotification(current.displayName, taskCount)
-        lastPeriodId = current.id
       }
     }
     
@@ -384,7 +408,7 @@ export const ManagerDashboard: React.FC = () => {
         clearInterval(intervalId)
       }
     }
-  }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, currentPeriod, currentPeriodId, workflowPeriods])
+  }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, currentPeriod, currentPeriodId, workflowPeriods, dbState])
   
   
   // Sync refs with state
@@ -400,65 +424,38 @@ export const ManagerDashboard: React.FC = () => {
     waitingRef.current = isWaitingForNextDay
   }, [isWaitingForNextDay])
   
-  // Auto-add review tasks when entering closing period at 21:30
+  // Auto-generate review tasks based on duty manager tasks from database
   useEffect(() => {
-    // Check if we just entered closing period naturally (at 21:30)
-    if (currentPeriod?.id === 'closing' && !isManualClosing && !manuallyAdvancedPeriod) {
-      // Check if review tasks are already added
-      const hasReviewTasks = currentPeriod.tasks.manager.some(t => t.id.startsWith('review-closing-duty'))
-      
-      if (!hasReviewTasks) {
-        // Create review tasks for all duty manager tasks
-        const reviewTask1: TaskTemplate = {
-          id: 'review-closing-duty-energy',
-          title: '审核：能源安全检查',
-          description: '审核值班经理提交的设备关闭、燃气阀门和总电源检查记录',
-          role: 'Manager',
-          department: '前厅',
-          uploadRequirement: '审核',
-          linkedTasks: ['closing-duty-manager-1'],
-          autoGenerated: true,
-          timeSlot: 'closing',
-          isNotice: false,
-          startTime: '21:30',
-          endTime: '23:30'
-        }
-        
-        const reviewTask2: TaskTemplate = {
-          id: 'review-closing-duty-security',
-          title: '审核：安防闭店检查',
-          description: '审核值班经理提交的门窗锁闭、监控系统和报警系统设置记录',
-          role: 'Manager',
-          department: '前厅',
-          uploadRequirement: '审核',
-          linkedTasks: ['closing-duty-manager-2'],
-          autoGenerated: true,
-          timeSlot: 'closing',
-          isNotice: false,
-          startTime: '21:30',
-          endTime: '23:30'
-        }
-        
-        const reviewTask3: TaskTemplate = {
-          id: 'review-closing-duty-data',
-          title: '审核：营业数据记录',
-          description: '审核值班经理提交的交班单和日营业报表数据',
-          role: 'Manager',
-          department: '前墅',
-          uploadRequirement: '审核',
-          linkedTasks: ['closing-duty-manager-3'],
-          autoGenerated: true,
-          timeSlot: 'closing',
-          isNotice: false,
-          startTime: '21:30',
-          endTime: '23:30'
-        }
-        
-        // Store review tasks in a separate state
-        setReviewTasks([reviewTask1, reviewTask2, reviewTask3])
-      }
+    if (!currentPeriod) {
+      setReviewTasks([])
+      return
     }
-  }, [currentPeriod?.id, isManualClosing, manuallyAdvancedPeriod])
+    
+    // Check if current period has duty manager tasks
+    const dutyManagerTasks = currentPeriod.tasks?.dutyManager || []
+    
+    if (dutyManagerTasks.length > 0) {
+      // Generate review tasks for each duty manager task
+      const generatedReviewTasks = dutyManagerTasks.map(dutyTask => ({
+        id: `review-${dutyTask.id}`,
+        title: `审核：${dutyTask.title}`,
+        description: `审核值班经理提交的${dutyTask.title}记录`,
+        role: 'Manager' as const,
+        department: '前厅' as const,
+        uploadRequirement: '审核' as const,
+        linkedTasks: [dutyTask.id],
+        autoGenerated: true,
+        timeSlot: currentPeriod.id,
+        isNotice: false,
+        startTime: currentPeriod.startTime,
+        endTime: currentPeriod.endTime
+      }))
+      
+      setReviewTasks(generatedReviewTasks)
+    } else {
+      setReviewTasks([])
+    }
+  }, [currentPeriod])
   
   // Safety check: Clear invalid states
   useEffect(() => {
@@ -492,8 +489,8 @@ export const ManagerDashboard: React.FC = () => {
       
       // Check if we just crossed 10:00 AM (from 9:xx to 10:xx)
       if (lastCheckedHour !== 10 && currentHour === 10) {
-        // Clear localStorage
-        clearState('manager')
+        // Daily reset at 10:00 AM
+        console.log('[ManagerDashboard] Daily reset at 10:00 AM - clearing all task states')
         
         // Removed: Clear swipe confirmation states - no longer using swipe
         
@@ -502,7 +499,6 @@ export const ManagerDashboard: React.FC = () => {
         setCompletedTaskIds([])
         setNoticeComments([])
         setMissingTasks([])
-        setPreClosingTasks([])
         setReviewTasks([])
         
         // Always clear waiting state and manual advance state at daily reset
@@ -530,9 +526,10 @@ export const ManagerDashboard: React.FC = () => {
     
     // Don't update missing tasks if we're in manual closing mode or have manually advanced
     // This prevents overwriting the missing tasks set during transition
-    if (isManualClosing || currentPeriod.id === 'closing' || manuallyAdvancedPeriod) {
+    if (isManualClosing || manuallyAdvancedPeriod) {
       return
     }
+    
 
     const updateMissingTasks = async () => {
       const now = testTime || new Date()
@@ -546,13 +543,52 @@ export const ManagerDashboard: React.FC = () => {
         
         // Check all periods that have passed
         workflowPeriods.forEach(period => {
+          // Skip event-driven periods as they don't end by time
+          if (period.isEventDriven) return
+          
+          // Special handling for closing period (cross-day period)
+          if (period.id === 'closing') {
+            // Closing runs from 21:30 PM to 08:00 AM next day
+            // At 10:20 AM, we're past the end time (08:00) but this closing period
+            // belongs to yesterday, not today. We should only check today's tasks.
+            
+            const currentHour = now.getHours()
+            const currentMinutes = now.getMinutes()
+            const currentTimeInMinutes = currentHour * 60 + currentMinutes
+            
+            // If we're between 00:00-21:29 (before today's closing starts),
+            // skip checking the closing period entirely
+            if (currentTimeInMinutes < 21 * 60 + 30) {
+              return
+            }
+            
+            // If we're at 21:30 or later, this is today's closing period
+            // Continue with normal checking below
+          }
+          
+          const [periodStartHour, periodStartMinute] = period.startTime.split(':').map(Number)
           const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+          
+          // Create period start and end times for today
+          const periodStart = new Date(now)
+          periodStart.setHours(periodStartHour, periodStartMinute, 0, 0)
+          
           const periodEnd = new Date(now)
           periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
           
+          // For cross-day periods, adjust the end date
+          if (periodEndHour < periodStartHour) {
+            // Period ends tomorrow
+            periodEnd.setDate(periodEnd.getDate() + 1)
+          }
+          
+          // Skip if this period hasn't started yet today
+          if (now < periodStart) {
+            return
+          }
+          
           // If this period has ended and it's not the current period
-          // Skip event-driven periods as they don't end by time
-          if (now > periodEnd && period.id !== currentPeriod.id && !period.isEventDriven) {
+          if (now > periodEnd && period.id !== currentPeriod.id) {
             // Check for uncompleted tasks using database data
             period.tasks.manager.forEach((task: TaskTemplate) => {
               if (task.isNotice) return // Skip notices
@@ -568,11 +604,10 @@ export const ManagerDashboard: React.FC = () => {
           }
         })
         
-        // Always set missing tasks based on database for today only
         setMissingTasks(updatedMissingTasks)
         
       } catch (error) {
-        console.error('Error updating missing tasks from database:', error)
+        // console.error('Error updating missing tasks from database:', error)
       }
     }
 
@@ -590,7 +625,7 @@ export const ManagerDashboard: React.FC = () => {
     // Skip event-driven periods as they don't have fixed end times
     if (!currentPeriod || currentPeriod.isEventDriven || currentPeriod.id === 'closing') return
     
-    let notifiedTasks = new Set<string>() // Track which tasks we've notified about
+    const notifiedTasks = new Set<string>() // Track which tasks we've notified about
     
     const updateOverdueStatus = () => {
       const now = testTime || new Date()
@@ -650,37 +685,48 @@ export const ManagerDashboard: React.FC = () => {
   }, [testTime, currentPeriod])
   
   const handleTaskComplete = async (taskId: string, data: any) => {
-    console.log('[ManagerDashboard] ===== TASK COMPLETE START =====');
-    console.log('[ManagerDashboard] Task ID:', taskId);
-    console.log('[ManagerDashboard] Received data:', data);
-    
     const now = testTime || new Date()
     
     // 检查是否是审核任务
     const task = currentTasks.find(t => t.id === taskId)
-    console.log('[ManagerDashboard] Found task:', task);
-    console.log('[ManagerDashboard] Current user ID:', currentUserId);
-    console.log('[ManagerDashboard] Current period:', currentPeriod?.id);
     
     if (task && task.uploadRequirement === '审核' && task.linkedTasks) {
       // 处理审核通过逻辑
-      console.log(`[ManagerDashboard] Approving review task ${taskId}, updating linked tasks:`, task.linkedTasks)
-      
       // 更新被审核的值班经理任务状态为通过
       task.linkedTasks.forEach(linkedTaskId => {
-        console.log(`[ManagerDashboard] Updating linked task ${linkedTaskId} status to approved`)
         updateReviewStatus(linkedTaskId, 'approved')
       })
+      
+      // 审核任务不需要创建新的任务记录，直接返回
+      // 只更新本地状态显示完成
+      if (!task.isFloating) {
+        setTaskStatuses(prev => [
+          ...prev.filter(s => s.taskId !== taskId),
+          {
+            taskId,
+            completed: true,
+            completedAt: now,
+            overdue: false,
+            evidence: data
+          }
+        ])
+        setCompletedTaskIds(prev => {
+          const newIds = [...prev, taskId]
+          return newIds
+        })
+      }
+      
+      // 刷新任务状态
+      if (currentUserId) {
+        const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
+        setDbTaskStatuses(updatedTaskStatuses)
+      }
+      
+      return // 审核任务处理完成，不继续执行后续的submitTaskWithMedia
     }
     
     // 检查是否是值班经理任务
     if (task && task.role === 'DutyManager' && data) {
-      console.log('[ManagerDashboard] Processing DutyManager task submission:', {
-        taskId,
-        taskTitle: task.title,
-        data
-      })
-      
       // 将值班经理任务的提交数据添加到Context
       const submission: DutyManagerSubmission = {
         taskId,
@@ -694,46 +740,31 @@ export const ManagerDashboard: React.FC = () => {
         }
       }
       
-      console.log('[ManagerDashboard] Adding submission to DutyManagerContext:', submission)
       addSubmission(submission)
     }
     
     // Submit task data to Supabase with media upload FIRST
-    console.log('[ManagerDashboard] Checking if should submit to database...');
-    console.log('[ManagerDashboard] currentUserId:', currentUserId);
-    console.log('[ManagerDashboard] task exists:', !!task);
-    console.log('[ManagerDashboard] task uploadRequirement:', task?.uploadRequirement);
-    
     if (currentUserId && task) {
-      console.log('[ManagerDashboard] Submitting to database...');
       try {
-        console.log('[ManagerDashboard] Calling submitTaskWithMedia with:', {
-          taskId,
-          userId: currentUserId,
-          restaurantId: getRestaurantId(),
-          date: now.toISOString().split('T')[0],
-          periodId: currentPeriod?.id || '',
-          uploadRequirement: task.uploadRequirement,
-          hasData: !!data,
-          dataKeys: data ? Object.keys(data) : []
-        });
+        const restaurantId = await getRestaurantId()
+        if (!restaurantId) {
+          console.error('No restaurant ID found')
+          return
+        }
         
         const result = await submitTaskWithMedia({
           taskId,
           userId: currentUserId,
-          restaurantId: getRestaurantId(), // Get restaurant UUID from localStorage
+          restaurantId, // Get restaurant UUID from localStorage
           date: now.toISOString().split('T')[0],
           periodId: currentPeriod?.id || '',
           uploadRequirement: task.uploadRequirement,
           data
         })
         
-        console.log('[ManagerDashboard] Task successfully submitted to database:', result.id)
-        
         // Only update local state after successful database save
         // 注意：floating tasks不需要记录完成状态，因为它们可以无限提交
         if (!task.isFloating) {
-          console.log('[ManagerDashboard] Updating task statuses for non-floating task...');
           setTaskStatuses(prev => [
             ...prev.filter(s => s.taskId !== taskId),
             {
@@ -746,34 +777,21 @@ export const ManagerDashboard: React.FC = () => {
           ])
           
           setCompletedTaskIds(prev => [...prev, taskId])
-          console.log('[ManagerDashboard] Task marked as completed locally');
           
           // Refresh task statuses from database for TaskSummary
           const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
           setDbTaskStatuses(updatedTaskStatuses)
         } else {
-          console.log('[ManagerDashboard] Floating task submitted but not marked as completed (can be resubmitted)');
-          
           // Still refresh task statuses for floating tasks
           const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
           setDbTaskStatuses(updatedTaskStatuses)
         }
       } catch (error) {
-        console.error('[ManagerDashboard] ERROR submitting task to database:', {
-          error,
-          taskId,
-          userId: currentUserId,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
-          errorStack: error instanceof Error ? error.stack : 'No stack trace'
-        })
         // Don't update local state if submission fails
         alert('任务提交失败，请重试！Task submission failed, please try again!')
         throw error // Re-throw to prevent marking as complete
       }
     } else {
-      console.log('[ManagerDashboard] NOT submitting to database because:');
-      console.log('[ManagerDashboard] - currentUserId is:', currentUserId);
-      console.log('[ManagerDashboard] - task is:', task);
       // Still allow local completion if no user is logged in (for testing)
       setTaskStatuses(prev => [
         ...prev.filter(s => s.taskId !== taskId),
@@ -787,15 +805,21 @@ export const ManagerDashboard: React.FC = () => {
       ])
       setCompletedTaskIds(prev => [...prev, taskId])
     }
-    
-    console.log('[ManagerDashboard] ===== TASK COMPLETE END =====');
   }
   
   const handleNoticeComment = async (noticeId: string, comment: string) => {
     if (!currentUserId) return
     
     // Submit to Supabase
-    const response = await submitNoticeResponse(currentUserId, noticeId, comment)
+    // TODO: submitNoticeResponse uses non-existent table - commenting out
+    // const response = await submitNoticeResponse(currentUserId, noticeId, comment)
+    
+    // Simulate response for now
+    const response = {
+      task_id: noticeId,
+      response_content: comment,
+      created_at: new Date().toISOString()
+    }
     
     if (response) {
       const newComment: NoticeComment = {
@@ -808,46 +832,162 @@ export const ManagerDashboard: React.FC = () => {
   }
   
   const handleLateSubmit = async (taskId: string, data?: any) => {
-    // Remove the task from missing tasks
-    setMissingTasks(prev => prev.filter(item => item.task.id !== taskId))
-    
-    // Mark the task as completed
-    const now = testTime || new Date()
-    setTaskStatuses(prev => [
-      ...prev.filter(s => s.taskId !== taskId),
-      {
-        taskId,
-        completed: true,
-        completedAt: now,
-        overdue: false,
-        evidence: data // Store submission data if provided
-      }
-    ])
-    
-    setCompletedTaskIds(prev => [...prev, taskId])
     
     // Submit late task data to Supabase
-    if (data && currentUserId) {
+    if (currentUserId) {
       try {
-        // Find the task details
-        const task = currentTasks.find(t => t.id === taskId) || 
-                    missingTasks.find(item => item.task.id === taskId)?.task
+        // Find the task details from missingTasks
+        const missingTaskItem = missingTasks.find(item => item.task.id === taskId)
+        const task = missingTaskItem?.task || currentTasks.find(t => t.id === taskId)
         
-        if (task) {
+        // If still no task found, try to find from all periods
+        let foundTask = task
+        let taskPeriodId = currentPeriod?.id || ''
+        if (!foundTask) {
+          for (const period of workflowPeriods) {
+            const periodTask = period.tasks.manager.find((t: TaskTemplate) => t.id === taskId)
+            if (periodTask) {
+              foundTask = periodTask
+              taskPeriodId = period.id
+              break
+            }
+          }
+        }
+        
+        // Always get the upload requirement from database
+        let uploadRequirement = null
+        
+        // Query the database for the task's submission_type
+        const { data: dbTask } = await supabase
+          .from('roleplay_tasks')
+          .select('submission_type')
+          .eq('id', taskId)
+          .single()
+        
+        if (dbTask?.submission_type) {
+          // Map submission_type to uploadRequirement
+          const typeMap: { [key: string]: string } = {
+            'photo': '拍照',
+            'audio': '录音',
+            'text': '记录',
+            'list': '列表',
+            'checkbox': '列表'
+          }
+          uploadRequirement = typeMap[dbTask.submission_type] || null
+        }
+        
+        
+        if (foundTask) {
+          const now = testTime || new Date()
+          const restaurantId = await getRestaurantId()
+          if (!restaurantId) {
+            console.error('No restaurant ID found')
+            return
+          }
+          
           const result = await submitTaskWithMedia({
             taskId,
             userId: currentUserId,
-            restaurantId: getRestaurantId(), // Get restaurant UUID from localStorage
+            restaurantId, // Get restaurant UUID from localStorage
             date: now.toISOString().split('T')[0],
-            periodId: currentPeriod?.id || '',
-            uploadRequirement: task.uploadRequirement,
+            periodId: taskPeriodId,
+            uploadRequirement,
             data
           })
           
-          console.log('Late task submitted to Supabase:', result.id)
+          
+          // Update local state after successful submission
+          setMissingTasks(prev => {
+            const newMissingTasks = prev.filter(item => item.task.id !== taskId)
+            return newMissingTasks
+          })
+          
+          setTaskStatuses(prev => [
+            ...prev.filter(s => s.taskId !== taskId),
+            {
+              taskId,
+              completed: true,
+              completedAt: now,
+              overdue: false,
+              evidence: data // Store submission data if provided
+            }
+          ])
+          
+          setCompletedTaskIds(prev => {
+            const newIds = [...prev, taskId]
+            return newIds
+          })
+          
+          // Refresh task statuses from database for TaskSummary
+          const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
+          setDbTaskStatuses(updatedTaskStatuses)
+          
+          // Force refresh of missing tasks from the database
+          if (true) { // Always use database mode
+            const completedIds = await getTodayCompletedTaskIds(currentUserId)
+            const updatedMissingTasks: { task: TaskTemplate; periodName: string }[] = []
+            
+            // Check all periods that have passed
+            workflowPeriods.forEach(period => {
+              // Skip event-driven periods as they don't end by time
+              if (period.isEventDriven) return
+              
+              // Special handling for closing period (cross-day period)
+              if (period.id === 'closing') {
+                const currentHour = now.getHours()
+                const currentMinutes = now.getMinutes()
+                const currentTimeInMinutes = currentHour * 60 + currentMinutes
+                
+                // If we're between 00:00-21:29 (before today's closing starts),
+                // skip checking the closing period entirely
+                if (currentTimeInMinutes < 21 * 60 + 30) {
+                  return
+                }
+              }
+              
+              const [periodStartHour, periodStartMinute] = period.startTime.split(':').map(Number)
+              const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+              
+              // Create period start and end times for today
+              const periodStart = new Date(now)
+              periodStart.setHours(periodStartHour, periodStartMinute, 0, 0)
+              
+              const periodEnd = new Date(now)
+              periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
+              
+              // For cross-day periods, adjust the end date
+              if (periodEndHour < periodStartHour) {
+                // Period ends tomorrow
+                periodEnd.setDate(periodEnd.getDate() + 1)
+              }
+              
+              // Skip if this period hasn't started yet today
+              if (now < periodStart) {
+                return
+              }
+              
+              // If this period has ended and it's not the current period
+              if (now > periodEnd && period.id !== currentPeriod?.id) {
+                period.tasks.manager.forEach((task: TaskTemplate) => {
+                  if (task.isNotice) return // Skip notices
+                  
+                  if (!completedIds.includes(task.id)) {
+                    updatedMissingTasks.push({
+                      task,
+                      periodName: period.displayName
+                    })
+                  }
+                })
+              }
+            })
+            
+            setMissingTasks(updatedMissingTasks)
+          }
         }
       } catch (error) {
-        console.error('Error submitting late task to Supabase:', error)
+        console.error('[ManagerDashboard] Error submitting late task to Supabase:', error)
+        // If submission fails, throw error to be caught by TaskSummary
+        throw error // Re-throw to be caught by TaskSummary
       }
     }
   }
@@ -898,9 +1038,27 @@ export const ManagerDashboard: React.FC = () => {
   }
   
   const handleClosingComplete = async () => {
-    // 移除了对floating tasks的检查，因为它们不是强制性的
     
-    // Check if there are any missing tasks
+    setIsCheckingClosure(true)
+    
+    try {
+      // 移除了对floating tasks的检查，因为它们不是强制性的
+      
+      // Always check database state to see if we can close
+      const restaurantId = getRestaurantId()
+      if (restaurantId && currentUserId) {
+      const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
+      
+      // Always validate, regardless of the state's canManualClose flag
+      const { canClose, reason } = await validateCanClose(restaurantId)
+      
+      if (!canClose) {
+        alert(reason || '还有未完成的必要任务，无法进行闭店操作。')
+        return
+      }
+    }
+    
+    // Double check local state as well
     if (missingTasks.length > 0) {
       alert(`还有 ${missingTasks.length} 个未完成的任务，请先完成所有缺失任务后再闭店。`)
       return
@@ -917,14 +1075,33 @@ export const ManagerDashboard: React.FC = () => {
       }
     }
     
-    // Record entering waiting state in Supabase
-    if (currentUserId) {
-      await recordPeriodTransition(currentUserId, 'closing', 'enter')
-    }
-    
     // Confirm closing
     if (!confirm('确认要闭店吗？闭店后将进入等待状态直到明天开店时间。')) {
       return
+    }
+    
+    // Submit manual closing task to database
+    // restaurantId already declared above
+    if (restaurantId && currentUserId) {
+      const success = await restaurantStateService.submitManualClosing(
+        restaurantId,
+        currentUserId,
+        '今日营业结束，手动闭店'
+      )
+      
+      if (!success) {
+        alert('闭店操作失败，请重试。')
+        return
+      }
+      
+      // Reload state after successful submission
+      const newState = await restaurantStateService.getCurrentState(restaurantId, testTime)
+      if (newState) {
+        setIsManualClosing(newState.isManualClosing)
+        setIsWaitingForNextDay(newState.isWaitingForNextDay)
+        waitingRef.current = newState.isWaitingForNextDay
+        manualClosingRef.current = newState.isManualClosing
+      }
     }
     
     // Clear all data and reset to tomorrow's opening
@@ -934,7 +1111,6 @@ export const ManagerDashboard: React.FC = () => {
       setCompletedTaskIds([])
       setNoticeComments([])
       setMissingTasks([])
-      setPreClosingTasks([])
       setReviewTasks([])
       setIsManualClosing(false)
       manualClosingRef.current = false // Clear ref too
@@ -951,7 +1127,12 @@ export const ManagerDashboard: React.FC = () => {
         setNextPeriod(openingPeriod)
       }
     })
-    
+    } catch (error) {
+      console.error('[ManagerDashboard] Error during closure check:', error)
+      alert('检查闭店条件时出错，请重试。')
+    } finally {
+      setIsCheckingClosure(false)
+    }
   }
   
   const handleAdvancePeriod = () => {
@@ -1001,7 +1182,6 @@ export const ManagerDashboard: React.FC = () => {
     setCompletedTaskIds([])
     setNoticeComments([])
     setMissingTasks([])
-    setPreClosingTasks([])
     setReviewTasks([])
     setIsManualClosing(false)
     setManuallyAdvancedPeriod(null)
@@ -1010,11 +1190,6 @@ export const ManagerDashboard: React.FC = () => {
     waitingRef.current = false
     setCurrentPeriodId(null)
     // setLunchSwipeCompleted(false) // Removed - variable not defined
-    
-    // 清除本地存储
-    clearState('manager')
-    
-    // 值班经理数据现在通过数据库管理，无需清理localStorage
     
     // 清除Context中的值班经理数据
     clearTrigger()
@@ -1026,16 +1201,18 @@ export const ManagerDashboard: React.FC = () => {
     setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, now))
   }, [testTime, clearTrigger])
   
-  // When in closing period, include review tasks
   // Always append floating tasks at the end
+  // Include review tasks for duty manager tasks in closing period
   let baseTasks = currentPeriod?.tasks?.manager || []
-  
   if (currentPeriod?.id === 'closing') {
-    // In closing period, include review tasks
     baseTasks = [...baseTasks, ...reviewTasks]
   }
-  
   const currentTasks = [...baseTasks, ...floatingTasks]
+  
+  // Separate regular tasks and notices
+  const regularTasks = currentTasks.filter(t => !t.isNotice)
+  const notices = currentTasks.filter(t => t.isNotice)
+  const isServicePeriod = currentPeriod?.id === 'lunch-service' || currentPeriod?.id === 'dinner-service'
   
   
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
@@ -1085,25 +1262,73 @@ export const ManagerDashboard: React.FC = () => {
           {/* Task Countdown - Main focus */}
           <Grid size={{ xs: 12, lg: (currentPeriod && !isWaitingForNextDay) ? 7 : 12 }}>
             {currentPeriod && !isWaitingForNextDay ? (
-              <TaskCountdown
-                period={currentPeriod}
-                tasks={currentTasks}
-                completedTaskIds={completedTaskIds}
-                noticeComments={noticeComments}
-                testTime={testTime}
-                onComplete={handleTaskComplete}
-                onComment={handleNoticeComment}
-                // Removed: onLastCustomerLeftLunch - duty tasks auto-assigned
-                onClosingComplete={handleClosingComplete}
-                onAdvancePeriod={handleAdvancePeriod}
-                onReviewReject={handleReviewReject}
-                reviewStatus={reviewStatus}
-              />
+              <>
+                <TaskCountdown
+                  period={currentPeriod}
+                  tasks={regularTasks}
+                  completedTaskIds={completedTaskIds}
+                  noticeComments={noticeComments}
+                  testTime={testTime}
+                  onComplete={handleTaskComplete}
+                  onComment={handleNoticeComment}
+                  // Removed: onLastCustomerLeftLunch - duty tasks auto-assigned
+                  onAdvancePeriod={handleAdvancePeriod}
+                  onReviewReject={handleReviewReject}
+                  reviewStatus={reviewStatus}
+                  renderNotices={() => 
+                    notices.length > 0 ? (
+                      <NoticeContainer
+                        notices={notices}
+                        noticeComments={noticeComments}
+                        onComment={handleNoticeComment}
+                        isServicePeriod={isServicePeriod}
+                      />
+                    ) : null
+                  }
+                />
+                
+                {/* Show manual closing button in closing period */}
+                {currentPeriod.id === 'closing' && (
+                  <Paper elevation={2} sx={{ p: 3, mt: 3, textAlign: 'center' }}>
+                    <Typography variant="h6" gutterBottom sx={{ color: 'success.main' }}>
+                      今日营业即将结束
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      点击下方按钮进行闭店操作
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                      系统将自动检查所有任务是否完成
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="error"
+                      fullWidth
+                      size="large"
+                      onClick={handleClosingComplete}
+                      disabled={isCheckingClosure}
+                      sx={{ 
+                        py: 2,
+                        fontSize: '1.1rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {isCheckingClosure ? (
+                        <>
+                          <CircularProgress size={24} sx={{ mr: 1, color: 'inherit' }} />
+                          正在检查...
+                        </>
+                      ) : (
+                        '确认闭店'
+                      )}
+                    </Button>
+                  </Paper>
+                )}
+              </>
             ) : (
               <ClosedPeriodDisplay 
                 nextPeriod={nextPeriod} 
                 testTime={testTime} 
-                currentStatus={isWaitingForNextDay ? '等待开店' : undefined} 
+                currentStatus={isWaitingForNextDay ? '休息中' : undefined} 
               />
             )}
           </Grid>

@@ -1,6 +1,9 @@
 // Service to handle task record deletion with storage cleanup
 import { supabase } from './supabase'
 
+// 使用统一的存储桶名称
+const BUCKET_NAME = 'RolePlay'
+
 export interface DeleteTaskRecordResult {
   success: boolean
   deletedFiles: string[]
@@ -39,12 +42,12 @@ export async function deleteTaskRecordWithStorage(
     if (taskRecord.photo_urls && taskRecord.photo_urls.length > 0) {
       for (const photoUrl of taskRecord.photo_urls) {
         // Extract file path from URL
-        // URLs format: https://[project].supabase.co/storage/v1/object/public/restaurant-tasks/[path]
-        const match = photoUrl.match(/restaurant-tasks\/(.+)$/)
+        // URLs format: https://[project].supabase.co/storage/v1/object/public/RolePlay/[path]
+        const match = photoUrl.match(/RolePlay\/(.+)$/)
         if (match && match[1]) {
           const filePath = match[1]
           const { error } = await supabase.storage
-            .from('restaurant-tasks')
+            .from(BUCKET_NAME)
             .remove([filePath])
           
           if (error) {
@@ -59,11 +62,11 @@ export async function deleteTaskRecordWithStorage(
 
     // Delete audio file from storage
     if (taskRecord.audio_url) {
-      const match = taskRecord.audio_url.match(/restaurant-tasks\/(.+)$/)
+      const match = taskRecord.audio_url.match(/RolePlay\/(.+)$/)
       if (match && match[1]) {
         const filePath = match[1]
         const { error } = await supabase.storage
-          .from('restaurant-tasks')
+          .from(BUCKET_NAME)
           .remove([filePath])
         
         if (error) {

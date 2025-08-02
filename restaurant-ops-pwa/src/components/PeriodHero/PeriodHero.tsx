@@ -146,4 +146,4 @@ export const PeriodHero: React.FC<PeriodHeroProps> = ({ testTime }) => {
   )
 }
 
-const React = { cloneElement: (element: any, props: any) => ({ ...element, props: { ...element.props, ...props } }) }
+// React.cloneElement polyfill removed - not needed with proper React import

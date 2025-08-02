@@ -16,15 +16,16 @@ import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { useNavigate } from 'react-router-dom'
 import type { TaskTemplate, WorkflowPeriod } from '../utils/workflowParser'
-import { getCurrentPeriod, workflowPeriods } from '../utils/workflowParser'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { TaskSummary } from '../components/TaskSummary'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { useDutyManager } from '../contexts/DutyManagerContext'
+import { useTaskData } from '../contexts/TaskDataContext'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 import { uploadPhoto } from '../services/storageService'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
+import { restaurantConfigService } from '../services/restaurantConfigService'
 
 interface NoticeComment {
   noticeId: string
@@ -49,146 +50,162 @@ const DutyManagerDashboard: React.FC = () => {
   const [testTime, setTestTime] = useState<Date | null>(null)
   const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
   
-  // 从localStorage恢复状态（只恢复基本状态，不恢复任务完成状态）
-  const loadSavedState = (): DutyManagerState => {
-    try {
-      const savedState = localStorage.getItem('dutyManagerDashboardState')
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        console.log('[DutyManagerDashboard] Loading saved state:', parsed)
-        
-        // 恢复日期对象
-        if (parsed.noticeComments) {
-          parsed.noticeComments.forEach((comment: any) => {
-            comment.timestamp = new Date(comment.timestamp)
-          })
-        }
-        
-        // 如果有保存的目标时段和任务，恢复完整的任务数据
-        if (parsed.targetPeriod && parsed.activeTasks && parsed.activeTasks.length > 0) {
-          const targetPeriod = workflowPeriods.find(p => p.id === parsed.targetPeriod.id)
-          if (targetPeriod) {
-            const dutyTasks = (targetPeriod.tasks as any).dutyManager || []
-            const fullTasks = parsed.activeTasks.map((savedTask: any) => {
-              return dutyTasks.find((task: any) => task.id === savedTask.id) || savedTask
-            }).filter(Boolean)
-            
-            const restoredState = {
-              ...parsed,
-              activeTasks: fullTasks,
-              targetPeriod: targetPeriod,
-              isWaitingForTrigger: false, // 确保设置为false，因为有激活的任务
-              // 重要：不从localStorage恢复任务完成状态，这些将从数据库加载
-              completedTaskIds: [],
-              taskStatuses: {},
-            }
-            console.log('[DutyManagerDashboard] Restored state with full tasks:', restoredState)
-            return restoredState
-          }
-        }
-        
-        // 确保恢复的状态有正确的isWaitingForTrigger值
-        if (parsed.activeTasks && parsed.activeTasks.length > 0) {
-          parsed.isWaitingForTrigger = false
-        }
-        
-        // 重要：清除可能存在的任务完成状态，这些应该从数据库加载
-        console.log('[DutyManagerDashboard] Final restored state (without completion status):', {
-          ...parsed,
-          completedTaskIds: [],
-          taskStatuses: {},
-        })
-        return {
-          ...parsed,
-          completedTaskIds: [],
-          taskStatuses: {},
-        }
-      }
-    } catch (e) {
-      console.error('[DutyManagerDashboard] Failed to load saved state:', e)
-    }
-    
-    return {
-      activeTasks: [],
-      completedTaskIds: [],
-      taskStatuses: {},
-      noticeComments: [],
-      isWaitingForTrigger: true,
-      currentTrigger: undefined,
-    }
-  }
-  
-  const [state, setState] = useState<DutyManagerState>(loadSavedState)
+  // 初始化状态 - 不从 localStorage 加载任务状态
+  const [state, setState] = useState<DutyManagerState>({
+    activeTasks: [],
+    completedTaskIds: [],
+    taskStatuses: {},
+    noticeComments: [],
+    isWaitingForTrigger: true,
+    currentTrigger: undefined,
+  })
   const [isInitialized, setIsInitialized] = useState(false)
+  const [lastResetTime, setLastResetTime] = useState<string | null>(null) // 记录最后重置时间
+  
+  // 获取数据库任务数据
+  const { workflowPeriods, isLoading, error } = useTaskData()
+  
+  // 移除 localStorage 保存逻辑 - 所有数据应该从数据库获取
+  // 2025-08-02: 根据要求移除本地存储，完全依赖数据库
 
   // 获取当前时段
   useEffect(() => {
-    const period = getCurrentPeriod(testTime || undefined)
-    setCurrentPeriod(period)
+    if (!workflowPeriods.length) return
+    
+    // 使用数据库中的期间数据查找当前时段
+    const currentTime = testTime || new Date()
+    const currentHour = currentTime.getHours()
+    const currentMinute = currentTime.getMinutes()
+    const currentTimeInMinutes = currentHour * 60 + currentMinute
+    
+    const period = workflowPeriods.find(p => {
+      const [startHour, startMinute] = p.startTime.split(':').map(Number)
+      const [endHour, endMinute] = p.endTime.split(':').map(Number)
+      const startInMinutes = startHour * 60 + startMinute
+      const endInMinutes = endHour * 60 + endMinute
+      
+      // Handle periods that span midnight
+      if (endInMinutes < startInMinutes) {
+        if (currentTimeInMinutes >= startInMinutes || currentTimeInMinutes < endInMinutes) {
+          return true
+        }
+      } else {
+        if (currentTimeInMinutes >= startInMinutes && currentTimeInMinutes < endInMinutes) {
+          return true
+        }
+      }
+      return false
+    })
+    
+    setCurrentPeriod(period || null)
+  }, [testTime, workflowPeriods])
+  
+  // 基于时间的任务重置逻辑
+  useEffect(() => {
+    const checkTimeBasedReset = () => {
+      const now = testTime || new Date()
+      const currentHour = now.getHours()
+      const currentMinute = now.getMinutes()
+      const currentDateStr = now.toISOString().split('T')[0]
+      
+      // 检查是否需要在晚上10:30（22:30）清空任务
+      if (currentHour === 22 && currentMinute === 30) {
+        // 移除 localStorage 操作 - 使用状态管理
+        const lastResetStr = lastResetTime
+        const resetKey = `${currentDateStr}-22:30`
+        
+        if (lastResetStr !== resetKey) {
+          console.log('[DutyManager] 晚上10:30 - 执行闭店重置')
+          // 清空所有任务状态
+          clearTrigger()
+          setState({
+            activeTasks: [],
+            completedTaskIds: [],
+            taskStatuses: {},
+            noticeComments: [],
+            isWaitingForTrigger: true,
+            currentTrigger: undefined,
+            isInClosingPeriod: false,
+          })
+          // 移除 localStorage 操作 - 完全依赖数据库
+          setLastResetTime(resetKey)
+        }
+      }
+      
+      // 检查是否需要在早上8:00刷新任务
+      if (currentHour === 8 && currentMinute === 0) {
+        // 移除 localStorage 操作 - 使用状态管理
+        const lastResetStr = lastResetTime
+        const resetKey = `${currentDateStr}-8:00`
+        
+        if (lastResetStr !== resetKey) {
+          console.log('[DutyManager] 早上8:00 - 新一天开始，清空昨日任务')
+          // 清空所有任务状态，准备新的一天
+          clearTrigger()
+          setState({
+            activeTasks: [],
+            completedTaskIds: [],
+            taskStatuses: {},
+            noticeComments: [],
+            isWaitingForTrigger: true,
+            currentTrigger: undefined,
+            isInClosingPeriod: false,
+          })
+          // 移除 localStorage 操作 - 完全依赖数据库
+          setLastResetTime(resetKey)
+        }
+      }
+    }
+    
+    // 立即检查一次
+    checkTimeBasedReset()
+    
+    // 每分钟检查一次
+    const interval = setInterval(checkTimeBasedReset, 60000)
+    
+    return () => clearInterval(interval)
   }, [testTime])
   
-  // 从数据库加载任务状态
+  // 从数据库加载任务状态 - 只在组件初始化时执行一次
   useEffect(() => {
     const loadTaskStatusesFromDB = async () => {
       try {
+        // 移除 localStorage 恢复逻辑 - 完全从数据库加载
+        console.log('[DutyManager] 从数据库加载任务状态')
+        
         const currentUser = authService.getCurrentUser()
         if (!currentUser) {
-          console.log('[DutyManagerDashboard] No authenticated user, skip loading from DB')
           setIsInitialized(true)
           return
         }
 
-        const restaurantId = currentUser.restaurantId || localStorage.getItem('selectedRestaurantId') || 'default-restaurant'
-        const { taskStatuses, submissions: dbSubmissions } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
+        const restaurantId = currentUser.restaurantId || await restaurantConfigService.getRestaurantId() || ''
+        const { taskStatuses } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
           currentUser.id,
           restaurantId
         )
 
-        console.log('[DutyManagerDashboard] Loaded from database:', { taskStatuses, dbSubmissions })
-
         // 更新已完成的任务ID列表
-        const completedIds = Object.keys(taskStatuses).filter(taskId => 
+        const completedIds = taskStatuses ? Object.keys(taskStatuses).filter(taskId => 
           taskStatuses[taskId].status === 'submitted' && 
           taskStatuses[taskId].review_status !== 'rejected'
-        )
+        ) : []
 
-        // 构建审核状态映射
-        const reviewStatuses: any = {}
-        Object.entries(taskStatuses).forEach(([taskId, status]) => {
-          if (status.status === 'submitted') {
-            reviewStatuses[taskId] = {
-              status: status.review_status || 'pending',
-              reviewedAt: status.reviewedAt || status.submittedAt,
-              reason: status.reject_reason
-            }
-          }
-        })
-
-        // 更新状态
+        // 直接使用数据库的状态
         setState(prev => ({
-          ...prev,
-          completedTaskIds: [...new Set([...prev.completedTaskIds, ...completedIds])],
-          taskStatuses: {
-            ...prev.taskStatuses,
-            ...Object.fromEntries(
+            ...prev,
+            completedTaskIds: completedIds,
+            taskStatuses: taskStatuses ? Object.fromEntries(
               Object.entries(taskStatuses).map(([taskId, status]) => [
                 taskId,
                 {
                   completedAt: status.submittedAt,
                   overdue: false,
-                  evidence: {} // 可以从数据库中恢复更多信息
+                  evidence: {}
                 }
               ])
-            )
-          }
-        }))
-
-        // 设置审核状态
-        setReviewStatus(reviewStatuses)
-
-        // 不需要再调用 addSubmission，因为数据已经在数据库中
-        // Context 初始化时会自动从数据库加载这些提交
-        // 避免重复保存导致无限循环
+            ) : {}
+          }))
 
         setIsInitialized(true)
       } catch (error) {
@@ -198,67 +215,30 @@ const DutyManagerDashboard: React.FC = () => {
     }
 
     loadTaskStatusesFromDB()
-  }, []) // 移除 addSubmission 依赖，避免循环
+  }, []) // 只在组件挂载时执行一次
   
-  // 保存状态到localStorage
-  useEffect(() => {
-    // 只在初始化后保存，避免保存初始状态
-    if (!isInitialized) return
-    
-    // 只在有意义的状态改变时保存
-    if (state.activeTasks.length > 0 || !state.isWaitingForTrigger) {
-      const stateToSave = {
-        // 只保存基本的页面状态，不保存任务完成状态
-        activeTasks: state.activeTasks.map(task => ({
-          id: task.id,
-          title: task.title,
-        })),
-        targetPeriod: state.targetPeriod ? {
-          id: state.targetPeriod.id,
-          displayName: state.targetPeriod.displayName,
-        } : undefined,
-        isWaitingForTrigger: state.isWaitingForTrigger,
-        currentTrigger: state.currentTrigger,
-        noticeComments: state.noticeComments,
-        isInClosingPeriod: state.isInClosingPeriod,
-        // 重要：不保存 completedTaskIds 和 taskStatuses
-      }
-      console.log('[DutyManagerDashboard] Saving state:', stateToSave)
-      localStorage.setItem('dutyManagerDashboardState', JSON.stringify(stateToSave))
-    } else if (state.isWaitingForTrigger && state.activeTasks.length === 0) {
-      // 如果回到等待状态，清除保存的状态
-      console.log('[DutyManagerDashboard] Clearing saved state - back to waiting')
-      localStorage.removeItem('dutyManagerDashboardState')
-    }
-  }, [state, isInitialized])
+  // 移除 localStorage 保存逻辑 - 所有状态都从数据库获取
 
   // Note: CLEAR_ALL_STORAGE functionality has been removed as we're focusing on 
   // cross-device communication via Supabase Realtime
 
-  // 监听审核状态变化，实时更新UI
-  useEffect(() => {
-    // 当审核状态变化时，触发组件重新渲染
-    // reviewStatus 是从 DutyManagerContext 中获取的，会通过实时服务自动更新
-    console.log('[DutyManagerDashboard] Review status updated:', reviewStatus)
-  }, [reviewStatus])
+  // 移除频繁的日志输出
 
   // 检查当前时段并自动加载任务
   useEffect(() => {
-    // 如果已经有激活的任务（从localStorage恢复），不需要重新处理
+    // 只在初始化完成后执行
+    if (!isInitialized) return
+    
+    // 如果已经有激活的任务，不需要重新处理
     if (state.activeTasks.length > 0 && !state.isWaitingForTrigger) {
       return
     }
     
-    // 获取当前时段
-    const currentPeriod = getCurrentPeriod(testTime)
-    
+    // 获取当前时段（使用已经计算好的currentPeriod状态）
     // 如果当前是闭店时段（22:00-23:30），自动加载值班经理任务
     if (currentPeriod && currentPeriod.id === 'closing') {
-      const targetPeriod = workflowPeriods.find(p => p.id === 'closing')
-      if (!targetPeriod) return
-      
       // 获取闭店时段的值班经理任务
-      const dutyTasks = (targetPeriod.tasks as any).dutyManager || []
+      const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
       
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
       const closingTasks = dutyTasks.filter((task: any) => {
@@ -272,12 +252,12 @@ const DutyManagerDashboard: React.FC = () => {
           activeTasks: closingTasks,
           isWaitingForTrigger: false,
           currentTrigger: 'last-customer-left-dinner',
-          targetPeriod: targetPeriod,
+          targetPeriod: currentPeriod,
           isInClosingPeriod: true,
         }))
       }
     }
-  }, [currentPeriod, state.activeTasks.length, state.isWaitingForTrigger, testTime])
+  }, [currentPeriod, state.activeTasks.length, state.isWaitingForTrigger, testTime, isInitialized])
 
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {
@@ -285,12 +265,11 @@ const DutyManagerDashboard: React.FC = () => {
       // 如果是重新提交，清除之前的驳回状态
       const isResubmit = reviewStatus[taskId]?.status === 'rejected'
       
+      // 值班经理任务不应该立即标记为完成，因为需要等待审核
+      // 只更新任务状态，不加入completedTaskIds
       setState(prev => ({
         ...prev,
-        // 如果是重新提交，先移除之前的完成记录
-        completedTaskIds: isResubmit 
-          ? [...prev.completedTaskIds.filter(id => id !== taskId), taskId]
-          : [...prev.completedTaskIds, taskId],
+        // 不更新completedTaskIds，保持任务在待审核状态
         taskStatuses: {
           ...prev.taskStatuses,
           [taskId]: { completedAt: new Date(), overdue: false, evidence: data },
@@ -305,8 +284,8 @@ const DutyManagerDashboard: React.FC = () => {
       // 处理照片数据格式
       let photos = []
       let photoGroups = []
-      let uploadedPhotoUrls = []
-      let uploadedPhotoGroups = []
+      const uploadedPhotoUrls = []
+      const uploadedPhotoGroups = []
       
       // 获取用户ID（使用mock ID）
       const userId = 'mock-user-' + Date.now()
@@ -373,7 +352,7 @@ const DutyManagerDashboard: React.FC = () => {
         for (const [index, items] of Object.entries(groupedByIndex)) {
           const uploadedUrls = []
           for (const item of items) {
-            let photoData = typeof item === 'string' ? item : (item.photo || item.photoData || item)
+            const photoData = typeof item === 'string' ? item : (item.photo || item.photoData || item)
             if (photoData && photoData.startsWith('data:')) {
               const result = await uploadPhoto(photoData, userId, taskId)
               if (result) {
@@ -539,41 +518,44 @@ const DutyManagerDashboard: React.FC = () => {
     }))
   }
 
-  // 检查是否所有任务都已提交并审核通过
+  // 监听审核状态变化，更新completedTaskIds
   useEffect(() => {
-    if (state.activeTasks.length === 0) return
+    // 获取所有已审核通过的任务ID
+    const approvedTaskIds = Object.entries(reviewStatus)
+      .filter(([_, status]) => status.status === 'approved')
+      .map(([taskId, _]) => taskId)
+    
+    // 更新completedTaskIds，添加已审核通过的任务
+    setState(prev => {
+      const newCompletedIds = [...new Set([...prev.completedTaskIds, ...approvedTaskIds])]
+      if (newCompletedIds.length !== prev.completedTaskIds.length) {
+        console.log('[DutyManager] 更新已完成任务列表，审核通过的任务:', approvedTaskIds)
+        return {
+          ...prev,
+          completedTaskIds: newCompletedIds
+        }
+      }
+      return prev
+    })
     
     // 检查所有任务是否都已审核通过
-    const allApproved = state.activeTasks.every(task => 
-      reviewStatus[task.id]?.status === 'approved'
-    )
-    
-    if (allApproved) {
-      // 所有任务都已审核通过，自动清除状态并返回等待界面
-      setTimeout(() => {
-        clearTrigger()
-        setState(prev => ({
-          ...prev,
-          activeTasks: [],
-          isWaitingForTrigger: true,
-          currentTrigger: undefined,
-          targetPeriod: undefined,
-          completedTaskIds: [],
-          taskStatuses: {},
-          noticeComments: [],
-          isInClosingPeriod: false,
-        }))
-        // 清除localStorage中的持久化状态
-        localStorage.removeItem('dutyManagerDashboardState')
-      }, 2000) // 延迟2秒让用户看到审核通过状态
+    if (state.activeTasks.length > 0) {
+      const allApproved = state.activeTasks.every(task => 
+        reviewStatus[task.id]?.status === 'approved'
+      )
+      
+      if (allApproved) {
+        console.log('[DutyManager] 所有任务已审核通过，保持完成状态显示')
+        // 不再自动清除任务，让界面继续显示完成状态
+        // 任务将在晚上10:30（闭店时间）或早上8:00（新一天开始）时清除
+      }
     }
   }, [reviewStatus, state.activeTasks])
 
+  // 移除频繁刷新逻辑 - 只依赖 Realtime 更新
+
   // 返回到角色选择页面
   const handleBack = () => {
-    // 值班经理数据现在通过数据库管理
-    localStorage.removeItem('dutyManagerDashboardState') // 仅保留页面状态清理
-    
     // 清除Context中的数据
     clearTrigger()
     
@@ -626,7 +608,7 @@ const DutyManagerDashboard: React.FC = () => {
                 当前状态：待命中
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                闭店时段（22:00）将自动开始值班任务
+                闭店时段（21:30）将自动开始值班任务
               </Typography>
             </Box>
           </Paper>
@@ -710,15 +692,17 @@ const DutyManagerDashboard: React.FC = () => {
                     
                     return (
                       <Box key={task.id} sx={{ mb: 1 }}>
-                        <Typography variant="body2">
-                          {task.title}: {' '}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2" component="span">
+                            {task.title}:
+                          </Typography>
                           {!isSubmitted && <Chip label="未提交" size="small" />}
                           {isSubmitted && !status && <Chip label="待审核" color="warning" size="small" />}
                           {status?.status === 'approved' && <Chip label="已通过" color="success" size="small" />}
                           {status?.status === 'rejected' && <Chip label="待修改" color="error" size="small" />}
-                        </Typography>
+                        </Box>
                         {status?.status === 'rejected' && status.reason && (
-                          <Typography variant="caption" color="error" sx={{ ml: 2 }}>
+                          <Typography variant="caption" color="error" sx={{ ml: 2, display: 'block' }}>
                             驳回原因: {status.reason}
                           </Typography>
                         )}
@@ -744,7 +728,8 @@ const DutyManagerDashboard: React.FC = () => {
               noticeComments={[]}
               onLateSubmit={() => {}}
               testTime={testTime || undefined}
-              role="manager"
+              role="duty_manager"
+              useDatabase={true}
             />
           </Grid>
         </Grid>

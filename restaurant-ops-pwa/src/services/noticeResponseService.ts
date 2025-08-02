@@ -1,9 +1,11 @@
 // Notice response service - handles notice comments storage in Supabase
 // Created: 2025-01-31
 // Handles storage and retrieval of notice responses from roleplay_notice_responses table
+// Updated: 2025-08-02 - Added test time support for date queries
 
 import { supabase } from './supabase'
 import { getRestaurantId } from '../utils/restaurantSetup'
+import { getCurrentTestTime } from '../utils/globalTestTime'
 
 export interface NoticeResponse {
   id?: string
@@ -23,7 +25,8 @@ export async function submitNoticeResponse(
 ): Promise<NoticeResponse | null> {
   try {
     const restaurantId = await getRestaurantId()
-    const today = new Date().toISOString().split('T')[0]
+    const testTime = getCurrentTestTime()
+    const today = (testTime || new Date()).toISOString().split('T')[0]
     
     const response: Omit<NoticeResponse, 'id'> = {
       user_id: userId,
@@ -55,7 +58,8 @@ export async function submitNoticeResponse(
 // Get today's notice responses for a user
 export async function getTodayNoticeResponses(userId: string): Promise<NoticeResponse[]> {
   try {
-    const today = new Date().toISOString().split('T')[0]
+    const testTime = getCurrentTestTime()
+    const today = (testTime || new Date()).toISOString().split('T')[0]
     
     const { data, error } = await supabase
       .from('roleplay_notice_responses')

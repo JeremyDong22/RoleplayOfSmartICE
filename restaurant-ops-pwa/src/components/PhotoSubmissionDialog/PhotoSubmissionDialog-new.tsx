@@ -76,6 +76,13 @@ interface PhotoSubmissionDialogProps {
   taskId: string
   isFloatingTask?: boolean
   initialPhotoGroups?: PhotoGroup[]  // 新增：支持传入之前的照片组
+  samples?: {
+    samples: Array<{
+      index: number
+      text: string
+      images: string[]
+    }>
+  } | null  // 新的samples数据结构
   onClose: () => void
   onSubmit: (evidence: Array<{
     photo: string
@@ -90,6 +97,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   taskId,
   // isFloatingTask = false,
   initialPhotoGroups,
+  samples,
   onClose,
   onSubmit
 }) => {
@@ -99,7 +107,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   const [currentView, setCurrentView] = useState<ViewType>('samples')
   
   // Sample数据
-  const [samples, setSamples] = useState<Sample[]>([])
+  const [sampleList, setSampleList] = useState<Sample[]>([])
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0)
   
   // 拍摄相关
@@ -213,7 +221,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             setPhotoGroups(groups)
             // console.log(`[PhotoDialog] Loaded ${groups.length} saved photo groups`)
           }
-        } catch (err) {
+        } catch {
           // console.error('[PhotoDialog] Error loading saved photos:', err)
         }
       }
@@ -226,7 +234,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(photoGroups))
         // console.log('[PhotoDialog] Saved photo groups to localStorage')
-      } catch (err) {
+      } catch {
         // console.error('[PhotoDialog] Error saving photos:', err)
       }
     }
@@ -235,35 +243,44 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   // 加载samples
   useEffect(() => {
     if (open && taskId) {
-      const sampleDir = getSampleDir()
-      // console.log('[PhotoDialog] Loading samples from:', sampleDir)
-      
-      const loadSamples = async () => {
-        const loadedSamples: Sample[] = []
-        let sampleIndex = 1
-        let consecutiveEmpty = 0
+      // 使用数据库中的样例数据
+      if (samples?.samples && samples.samples.length > 0) {
+        // 直接使用新的samples结构
+        const loadedSamples: Sample[] = samples.samples.map(s => ({
+          images: s.images || [],
+          text: s.text || ''
+        }))
+        setSampleList(loadedSamples)
+      } else {
+        // 如果没有样例数据，使用本地文件作为后备
+        const sampleDir = getSampleDir()
         
-        while (sampleIndex <= 20 && consecutiveEmpty < 3) { // 最多检查20个samples，连续3个空的就停止
-          const files = await loadExistingFiles(sampleDir, sampleIndex)
+        const loadSamples = async () => {
+          const loadedSamples: Sample[] = []
+          let sampleIndex = 1
+          let consecutiveEmpty = 0
           
-          if (files.textFile || files.imageFiles.length > 0) {
-            consecutiveEmpty = 0
-            const sample: Sample = { images: files.imageFiles, text: '' }
+          while (sampleIndex <= 3 && consecutiveEmpty < 2) { // 最多检查3个samples，连续2个空的就停止
+            const files = await loadExistingFiles(sampleDir, sampleIndex)
             
-            // 加载文本内容
-            if (files.textFile) {
-              try {
-                const textResponse = await fetch(files.textFile)
-                const textContent = await textResponse.text()
-                if (!textContent.includes('<!doctype html>')) {
-                  sample.text = textContent.trim()
+            if (files.textFile || files.imageFiles.length > 0) {
+              consecutiveEmpty = 0
+              const sample: Sample = { images: files.imageFiles, text: '' }
+              
+              // 加载文本内容
+              if (files.textFile) {
+                try {
+                  const textResponse = await fetch(files.textFile)
+                  const textContent = await textResponse.text()
+                  if (!textContent.includes('<!doctype html>')) {
+                    sample.text = textContent.trim()
+                  }
+                } catch {
+                  // 静默处理
                 }
-              } catch (err) {
-                // 静默处理
               }
-            }
-            
-            loadedSamples.push(sample)
+              
+              loadedSamples.push(sample)
           } else {
             consecutiveEmpty++
           }
@@ -272,12 +289,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         }
         
         // console.log(`[PhotoDialog] Loaded ${loadedSamples.length} samples`)
-        setSamples(loadedSamples)
+        setSampleList(loadedSamples)
       }
       
       loadSamples()
+      }
     }
-  }, [open, taskId])
+  }, [open, taskId, samples])
   
   // 相机管理
   const stopCamera = () => {
@@ -400,7 +418,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       const newGroup: PhotoGroup = {
         id: Date.now().toString(),
         photos: currentSessionPhotos,
-        sampleRef: samples[selectedSampleIndex]?.text,
+        sampleRef: sampleList[selectedSampleIndex]?.text,
         sampleIndex: selectedSampleIndex,
         comment: currentComment,
         createdAt: Date.now()
@@ -447,20 +465,27 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       }))
     } as any)
     
-    stopCamera()
-    // 提交成功后清空localStorage
-    if (taskId) {
-      localStorage.removeItem(STORAGE_KEY)
+    // 提交后直接清理并关闭，不要返回到samples视图
+    const cleanup = () => {
+      stopCamera()
+      // 提交成功后清空localStorage
+      if (taskId) {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+      
+      setPhotoGroups([])
+      setCurrentSessionPhotos([])
+      setCurrentView('samples')
     }
     
-    setPhotoGroups([])
-    setCurrentSessionPhotos([])
-    setCurrentView('samples')
+    cleanup()
+    // 关键修改：调用 onClose 来关闭对话框，而不是停留在 samples 视图
+    onClose()
   }
   
   const handleClose = () => {
     stopCamera()
-    setSamples([])
+    setSampleList([])
     setCurrentView('samples')
     setFlashEnabled(false)
     onClose()
@@ -481,14 +506,14 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       
       <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
         <Grid container spacing={2}>
-          {samples.length === 0 ? (
+          {sampleList.length === 0 ? (
             <Grid size={12}>
               <Alert severity="info">
                 <Typography>正在加载示例...</Typography>
               </Alert>
             </Grid>
           ) : (
-            samples.map((sample, index) => (
+            sampleList.map((sample, index) => (
               <Grid size={12} key={index}>
                 <Paper sx={{ p: 2 }}>
                   <Typography variant="subtitle1" gutterBottom fontWeight="bold">
@@ -569,7 +594,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           size="large"
           startIcon={<CameraAlt />}
           onClick={() => setCurrentView('camera')}
-          disabled={samples.length === 0}
+          disabled={sampleList.length === 0}
         >
           开始拍摄
         </Button>
@@ -705,7 +730,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             onChange={(e) => setSelectedSampleIndex(Number(e.target.value))}
             label="选择参考示例"
           >
-            {samples.map((sample, index) => (
+            {sampleList.map((sample, index) => (
               <MenuItem key={index} value={index}>
                 示例 {index + 1}: {sample.text.substring(0, 25)}...
               </MenuItem>
@@ -714,7 +739,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         </FormControl>
         
         {/* 当前sample预览 - 紧凑布局 */}
-        {samples[selectedSampleIndex] && samples[selectedSampleIndex].images.length > 0 && (
+        {sampleList[selectedSampleIndex] && sampleList[selectedSampleIndex].images.length > 0 && (
           <Box sx={{ mb: 1.5 }}>
             <Typography variant="caption" color="text.secondary">
               参考图片 (点击放大)
@@ -738,7 +763,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                 }
               }}
             >
-              {samples[selectedSampleIndex].images.slice(0, 4).map((img, idx) => (
+              {sampleList[selectedSampleIndex].images.slice(0, 4).map((img, idx) => (
                 <Box
                   key={idx}
                   component="img"
@@ -992,7 +1017,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         <DialogContent>
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              共 {currentSessionPhotos.length} 张照片，参考: {samples[selectedSampleIndex]?.text || '无'}
+              共 {currentSessionPhotos.length} 张照片，参考: {sampleList[selectedSampleIndex]?.text || '无'}
             </Typography>
           </Box>
           <TextField

@@ -29,6 +29,16 @@ interface AudioRecordingDialogProps {
   open: boolean
   taskName: string
   taskId: string
+  samples?: {
+    samples: Array<{
+      index: number
+      text: string
+      images: string[]
+      checklist?: {
+        items: string[]
+      }
+    }>
+  } | null
   onClose: () => void
   onSubmit: (transcription: string, audioBlob?: Blob) => void
 }
@@ -37,6 +47,7 @@ export default function AudioRecordingDialog({
   open,
   taskName,
   // taskId,
+  samples,
   onClose,
   onSubmit
 }: AudioRecordingDialogProps) {
@@ -48,75 +59,35 @@ export default function AudioRecordingDialog({
   const [transcription, setTranscription] = useState('')
   const [isTranscribing] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [sampleContent, setSampleContent] = useState<string>('')
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const recognitionRef = useRef<any>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
   
-  // Helper function to get sample directory path
-  const getSampleDir = (name: string): string => {
-    const cleanName = name.replace(' - 拍照', '').replace(' - 录音', '')
-    
-    // Extract role prefix if exists (e.g., "前厅" or "后厨")
-    const roleMatch = cleanName.match(/^(前厅|后厨)\s*-\s*/)
-    const role = roleMatch ? roleMatch[1] : '前厅' // Default to 前厅
-    const taskName = roleMatch ? cleanName.replace(roleMatch[0], '') : cleanName
-    
-    // Map task names to new folder structure with period prefix
-    const taskFolderMap: { [key: string]: { [key: string]: string } } = {
-      '前厅': {
-        '当日复盘总结': '8-闭店-当日复盘总结'
-      },
-      '后厨': {
-        // Add chef audio tasks here if any
-      }
-    }
-    
-    // Look up the new folder name
-    const newFolderName = taskFolderMap[role]?.[taskName]
-    if (newFolderName) {
-      return `${role}/${newFolderName}`
-    }
-    
-    // Fallback to original format if not found in map
-    return `${role}/${taskName}`
-  }
-
-  // Load sample content when dialog opens
+  // Get sample content from props
+  const sampleContent = samples?.samples?.[0]?.text || ''
+  
+  // Debug logging
   useEffect(() => {
-    if (open && taskName) {
-      const loadSampleContent = async () => {
-        try {
-          const sampleDir = getSampleDir(taskName)
-          const response = await fetch(`/task-samples/${sampleDir}/sample1.txt`)
-          if (response.ok) {
-            const text = await response.text()
-            setSampleContent(text)
-          } else {
-            setSampleContent('')
-          }
-        } catch (error) {
-          console.error('Failed to load sample content:', error)
-          setSampleContent('')
-        }
-      }
-      loadSampleContent()
-    }
-  }, [open, taskName])
+    console.log('[AudioRecordingDialog] Props received:', {
+      taskName,
+      samples,
+      sampleContent
+    })
+  }, [taskName, samples, sampleContent])
   
   useEffect(() => {
     // Initialize Web Speech API
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition || window.SpeechRecognition
       const recognition = new SpeechRecognition()
       recognition.continuous = true
       recognition.interimResults = true
       recognition.lang = 'zh-CN'
       
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
         let finalTranscript = ''
         let interimTranscript = ''
         
@@ -125,14 +96,14 @@ export default function AudioRecordingDialog({
           if (event.results[i].isFinal) {
             finalTranscript += transcript + ' '
           } else {
-            interimTranscript += transcript
+            // interimTranscript += transcript  // Currently unused but kept for future enhancements
           }
         }
         
         setTranscription(prev => prev + finalTranscript)
       }
       
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error('Speech recognition error:', event.error)
       }
       
@@ -266,6 +237,8 @@ export default function AudioRecordingDialog({
     if (transcription) {
       onSubmit(transcription, audioBlob || undefined)
       resetRecording()
+      // 提交后直接关闭对话框
+      onClose()
     }
   }
 

@@ -9,14 +9,15 @@ export interface Task extends TaskTemplate {
   status: 'upcoming' | 'active' | 'completed' | 'overdue'
 }
 
-// Import workflow data
-import { workflowPeriods } from './workflowParser'
+// Import workflow data - DEPRECATED: Now using database
+// import { workflowPeriods } from './workflowParser'
 
-// Get all task templates from workflow periods
-export const taskTemplates: TaskTemplate[] = workflowPeriods.flatMap(period => [
-  ...period.tasks.manager,
-  ...period.tasks.chef
-])
+// Get all task templates from workflow periods - DEPRECATED: Now using database
+// export const taskTemplates: TaskTemplate[] = workflowPeriods.flatMap(period => [
+//   ...period.tasks.manager,
+//   ...period.tasks.chef
+// ])
+export const taskTemplates: TaskTemplate[] = [] // Now loaded from database
 
 // Generate tasks for today based on current time
 export function generateTodayTasks(role: 'Manager' | 'Chef', testTime?: Date): Task[] {

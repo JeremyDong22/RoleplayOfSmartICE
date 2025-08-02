@@ -1,9 +1,10 @@
 // Universal task submission dialog that adapts to different task types
-// Supports photo, audio, text, and no-requirement submissions
+// Supports photo, audio, text, list/checklist, and no-requirement submissions
 // Changes made:
 // 1. Removed camera mode selection - now using unified PhotoSubmissionDialog
 // 2. All photo tasks use the new three-layer interface structure
-import React, { useState } from 'react'
+// 3. Added support for list/checklist tasks with ListSubmissionDialog
+import React, { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -26,6 +27,7 @@ import {
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
+import ListSubmissionDialog from '../ListSubmissionDialog'
 import type { TaskTemplate } from '../../utils/workflowParser'
 
 interface TaskSubmissionDialogProps {
@@ -49,7 +51,20 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [explanation, setExplanation] = useState('')
   const [showSubmissionDialog, setShowSubmissionDialog] = useState(false)
   
+  // Early return if no task, before any logging
   if (!task) return null
+  
+  // Move console.log to useEffect to avoid logging on every render
+  useEffect(() => {
+    if (open) {
+      console.log('[TaskSubmissionDialog] Dialog opened:', {
+        taskId: task.id,
+        taskTitle: task.title,
+        uploadRequirement: task.uploadRequirement,
+        isLateSubmission
+      })
+    }
+  }, [open, task.id])
   
   const steps = isLateSubmission ? ['补交说明', '提交任务'] : ['提交任务']
   
@@ -75,6 +90,21 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     setExplanation('')
     setShowSubmissionDialog(false)
     onClose()
+  }
+  
+  // Helper function to determine the correct sample directory for list tasks
+  const getSampleDir = (task: TaskTemplate): string => {
+    if (task.title.includes('开店准备与设备检查')) {
+      return task.role === 'Manager' ? '前厅/1-开店-开店准备与设备检查' : '后厨/1-开店-开店准备与设备检查'
+    }
+    if (task.title.includes('开市寻店验收 - 物资准备')) {
+      return '前厅/2 - 开市寻店验收 - 物资准备'
+    }
+    if (task.title.includes('开市寻店验收') && task.title.includes('物资准备')) {
+      return '前厅/5-餐前准备晚市-开市寻店验收 - 物资准备'
+    }
+    // Default fallback
+    return task.role === 'Manager' ? '前厅/1-开店-开店准备与设备检查' : '后厨/1-开店-开店准备与设备检查'
   }
   
   // Show explanation dialog for late submissions
@@ -141,9 +171,10 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
           taskName={task.title}
           taskId={task.id}
           initialPhotoGroups={initialPhotoGroups} // 传递初始照片组
+          samples={task.samples}
           onClose={handleClose}
           onSubmit={(data) => {
-            console.log('[TaskSubmissionDialog] PhotoSubmissionDialog returned:', data)
+            // console.log('[TaskSubmissionDialog] PhotoSubmissionDialog returned:', data)
             handleTaskSubmit({ ...data, type: 'photo' })
           }}
         />
@@ -152,11 +183,17 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     
     // For tasks requiring audio submission
     if (task.uploadRequirement === '录音') {
+      // console.log('[TaskSubmissionDialog] Passing task to AudioRecordingDialog:', {
+      //   taskId: task.id,
+      //   taskTitle: task.title,
+      //   samples: task.samples
+      // })
       return (
         <AudioRecordingDialog
           open={open}
           taskName={task.title}
           taskId={task.id}
+          samples={task.samples}
           onClose={handleClose}
           onSubmit={(transcription, audioBlob) => 
             handleTaskSubmit({ transcription, audioBlob, type: 'audio' })
@@ -172,8 +209,23 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
           open={open}
           taskName={task.title}
           taskId={task.id}
+          samples={task.samples}
           onClose={handleClose}
           onSubmit={(textInput) => handleTaskSubmit({ textInput, type: 'text' })}
+        />
+      )
+    }
+    
+    // For tasks requiring list/checklist submission
+    if (task.uploadRequirement === '列表') {
+      return (
+        <ListSubmissionDialog
+          open={open}
+          taskName={task.title}
+          sampleDir={getSampleDir(task)}
+          samples={task.samples}
+          onClose={handleClose}
+          onSubmit={(data) => handleTaskSubmit({ items: data.items, type: 'list' })}
         />
       )
     }

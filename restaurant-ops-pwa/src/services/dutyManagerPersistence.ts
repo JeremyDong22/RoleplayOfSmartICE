@@ -1,8 +1,10 @@
 // 值班经理任务持久化服务
 // 用于将值班经理的任务提交保存到数据库，支持离线查看
+// Updated: 2025-08-02 - Added test time support for date queries
 
 import { supabase } from './supabase'
 import type { DutyManagerSubmission } from '../contexts/DutyManagerContext'
+import { getCurrentTestTime } from '../utils/globalTestTime'
 
 interface DutyManagerTrigger {
   type: 'last-customer-left-lunch' | 'last-customer-left-dinner'
@@ -21,7 +23,7 @@ export class DutyManagerPersistenceService {
           user_id: trigger.triggeredBy,
           restaurant_id: restaurantId,
           task_id: `trigger-${trigger.type}`,
-          date: new Date().toISOString().split('T')[0],
+          date: (getCurrentTestTime() || new Date()).toISOString().split('T')[0],
           status: 'completed',
           submission_type: 'trigger',
           submission_metadata: {
@@ -49,7 +51,7 @@ export class DutyManagerPersistenceService {
           user_id: userId,
           restaurant_id: restaurantId,
           task_id: submission.taskId,
-          date: new Date().toISOString().split('T')[0],
+          date: (getCurrentTestTime() || new Date()).toISOString().split('T')[0],
           period_id: 'closing',
           status: 'submitted',
           submission_type: submission.content.photos ? 'photo' : 'text',
@@ -75,7 +77,7 @@ export class DutyManagerPersistenceService {
   // 获取值班经理当天的所有任务状态（用于恢复UI状态）
   async getDutyManagerTaskStatuses(userId: string, restaurantId: string, date?: string) {
     try {
-      const targetDate = date || new Date().toISOString().split('T')[0]
+      const targetDate = date || (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
       const { data, error } = await supabase
         .from('roleplay_task_records')
@@ -86,38 +88,44 @@ export class DutyManagerPersistenceService {
         .eq('user_id', userId)
         .eq('restaurant_id', restaurantId)
         .eq('date', targetDate)
-        .in('task_id', ['closing-duty-manager-1', 'closing-duty-manager-2', 'closing-duty-manager-3'])
+        .like('task_id', 'closing-duty-manager-%')
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      // 转换为任务状态映射
+      // 转换为任务状态映射 - 只保留每个任务的最新记录
       const taskStatuses: { [taskId: string]: any } = {}
       const submissions: DutyManagerSubmission[] = []
+      const processedTaskIds = new Set<string>()
       
+      // data已经按created_at降序排列，所以第一个出现的是最新的
       data.forEach(record => {
-        taskStatuses[record.task_id] = {
-          status: record.status,
-          review_status: record.review_status,
-          submittedAt: new Date(record.created_at),
-          reviewedAt: record.reviewed_at ? new Date(record.reviewed_at) : null,
-          reject_reason: record.reject_reason
-        }
-        
-        // 如果任务已提交（包括被驳回的），添加到submissions
-        // 这样用户可以看到之前的提交内容来进行修改
-        if (record.status === 'submitted') {
-          submissions.push({
-            taskId: record.task_id,
-            taskTitle: record.task?.title || '',
+        if (!processedTaskIds.has(record.task_id)) {
+          processedTaskIds.add(record.task_id)
+          
+          taskStatuses[record.task_id] = {
+            status: record.status,
+            review_status: record.review_status,
             submittedAt: new Date(record.created_at),
-            content: {
-              photos: record.photo_urls,
-              photoGroups: record.submission_metadata?.photoGroups,
-              text: record.text_content,
-              amount: record.submission_metadata?.amount
-            }
-          })
+            reviewedAt: record.reviewed_at ? new Date(record.reviewed_at) : null,
+            reject_reason: record.reject_reason
+          }
+          
+          // 如果任务已提交（包括被驳回的），添加到submissions
+          // 这样用户可以看到之前的提交内容来进行修改
+          if (record.status === 'submitted') {
+            submissions.push({
+              taskId: record.task_id,
+              taskTitle: record.task?.title || '',
+              submittedAt: new Date(record.created_at),
+              content: {
+                photos: record.photo_urls,
+                photoGroups: record.submission_metadata?.photoGroups,
+                text: record.text_content,
+                amount: record.submission_metadata?.amount
+              }
+            })
+          }
         }
       })
 
@@ -139,14 +147,14 @@ export class DutyManagerPersistenceService {
         `)
         .eq('restaurant_id', restaurantId)
         .in('review_status', ['pending', 'rejected'])
-        .in('task_id', ['closing-duty-manager-1', 'closing-duty-manager-2', 'closing-duty-manager-3'])
+        .like('task_id', 'closing-duty-manager-%')
         .order('created_at', { ascending: false })
 
       if (date) {
         query.eq('date', date)
       } else {
         // 默认获取当天的任务
-        query.eq('date', new Date().toISOString().split('T')[0])
+        query.eq('date', (getCurrentTestTime() || new Date()).toISOString().split('T')[0])
       }
 
       const { data, error } = await query
@@ -173,7 +181,7 @@ export class DutyManagerPersistenceService {
   // 获取当前的触发状态
   async getCurrentTrigger(restaurantId: string): Promise<DutyManagerTrigger | null> {
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
       const { data, error } = await supabase
         .from('roleplay_task_records')
@@ -208,9 +216,33 @@ export class DutyManagerPersistenceService {
     reason?: string
   ) {
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
-      const { error } = await supabase
+      console.log('[DutyManagerPersistence] Updating review status:', {
+        taskId,
+        status,
+        reviewerId,
+        date: today
+      })
+      
+      // First check if the record exists - get the latest one
+      const { data: existingRecords, error: checkError } = await supabase
+        .from('roleplay_task_records')
+        .select('*')
+        .eq('task_id', taskId)
+        .eq('date', today)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        
+      if (checkError || !existingRecords || existingRecords.length === 0) {
+        console.error('[DutyManagerPersistence] Record not found:', checkError)
+        throw checkError || new Error('No record found')
+      }
+      
+      const existingRecord = existingRecords[0]
+      console.log('[DutyManagerPersistence] Found record:', existingRecord)
+      
+      const { data, error } = await supabase
         .from('roleplay_task_records')
         .update({
           review_status: status,
@@ -218,12 +250,12 @@ export class DutyManagerPersistenceService {
           reviewed_at: new Date().toISOString(),
           reject_reason: reason
         })
-        .eq('task_id', taskId)
-        .eq('date', today)
+        .eq('id', existingRecord.id)  // 使用具体的记录ID，避免更新多条记录
         .eq('status', 'submitted')
+        .select()
 
       if (error) throw error
-      console.log('[DutyManagerPersistence] Review status updated:', taskId, status)
+      console.log('[DutyManagerPersistence] Review status updated successfully:', data)
     } catch (error) {
       console.error('[DutyManagerPersistence] Failed to update review status:', error)
       throw error
@@ -233,24 +265,24 @@ export class DutyManagerPersistenceService {
   // 清除当天的所有值班经理任务（完成收尾工作时调用）
   async clearDailySubmissions(restaurantId: string) {
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
-      // 将所有待审核的任务标记为已完成
+      // 注意：不再自动批准任务！
+      // 这个方法只应该清理触发器和相关状态，不应该修改任务的审核状态
+      // 任务的审核应该由管理员手动完成
+      
+      // 可以在这里清除触发器记录
       const { error } = await supabase
         .from('roleplay_task_records')
-        .update({
-          review_status: 'approved',
-          reviewed_at: new Date().toISOString()
-        })
+        .delete()
         .eq('restaurant_id', restaurantId)
         .eq('date', today)
-        .in('task_id', ['closing-duty-manager-1', 'closing-duty-manager-2', 'closing-duty-manager-3'])
-        .eq('review_status', 'pending')
+        .like('task_id', 'trigger-%')
 
       if (error) throw error
-      console.log('[DutyManagerPersistence] Daily submissions cleared')
+      console.log('[DutyManagerPersistence] Daily triggers cleared')
     } catch (error) {
-      console.error('[DutyManagerPersistence] Failed to clear submissions:', error)
+      console.error('[DutyManagerPersistence] Failed to clear triggers:', error)
       throw error
     }
   }

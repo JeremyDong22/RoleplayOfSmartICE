@@ -1,7 +1,7 @@
 // Text input dialog component for recording text information
 // Created for handling uploadRequirement: '记录' tasks
 // Allows users to input text information (e.g., attendance records, business data)
-// Updated to support loading placeholder text from sample files
+// Updated to support loading placeholder text from database sample data
 
 import React, { useState, useEffect } from 'react'
 import {
@@ -27,12 +27,18 @@ import {
   Check,
   ContentPaste
 } from '@mui/icons-material'
-import { loadTaskSample } from '../../utils/sampleLoader'
 
 interface TextInputDialogProps {
   open: boolean
   taskName: string
   taskId: string
+  samples?: {
+    samples: Array<{
+      index: number
+      text: string
+      images: string[]
+    }>
+  } | null
   onClose: () => void
   onSubmit: (textInput: string) => void
 }
@@ -41,31 +47,16 @@ const TextInputDialog: React.FC<TextInputDialogProps> = ({
   open,
   taskName,
   taskId,
+  samples,
   onClose,
   onSubmit
 }) => {
   const [textInput, setTextInput] = useState('')
-  const [samples, setSamples] = useState<string[]>([])
+  const [sampleList, setSampleList] = useState<string[]>([])
   const [selectedSampleIndex, setSelectedSampleIndex] = useState<number | null>(null)
-  const [placeholder, setPlaceholder] = useState('请根据实际情况填写记录内容')
-
-  // Load sample placeholder text when dialog opens
-  useEffect(() => {
-    if (!open) return
-    
-    // Load sample content for placeholder
-    loadTaskSample(taskId).then(sample => {
-      if (sample) {
-        setPlaceholder(sample.content)
-      } else {
-        // Default placeholder if no sample found
-        setPlaceholder('请根据实际情况填写记录内容')
-      }
-    }).catch(error => {
-      console.error('Error loading sample:', error)
-      setPlaceholder('请根据实际情况填写记录内容')
-    })
-  }, [open, taskId])
+  
+  // Extract first sample text as placeholder
+  const placeholder = samples?.samples?.[0]?.text || '请根据实际情况填写记录内容'
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -78,6 +69,8 @@ const TextInputDialog: React.FC<TextInputDialogProps> = ({
   const handleSubmit = () => {
     if (textInput.trim()) {
       onSubmit(textInput.trim())
+      // 提交后直接关闭对话框，避免返回中间页面
+      onClose()
     }
   }
 

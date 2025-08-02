@@ -831,7 +831,7 @@ export function getBusinessStatus(testTime?: Date): {
   }
   
   let status: 'closed' | 'opening' | 'operating' | 'closing' = 'operating'
-  let message = currentPeriod.displayName
+  const message = currentPeriod.displayName
   
   if (currentPeriod.id === 'opening') {
     status = 'opening'

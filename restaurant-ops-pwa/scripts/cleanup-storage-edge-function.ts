@@ -8,11 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface TaskRecord {
-  id: string
-  photo_urls?: string[] | null
-  audio_url?: string | null
-}
+// Interface removed - not needed as we're using inline type
 
 Deno.serve(async (req) => {
   // Handle CORS preflight

@@ -21,6 +21,14 @@ class RealtimeDutyService {
   // private useFallback: boolean = false // Removed: No localStorage fallback
 
   async initialize(userId: string) {
+    // 如果是不同的用户，需要重新初始化
+    if (this.userId && this.userId !== userId) {
+      console.log('[RealtimeDutyService] 用户改变，需要重新初始化:', this.userId, '->', userId)
+      await this.cleanup()
+      this.isInitialized = false
+      this.initializationPromise = null
+    }
+    
     // 如果已经初始化或正在初始化，返回现有的promise
     if (this.isInitialized) {
       return
@@ -34,18 +42,27 @@ class RealtimeDutyService {
   }
 
   private async _doInitialize(userId: string, retries = 3) {
+    // 如果已经是同一个用户且已初始化，直接返回
+    if (this.userId === userId && this.isInitialized && this.channel) {
+      console.log('[RealtimeDutyService] 已经为用户初始化，跳过重复初始化:', userId)
+      return
+    }
+    
     this.userId = userId
     
     for (let i = 0; i < retries; i++) {
       try {
         // 如果有旧的channel，先清理
         if (this.channel) {
+          console.log('[RealtimeDutyService] 清理旧的 channel')
           await this.channel.unsubscribe()
           this.channel = null
         }
         
-        // 创建或加入频道
-        this.channel = supabase.channel('duty-manager-channel', {
+        // 创建或加入频道 - 使用固定的频道名称，所有用户共享
+        const channelName = 'duty-manager-broadcast'
+        console.log('[RealtimeDutyService] 创建频道:', channelName, 'userId:', userId)
+        this.channel = supabase.channel(channelName, {
           config: {
             broadcast: {
               self: false, // 不接收自己发送的消息
@@ -67,18 +84,47 @@ class RealtimeDutyService {
           
           this.channel!
             .on('broadcast', { event: 'duty-message' }, (payload) => {
+              console.log('[RealtimeDutyService] 收到广播消息:', payload)
               this.handleMessage(payload.payload as DutyManagerMessage)
+            })
+            .on('system', {}, (payload) => {
+              // System messages are handled silently
             })
             .subscribe((status, err) => {
               if (status === 'SUBSCRIBED') {
                 clearTimeout(timeout)
                 this.isInitialized = true
-                console.log('[RealtimeDutyService] ✓ Connected to Supabase Realtime')
+                console.log('[RealtimeDutyService] ✓ Connected to Realtime')
                 resolve()
-              } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              } else if (status === 'CLOSED') {
                 clearTimeout(timeout)
-                // Don't log error here, will be handled in catch block
-                reject(new Error(`Connection ${status}`))
+                // Check if this is a normal close or an error
+                if (err) {
+                  console.error('[RealtimeDutyService] Connection closed with error:', err)
+                  reject(new Error(`Connection closed with error: ${err}`))
+                } else {
+                  // Normal close, no need to log
+                  // Don't reject on normal close, might be intentional
+                  resolve()
+                }
+              } else if (status === 'CHANNEL_ERROR') {
+                clearTimeout(timeout)
+                // Check if this is a database connection error
+                const errorMessage = err?.message || err?.toString() || 'Unknown error'
+                if (errorMessage.includes('unable to connect to the project database')) {
+                  console.warn('[RealtimeDutyService] 数据库 Realtime 功能未启用，将在下次重试')
+                  // Don't reject immediately for database connection issues
+                  // Will retry on next attempt
+                } else {
+                  console.error('[RealtimeDutyService] 频道错误:', status, err)
+                  reject(new Error(`Channel error: ${errorMessage}`))
+                }
+              } else if (status === 'TIMED_OUT') {
+                clearTimeout(timeout)
+                console.error('[RealtimeDutyService] 订阅超时:', status, err)
+                reject(new Error(`Connection timeout: ${err || 'Unknown error'}`))
+              } else {
+                console.log('[RealtimeDutyService] 订阅中间状态:', status)
               }
             })
         })
@@ -136,8 +182,16 @@ class RealtimeDutyService {
   */
 
   private handleMessage(message: DutyManagerMessage) {
+    console.log('[RealtimeDutyService] 处理消息:', {
+      type: message.type,
+      sender: message.sender,
+      timestamp: new Date(message.timestamp).toLocaleString(),
+      data: message.data
+    })
+    
     // 通知所有监听器
     const listeners = this.listeners.get(message.type) || new Set()
+    console.log(`[RealtimeDutyService] 找到 ${listeners.size} 个 ${message.type} 类型的监听器`)
     listeners.forEach(callback => {
       try {
         callback(message)
@@ -148,6 +202,7 @@ class RealtimeDutyService {
 
     // 通知通用监听器
     const allListeners = this.listeners.get('*') || new Set()
+    console.log(`[RealtimeDutyService] 找到 ${allListeners.size} 个通配符监听器`)
     allListeners.forEach(callback => {
       try {
         callback(message)
@@ -159,9 +214,16 @@ class RealtimeDutyService {
 
   // 发送消息
   async send(type: DutyManagerMessage['type'], data: any) {
+    console.log('[RealtimeDutyService] 准备发送消息:', {
+      type,
+      userId: this.userId,
+      isInitialized: this.isInitialized,
+      hasChannel: !!this.channel
+    })
+    
     // 如果服务未初始化，直接返回（数据库仍然会工作）
     if (!this.isInitialized) {
-      console.warn('[RealtimeDutyService] Service not initialized, skipping realtime broadcast')
+      console.warn('[RealtimeDutyService] 服务未初始化，跳过实时广播')
       return
     }
     
@@ -169,13 +231,17 @@ class RealtimeDutyService {
     if (this.initializationPromise) {
       try {
         await this.initializationPromise
-      } catch {
-        // 初始化失败，但不影响数据库操作
+      } catch (error) {
+        console.error('[RealtimeDutyService] 等待初始化失败:', error)
         return
       }
     }
     
     if (!this.channel || !this.userId) {
+      console.warn('[RealtimeDutyService] 缺少 channel 或 userId:', {
+        hasChannel: !!this.channel,
+        userId: this.userId
+      })
       return
     }
 
@@ -185,16 +251,20 @@ class RealtimeDutyService {
       timestamp: Date.now(),
       data
     }
+    
+    console.log('[RealtimeDutyService] 发送消息:', message)
 
     // Try to send via Supabase Realtime
     try {
-      await this.channel.send({
+      console.log('[RealtimeDutyService] 调用 channel.send...')
+      const result = await this.channel.send({
         type: 'broadcast',
         event: 'duty-message',
         payload: message
       })
+      console.log('[RealtimeDutyService] 发送结果:', result)
     } catch (error) {
-      console.warn('[RealtimeDutyService] Send failed, but database operation succeeded:', error)
+      console.error('[RealtimeDutyService] 发送失败:', error)
       // 不抛出错误，让数据库操作继续
     }
   }

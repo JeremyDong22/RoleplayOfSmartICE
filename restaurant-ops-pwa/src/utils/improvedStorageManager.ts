@@ -13,11 +13,11 @@ class ImprovedStorageManager {
   // 检查可用容量
   private checkStorageQuota(): { used: number; available: number } {
     let used = 0
-    let available = 5 * 1024 * 1024 // 默认 5MB
+    const available = 5 * 1024 * 1024 // 默认 5MB
     
     // 计算已使用空间
-    for (let key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
+    for (const key in localStorage) {
+      if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
         used += localStorage[key].length + key.length
       }
     }
@@ -38,7 +38,7 @@ class ImprovedStorageManager {
   }
   
   // 带错误处理的存储
-  public setItem(key: string, value: any, options: StorageOptions = {}): boolean {
+  public setItem(key: string, value: unknown, options: StorageOptions = {}): boolean {
     const fullKey = this.PREFIX + key
     
     try {
@@ -77,7 +77,7 @@ class ImprovedStorageManager {
         try {
           localStorage.setItem(fullKey, JSON.stringify(value))
           return true
-        } catch (retryError) {
+        } catch {
           return false
         }
       }
@@ -179,8 +179,8 @@ class ImprovedStorageManager {
       keysByType: {} as Record<string, number>
     }
     
-    for (let key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
+    for (const key in localStorage) {
+      if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
         stats.totalKeys++
         stats.totalSize += key.length + localStorage[key].length
         

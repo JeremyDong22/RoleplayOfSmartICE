@@ -27,7 +27,8 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  alpha
+  alpha,
+  CircularProgress
 } from '@mui/material'
 import {
   Timer as TimerIcon,
@@ -71,7 +72,7 @@ interface TaskCountdownProps {
   onComplete: (taskId: string, data: any) => void
   onComment: (noticeId: string, comment: string) => void
   // Removed: onLastCustomerLeft and onLastCustomerLeftLunch - duty tasks now auto-assigned
-  onClosingComplete?: () => void
+  // Removed: onClosingComplete - moved to ManagerDashboard as separate component
   onAdvancePeriod?: () => void
   onReviewReject?: (taskId: string, reason: string) => void
   hideTimer?: boolean  // 新增: 隐藏倒计时器
@@ -83,6 +84,7 @@ interface TaskCountdownProps {
     }
   }
   previousSubmissions?: { [taskId: string]: any } // 新增：支持传入之前的提交数据
+  renderNotices?: () => React.ReactNode // 新增：在时间和任务之间渲染通知的回调
 }
 
 export const TaskCountdown: React.FC<TaskCountdownProps> = ({
@@ -93,13 +95,13 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   testTime,
   onComplete,
   onComment,
-  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch,
-  onClosingComplete,
+  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch, onClosingComplete
   onAdvancePeriod,
   onReviewReject,
   hideTimer = false,
   reviewStatus = {},
-  previousSubmissions = {}
+  previousSubmissions = {},
+  renderNotices
 }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const [currentTime, setCurrentTime] = useState<Date>(testTime || new Date())
@@ -121,6 +123,11 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [activeTask, setActiveTask] = useState<TaskTemplate | null>(null)
   const [activeNotice, setActiveNotice] = useState<TaskTemplate | null>(null)
+  
+  // Track submitting tasks to show loading state
+  const [submittingTaskIds, setSubmittingTaskIds] = useState<Set<string>>(new Set())
+  // Track floating tasks that just completed for animation
+  const [completedFloatingTasks, setCompletedFloatingTasks] = useState<Set<string>>(new Set())
   
   // Initialize Embla Carousel with snap-to-center animation
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -146,6 +153,56 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   
   
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => (completedTaskIds || []).includes(task.id))
+  
+  // Wrapped onComplete function to handle loading state
+  const handleTaskComplete = async (taskId: string, data: any) => {
+    const task = regularTasks.find(t => t.id === taskId)
+    if (!task) return
+    
+    // Set submitting state
+    setSubmittingTaskIds(prev => new Set(prev).add(taskId))
+    
+    try {
+      // Call the original onComplete
+      await onComplete(taskId, data)
+      
+      // Handle floating task animation
+      if (task.isFloating) {
+        setCompletedFloatingTasks(prev => new Set(prev).add(taskId))
+        
+        // Remove from completed state after animation
+        setTimeout(() => {
+          setCompletedFloatingTasks(prev => {
+            const next = new Set(prev)
+            next.delete(taskId)
+            return next
+          })
+        }, 2000) // 2 seconds for animation
+      }
+    } finally {
+      // Remove submitting state
+      setSubmittingTaskIds(prev => {
+        const next = new Set(prev)
+        next.delete(taskId)
+        return next
+      })
+    }
+  }
+  
+  // Helper function to determine the correct sample directory for list tasks
+  const getSampleDirForTask = (task: TaskTemplate): string => {
+    if (task.title.includes('开店准备与设备检查')) {
+      return task.role === 'Manager' ? '前厅/1-开店-开店准备与设备检查' : '后厨/1-开店-开店准备与设备检查'
+    }
+    if (task.title.includes('开市寻店验收 - 物资准备')) {
+      return '前厅/2 - 开市寻店验收 - 物资准备'
+    }
+    if (task.title.includes('开市寻店验收') && task.title.includes('物资准备')) {
+      return '前厅/5-餐前准备晚市-开市寻店验收 - 物资准备'
+    }
+    // Default fallback
+    return task.role === 'Manager' ? '前厅/1-开店-开店准备与设备检查' : '后厨/1-开店-开店准备与设备检查'
+  }
   
   // Free swiping mode - removed automatic scrolling to first uncompleted task
   // Users can now freely swipe between all tasks like browsing a photo album
@@ -333,6 +390,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
       </Paper>
       )}
 
+      {/* Render notices between timer and tasks if provided */}
+      {renderNotices && renderNotices()}
+
       {/* Current Task Card with Embla Carousel */}
       {regularTasks.length > 0 && (
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
@@ -348,14 +408,6 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                 </Typography>
               )}
             </Box>
-            {allTasksCompleted && (
-              <Chip 
-                icon={<CheckCircle />} 
-                label="全部完成 All Completed" 
-                color="success" 
-                size="small"
-              />
-            )}
           </Box>
           
           {/* Embla Carousel */}
@@ -394,8 +446,10 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                   const taskReviewStatus = reviewStatus[task.id]
                   const isRejected = taskReviewStatus?.status === 'rejected'
                   const isApproved = taskReviewStatus?.status === 'approved'
-                  const isInReview = taskReviewStatus?.status === 'pending' || (isCompleted && !isApproved && !isRejected && !isAuditTask)
                   const isDutyManagerTask = task.role === 'DutyManager'
+                  const isInReview = isDutyManagerTask && taskReviewStatus?.status === 'pending'
+                  const isSubmitting = submittingTaskIds.has(task.id)
+                  const isFloatingCompleted = completedFloatingTasks.has(task.id)
                   
                   // Check if any linked tasks have been submitted
                   const hasLinkedSubmissions = task.linkedTasks && task.linkedTasks.some(linkedTaskId => {
@@ -472,17 +526,46 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                         borderRadius: 2,
                         p: 3,
                         backgroundColor: theme => {
+                          // 待审核的值班经理任务使用半透明背景
+                          if (isDutyManagerTask && isInReview) {
+                            return 'rgba(255, 255, 255, 0.7)'
+                          }
                           // 所有任务都使用纯白背景，不要毛玻璃效果
-                          if (isCompleted && !isDutyManagerTask && !isAuditTask) {
+                          if (isFloatingCompleted) {
+                            return theme.palette.success.light
+                          }
+                          if (isCompleted && !isDutyManagerTask && !isAuditTask && !task.isFloating) {
                             return theme.palette.action.hover
                           }
                           return theme.palette.background.paper
                         },
+                        // 待审核的值班经理任务添加毛玻璃效果
+                        ...(isDutyManagerTask && isInReview ? {
+                          backdropFilter: 'blur(8px)',
+                          WebkitBackdropFilter: 'blur(8px)', // Safari支持
+                          position: 'relative',
+                          overflow: 'hidden',
+                          '&::before': {
+                            content: '""',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.2) 100%)',
+                            pointerEvents: 'none',
+                            zIndex: 0,
+                          },
+                          '& > *': {
+                            position: 'relative',
+                            zIndex: 1,
+                          }
+                        } : {}),
                         height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        opacity: (isCompleted && !isRejected) ? 0.7 : 1, // 被驳回的任务不降低透明度
-                        transform: isCurrentSlide ? 'scale(1)' : 'scale(0.92)',
+                        opacity: isFloatingCompleted ? 0.8 : (isCompleted && !isRejected && !task.isFloating) ? 0.7 : 1, // 被驳回的任务不降低透明度
+                        transform: isFloatingCompleted ? 'scale(0.98)' : isCurrentSlide ? 'scale(1)' : 'scale(0.92)',
                         transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, border 0.3s ease, background-color 0.3s ease',
                         pointerEvents: 'auto',  // Ensure pointer events work
                         touchAction: 'manipulation'  // Better touch handling
@@ -636,13 +719,22 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                           )
                         ) : (
                           // 非审核任务的按钮逻辑（包括值班经理任务）
-                          (!isCompleted || (isDutyManagerTask && isRejected)) && (
+                          // Show button for incomplete tasks, floating tasks, or rejected duty tasks
+                          // Hide button for duty manager tasks that are in pending review
+                          (!isCompleted || task.isFloating || (isDutyManagerTask && isRejected)) && !isFloatingCompleted && !(isDutyManagerTask && isInReview) && (
                             <Button
                               variant="contained"
-                              color={isDutyManagerTask && isRejected ? "error" : "primary"}
+                              color={
+                                isFloatingCompleted ? "success" :
+                                isDutyManagerTask && isRejected ? "error" : 
+                                "primary"
+                              }
                               fullWidth
                               size="large"
+                              disabled={isSubmitting || isFloatingCompleted}
                               onClick={() => {
+                                if (isSubmitting) return
+                                
                                 // Check if task requires photo or audio evidence
                                 if (task.uploadRequirement === '拍照') {
                                   setActiveTask(task)
@@ -657,12 +749,30 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                                   setActiveTask(task)
                                   setListDialogOpen(true)
                                 } else {
-                                  onComplete(task.id, {})
+                                  handleTaskComplete(task.id, {})
                                 }
                               }}
-                              sx={{ mt: 'auto' }}
+                              sx={{ 
+                                mt: 'auto',
+                                position: 'relative',
+                                '&.Mui-disabled': {
+                                  backgroundColor: isFloatingCompleted ? 'success.main' : undefined,
+                                  color: isFloatingCompleted ? 'white' : undefined
+                                }
+                              }}
                             >
-                              {isDutyManagerTask && isRejected ? '重新提交' : '完成任务'}
+                              {isSubmitting ? (
+                                <CircularProgress size={24} color="inherit" />
+                              ) : isFloatingCompleted ? (
+                                <>
+                                  <CheckCircle sx={{ mr: 1 }} />
+                                  已提交
+                                </>
+                              ) : isDutyManagerTask && isRejected ? (
+                                '重新提交'
+                              ) : (
+                                '完成任务'
+                              )}
                             </Button>
                           )
                         )}
@@ -712,99 +822,8 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
       )}
 
       {/* Removed: Swipe cards for duty assignment - tasks now automatically assigned based on time */}
-
-      {/* Closing Complete Button - Shows in same position as swipe card */}
-      {period?.id === 'closing' && onClosingComplete && (
-        <Paper 
-          elevation={2}
-          sx={{
-            p: 3,
-            mb: 3,
-            textAlign: 'center',
-            background: theme => `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.08)}, ${alpha(theme.palette.error.main, 0.15)})`,
-            border: theme => `1px solid ${alpha(theme.palette.error.main, 0.2)}`
-          }}
-        >
-          <Typography variant="h6" gutterBottom sx={{ color: 'error.main', fontWeight: 600 }}>
-            结束今天营业
-          </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            {allTasksCompleted ? '所有任务已完成，可以安全闭店' : '请先完成所有任务'}
-          </Typography>
-          <Button
-            variant="contained"
-            color="error"
-            size="large"
-            fullWidth
-            onClick={onClosingComplete}
-            sx={{ 
-              py: 2,
-              fontSize: '1.1rem',
-              fontWeight: 'bold'
-            }}
-          >
-            确认闭店
-          </Button>
-        </Paper>
-      )}
-
-      {/* Notices Section */}
-      {notices.length > 0 && (
-        <Paper elevation={1} sx={{ p: 2 }}>
-          <Box display="flex" alignItems="center" gap={1} mb={2}>
-            <Announcement sx={{ color: 'info.main' }} />
-            <Typography variant="h6">
-              注意事项 Notices
-            </Typography>
-          </Box>
-          <List disablePadding>
-            {notices.map((notice, index) => {
-              // Get comments for this notice
-              const noticeCommentList = noticeComments.filter(c => c.noticeId === notice.id)
-              const isInService = period?.id === 'lunch-service' || period?.id === 'dinner-service'
-              
-              return (
-                <React.Fragment key={notice.id}>
-                  {index > 0 && <Divider />}
-                  <ListItem 
-                    sx={{ 
-                      px: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'stretch'
-                    }}
-                  >
-                    <Box>
-                      <ListItemText
-                        primary={notice.title}
-                        secondary={notice.description}
-                        primaryTypographyProps={{ fontWeight: 'medium' }}
-                      />
-                      
-                      {/* Add comment button for in-service periods */}
-                      {isInService && (
-                        <Box sx={{ mt: 1 }}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<Comment />}
-                            onClick={() => {
-                              setActiveNotice(notice)
-                              setNoticeCommentDialogOpen(true)
-                            }}
-                          >
-                            留言 ({noticeCommentList.length})
-                          </Button>
-                        </Box>
-                      )}
-                    </Box>
-                  </ListItem>
-                </React.Fragment>
-              )
-            })}
-          </List>
-        </Paper>
-      )}
+      {/* Removed: Closing Complete Button - moved to ManagerDashboard as separate component */}
+      {/* Removed: Notices Section - moved to separate NoticeContainer component */}
       
       {/* Photo Submission Dialog */}
       {activeTask && (
@@ -813,13 +832,14 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           taskName={activeTask.title}
           taskId={activeTask.id}
           initialPhotoGroups={previousSubmissions[activeTask.id]?.photoGroups} // 传递之前的照片组
+          samples={activeTask.samples}
           onClose={() => {
             setPhotoDialogOpen(false)
             setActiveTask(null)
           }}
-          onSubmit={(evidence) => {
-            onComplete(activeTask.id, { evidence, type: 'photo' })
-            setPhotoDialogOpen(false)
+          onSubmit={async (evidence) => {
+            await handleTaskComplete(activeTask.id, { evidence, type: 'photo' })
+            // 对话框会自己关闭，这里只需要清理状态
             setActiveTask(null)
           }}
         />
@@ -831,13 +851,14 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           open={audioDialogOpen}
           taskName={activeTask.title}
           taskId={activeTask.id}
+          samples={activeTask.samples}
           onClose={() => {
             setAudioDialogOpen(false)
             setActiveTask(null)
           }}
-          onSubmit={(transcription, audioBlob) => {
-            onComplete(activeTask.id, { transcription, audioBlob, type: 'audio' })
-            setAudioDialogOpen(false)
+          onSubmit={async (transcription, audioBlob) => {
+            await handleTaskComplete(activeTask.id, { transcription, audioBlob, type: 'audio' })
+            // 对话框会自己关闭，这里只需要清理状态
             setActiveTask(null)
           }}
         />
@@ -849,13 +870,14 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           open={textDialogOpen}
           taskName={activeTask.title}
           taskId={activeTask.id}
+          samples={activeTask.samples}
           onClose={() => {
             setTextDialogOpen(false)
             setActiveTask(null)
           }}
-          onSubmit={(textInput) => {
-            onComplete(activeTask.id, { textInput, type: 'text' })
-            setTextDialogOpen(false)
+          onSubmit={async (textInput) => {
+            await handleTaskComplete(activeTask.id, { textInput, type: 'text' })
+            // 对话框会自己关闭，这里只需要清理状态
             setActiveTask(null)
           }}
         />
@@ -866,14 +888,15 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
         <ListSubmissionDialog
           open={listDialogOpen}
           taskName={activeTask.title}
-          sampleDir={activeTask.role === 'Manager' ? '前厅/1-开店-开店准备与设备检查' : '后厨/1-开店-开店准备与设备检查'}
+          sampleDir={getSampleDirForTask(activeTask)}
+          samples={activeTask.samples}
           onClose={() => {
             setListDialogOpen(false)
             setActiveTask(null)
           }}
-          onSubmit={(data) => {
-            onComplete(activeTask.id, { items: data.items, type: 'list' })
-            setListDialogOpen(false)
+          onSubmit={async (data) => {
+            await handleTaskComplete(activeTask.id, { items: data.items, type: 'list' })
+            // 对话框会自己关闭，这里只需要清理状态
             setActiveTask(null)
           }}
         />

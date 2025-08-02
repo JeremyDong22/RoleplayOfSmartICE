@@ -22,10 +22,33 @@ When testing time-based features, use the EditableTime component in the top bar:
 
 ## Architecture Overview
 
+### Database-Driven Configuration (Updated 2025-08-02)
+The application is now fully configured through Supabase database tables:
+
+1. **Restaurant Configuration** (`roleplay_restaurants`)
+   - Multi-restaurant support
+   - No more hardcoded restaurant IDs
+   - Managed via `restaurantConfigService`
+
+2. **Business Hours** (inferred from `roleplay_workflow_periods`)
+   - Opening time: First period's start time
+   - Closing time: Last period's end time
+   - Automatically handles cross-day operations
+
+3. **Role & Department Mapping**
+   - Roles from `roleplay_roles` table
+   - Department mapping: `chef` → '后厨', others → '前厅'
+   - Extensible via `getDepartmentByRole` function
+
+4. **Storage Configuration**
+   - Unified bucket name: 'RolePlay'
+   - All storage operations use the same bucket
+   - Path structure: `/{userId}/{date}/{taskId}/`
+
 ### Core State Management Flow
 The application uses a complex state management system for handling restaurant operations:
 
-1. **Period-based Task System**: Tasks are organized by time periods defined in `workflowPeriods` (workflowParser.ts). Each period has specific tasks for Manager and Chef roles.
+1. **Period-based Task System**: Tasks are organized by time periods from database (`roleplay_workflow_periods`). Each period has specific tasks for Manager and Chef roles.
 
 2. **Manual State Transitions**: 
    - `isManualClosing`: Controls manual transition to closing period via swipe gesture
@@ -105,13 +128,19 @@ The application uses a complex state management system for handling restaurant o
    - Refs are set before state updates to block unwanted period updates
    - Prevents period update effect from reverting manual state transitions
 
-9. **Data Persistence with localStorage**:
-   - States persist across page refreshes using `persistenceManager.ts`
-   - Separate storage keys for Manager (`restaurant-ops-manager-state`) and Chef (`restaurant-ops-chef-state`)
-   - Automatically saves: completedTaskIds, taskStatuses, noticeComments, missingTasks, isManualClosing, isWaitingForNextDay
-   - Data automatically resets at 10:00 AM daily when crossing from 9:xx to 10:xx
-   - Handles corrupted data gracefully by returning null
-   - Validates data freshness using timestamps
+9. **Data Persistence with Supabase**:
+   - All task states and records stored in database
+   - Real-time synchronization across devices
+   - No more localStorage for critical data
+   - Restaurant configuration from database
+
+10. **Floating Tasks Behavior** (Updated 2025-01-31):
+    - Floating tasks (`isFloating: true`) can be submitted multiple times
+    - They don't get marked as completed in `completedTaskIds`
+    - They don't count toward completion rate
+    - They don't block closing/waiting transitions
+    - Each submission creates a new record in Supabase
+    - UI shows success message after each submission
 
 ### Material-UI Grid v2 Usage
 The project uses MUI v7 with the new Grid2 component. Import as:
@@ -140,14 +169,6 @@ Use `size` prop instead of `xs/sm/md/lg` props.
    - Notices are displayed separately from actionable tasks
    - Only non-notice tasks count toward completion
 
-4. **Floating Tasks Behavior** (Updated 2025-01-31):
-   - Floating tasks (`isFloating: true`) can be submitted multiple times
-   - They don't get marked as completed in `completedTaskIds`
-   - They don't count toward completion rate
-   - They don't block closing/waiting transitions
-   - Each submission creates a new record in Supabase
-   - UI shows success message after each submission
-
 ## Common Issues and Solutions
 
 1. **Infinite Loop in useEffect**: Usually caused by including array length in dependencies. Use specific IDs or primitive values instead.
@@ -160,81 +181,82 @@ Use `size` prop instead of `xs/sm/md/lg` props.
 
 5. **Swipe Transition Reverting**: Fixed by using a ref (`manualClosingRef`) alongside state to prevent race conditions. The period update effect checks the ref for immediate feedback since React state updates are asynchronous.
 
-## Task Requirements Synchronization
-
-When modifying task requirements (photo, audio, text input), you MUST keep these three files synchronized:
-
-1. **`src/utils/workflowParser.ts`** - The source of truth for task definitions
-   - Update the `uploadRequirement` field ('拍照' | '录音' | '记录' | null)
-
-2. **`public/task-samples/任务与文件夹对照表.md`** - Documentation for sample file mappings
-   - Update the sample files column to reflect changes
-   - Note if folders are deleted due to removed requirements
-
-3. **`门店日常工作.md`** - The human-readable workflow documentation
-   - Remove or add the requirement suffix (- 拍照, - 录音, - 记录) from task descriptions
-
-Example: If removing photo requirement from "开店准备与设备检查":
-- workflowParser.ts: Change `uploadRequirement: '拍照'` to `uploadRequirement: null`
-- 任务与文件夹对照表.md: Update to show "(已删除 - 无需拍照)"
-- 门店日常工作.md: Remove "- 拍照" from the task description
-
 ## Supabase Database Schema
-
-The application is connected to a Supabase database with the following structure:
 
 ### Project Information
 - **Project ID**: wdpeoyugsxqnpwwtkqsl
 - **Region**: us-east-1
 - **Database Host**: db.wdpeoyugsxqnpwwtkqsl.supabase.co
 
-### Database Tables (7 tables created with prefix `roleplay_`)
+### Database Tables
 
-1. **roleplay_restaurants** - Multi-restaurant support (currently has "野百灵")
-2. **roleplay_roles** - User roles (CEO, Manager, Chef, Staff)
-3. **roleplay_users** - User accounts linked to auth.users
-4. **roleplay_period_transitions** - Tracks period entry/exit times
-5. **roleplay_tasks** - Task definitions (59 tasks pre-loaded)
-6. **roleplay_task_records** - Task instances with submission content
+1. **roleplay_restaurants** - Multi-restaurant support
+   - id, name, is_active, created_at, updated_at
+
+2. **roleplay_roles** - User roles
+   - id, code (manager/chef/duty_manager/staff), name, description
+
+3. **roleplay_users** - User accounts
+   - id, email, display_name, role_code, restaurant_id, is_active
+
+4. **roleplay_workflow_periods** - Time periods for tasks
+   - id, name, display_name, start_time, end_time, is_event_driven, display_order
+
+5. **roleplay_tasks** - Task definitions
+   - id, title, description, role_code, period_id, submission_type, is_notice, is_floating, etc.
+
+6. **roleplay_task_records** - Task submission records
+   - id, task_id, user_id, restaurant_id, date, status, review_status, submission data
+
 7. **roleplay_notice_responses** - Responses to notice tasks
+   - id, notice_id, user_id, restaurant_id, comment, created_at
 
 ### Storage Configuration
-- **Bucket**: `restaurant-tasks` (public, 50MB limit)
-- **Structure**: `restaurant-tasks/{restaurant_id}/{date}/{task_record_id}/`
+- **Bucket**: `RolePlay` (public, 50MB limit)
+- **Structure**: `/{userId}/{date}/{taskId}/`
 - **Supported**: JPEG, PNG, WebP images; MP3, WAV, WebM audio
 
-### Key Design Features
-- Task records combine status and submission content in one table
-- Photos/audio stored in Storage, URLs in database
-- Support for makeup tasks with reason tracking
-- Floating tasks (like 收货验货) independent of time periods
-- All tables indexed for performance
+## Key Services
 
-For detailed schema information, see `SUPABASE_SCHEMA.md`
+### restaurantConfigService
+Manages restaurant configuration without hardcoding:
+- Fetches restaurant from user profile or first active restaurant
+- No more 'default-restaurant' fallbacks
+- Provides restaurant ID and name dynamically
 
-## Task Sample File Standards
+### taskService
+Loads all tasks and periods from database:
+- Real-time updates via Supabase channels
+- Converts database format to application format
+- Caches data for performance
 
-### Checklist JSON Format
-When creating checklist.json files for tasks with `uploadRequirement: '列表'`, use this standard format:
+### businessCycleService
+Manages business hours and task completion:
+- Infers opening/closing times from workflow periods
+- Tracks task completion across the day
+- Handles cross-day operations
 
-```json
-{
-  "items": [
-    "检查项目名称 - 具体描述",
-    "设备名称 - 检查要点"
-  ]
-}
-```
+## Testing & Development
 
-Example:
-```json
-{
-  "items": [
-    "插座 - 检查所有电磁炉插座是否正常通电",
-    "冰箱 - 检查制冷温度",
-    "空调 - 检查制冷温度"
-  ]
-}
-```
+### Time Manipulation
+Use the EditableTime component to test different scenarios:
+1. Click the clock icon in the top bar
+2. Set specific times to trigger different states
+3. The system respects manual time for testing
 
-This format is used for all checklist-type tasks including equipment checks and material preparation
+### Database-Only Mode
+The app works without real-time features if needed:
+- All data persists to database
+- Manual refresh to sync changes
+- Suitable for offline-first scenarios
+
+## Best Practices
+
+1. **No Hardcoding**: All configuration comes from Supabase
+2. **Type Safety**: Use TypeScript interfaces from database types
+3. **Error Handling**: Gracefully handle database connection issues
+4. **Performance**: Use caching and batch operations where possible
+
+## Stop and talk to me every time if you have confusion or you're not sure that something needs to be done or if you think something needs to be clarified into a better state. For most of the time you will need to search for codebase and make a good clarification of what we should agree on before take off.
+
+## Be sure to make our codebase clean always after you write and run the test files. Delete those test files also. For SQL scripts and all of the scripts that are unrelated to our project and it's not in use, you should check it every time after you've done the job.

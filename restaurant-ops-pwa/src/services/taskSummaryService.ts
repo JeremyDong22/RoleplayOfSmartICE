@@ -1,9 +1,10 @@
 // 任务汇总服务 - 从数据库实时获取任务统计信息
 // Created: 2025-07-31
 // 用于替代localStorage读取任务完成状态，支持多设备同步
+// Updated: 2025-08-02 - Added test time support for date queries
 
 import { supabase } from './supabase'
-import { loadWorkflowPeriods, getCurrentPeriod } from '../utils/workflowParser'
+import { getCurrentTestTime } from '../utils/globalTestTime'
 
 export interface TaskSummaryStats {
   currentPeriodTasks: {
@@ -16,6 +17,9 @@ export interface TaskSummaryStats {
     periodName: string
     taskId: string
     taskTitle: string
+    taskDescription: string
+    submissionType: string | null
+    uploadRequirement?: string | null
   }[]
   overallCompletionRate: number
   completedTaskIds: string[]
@@ -31,7 +35,7 @@ export interface TaskSummaryStats {
 export async function getTaskSummaryStats(
   userId: string,
   restaurantId: string,
-  role: 'manager' | 'chef',
+  role: 'manager' | 'chef' | 'duty_manager',
   currentTime?: Date
 ): Promise<TaskSummaryStats> {
   const now = currentTime || new Date()
@@ -56,10 +60,38 @@ export async function getTaskSummaryStats(
     
     if (recordsError) throw recordsError
     
+    // 1.5 如果是Manager，还需要获取值班经理的任务审核状态
+    let dutyManagerReviewedTasks: string[] = []
+    if (role === 'manager') {
+      // 获取同餐厅值班经理今天的任务记录
+      const { data: dutyRecords, error: dutyError } = await supabase
+        .from('roleplay_task_records')
+        .select(`
+          task_id,
+          review_status,
+          roleplay_tasks!inner (
+            id,
+            role_code
+          )
+        `)
+        .eq('restaurant_id', restaurantId)
+        .eq('date', today)
+        .eq('roleplay_tasks.role_code', 'duty_manager')
+        .eq('review_status', 'approved')
+      
+      if (dutyError) {
+        console.error('Error fetching duty manager records:', dutyError)
+      } else if (dutyRecords) {
+        // 收集所有已被审核通过的值班经理任务ID
+        dutyManagerReviewedTasks = dutyRecords.map(r => r.task_id)
+      }
+    }
+    
     // 2. 获取所有任务定义
+    // 直接使用传入的 role 参数，它应该已经是正确的值（'manager', 'chef', 或 'duty_manager'）
     const { data: taskDefs, error: defsError } = await supabase
       .from('roleplay_tasks')
-      .select('id, title, period_id, role_code, is_notice, is_floating')
+      .select('id, title, description, period_id, role_code, is_notice, is_floating, submission_type')
       .eq('role_code', role)
     
     if (defsError) throw defsError
@@ -72,11 +104,70 @@ export async function getTaskSummaryStats(
       .filter(r => r.review_status !== 'rejected')
       .map(r => r.task_id)
     
-    // 5. 计算当前时段的任务统计
-    const workflowPeriods = loadWorkflowPeriods()
-    const currentPeriod = getCurrentPeriod(now)
+    // 4.5 对于Manager，审核任务的完成状态基于值班经理任务是否已被审核
+    const effectiveCompletedTaskIds = [...completedTaskIds]
+    if (role === 'manager') {
+      // 查找所有审核任务
+      const reviewTasks = taskDefs.filter(t => t.title.includes('审核'))
+      
+      // 获取所有值班经理任务以建立映射
+      const { data: dutyTasks } = await supabase
+        .from('roleplay_tasks')
+        .select('id, title')
+        .eq('role_code', 'duty_manager')
+      
+      if (dutyTasks && reviewTasks.length > 0) {
+        // 对于每个审核任务，检查对应的值班经理任务是否已被审核
+        for (const reviewTask of reviewTasks) {
+          // 查找审核任务对应的值班经理任务
+          const linkedTaskTitle = reviewTask.title.replace('审核', '').trim()
+          const linkedTask = dutyTasks.find(dt => dt.title.includes(linkedTaskTitle))
+          
+          if (linkedTask && dutyManagerReviewedTasks.includes(linkedTask.id)) {
+            // 如果对应的值班经理任务已被审核，则审核任务算作已完成
+            if (!effectiveCompletedTaskIds.includes(reviewTask.id)) {
+              effectiveCompletedTaskIds.push(reviewTask.id)
+            }
+          }
+        }
+      }
+    }
     
-    let currentPeriodStats = {
+    // 5. 从数据库获取期间数据
+    const { data: workflowPeriods, error: periodsError } = await supabase
+      .from('roleplay_workflow_periods')
+      .select('*')
+      .order('display_order')
+    
+    if (periodsError) {
+      console.error('Error fetching workflow periods:', periodsError)
+      throw periodsError
+    }
+    
+    // 计算当前时段
+    const currentHour = now.getHours()
+    const currentMinute = now.getMinutes()
+    const currentTimeInMinutes = currentHour * 60 + currentMinute
+    
+    const currentPeriod = workflowPeriods?.find(p => {
+      const [startHour, startMinute] = p.start_time.split(':').map(Number)
+      const [endHour, endMinute] = p.end_time.split(':').map(Number)
+      const startInMinutes = startHour * 60 + startMinute
+      const endInMinutes = endHour * 60 + endMinute
+      
+      if (endInMinutes < startInMinutes) {
+        if (currentTimeInMinutes >= startInMinutes || currentTimeInMinutes < endInMinutes) {
+          return true
+        }
+      } else {
+        if (currentTimeInMinutes >= startInMinutes && currentTimeInMinutes < endInMinutes) {
+          return true
+        }
+      }
+      return false
+    })
+    
+    const currentPeriodStats = {
       total: 0,
       completed: 0,
       pending: 0
@@ -92,7 +183,7 @@ export async function getTaskSummaryStats(
       
       currentPeriodStats.total = currentPeriodTasks.length
       currentPeriodStats.completed = currentPeriodTasks.filter(t => 
-        completedTaskIds.includes(t.id)
+        effectiveCompletedTaskIds.includes(t.id)
       ).length
       currentPeriodStats.pending = currentPeriodStats.total - currentPeriodStats.completed
     }
@@ -102,7 +193,7 @@ export async function getTaskSummaryStats(
     
     workflowPeriods.forEach(period => {
       // 检查时段是否已经开始
-      const [startHour, startMinute] = period.startTime.split(':').map(Number)
+      const [startHour, startMinute] = period.start_time.split(':').map(Number)
       const periodStart = new Date(now)
       periodStart.setHours(startHour, startMinute, 0, 0)
       
@@ -120,12 +211,15 @@ export async function getTaskSummaryStats(
         
         // 找出未完成的任务
         periodTasks.forEach(task => {
-          if (!completedTaskIds.includes(task.id)) {
+          if (!effectiveCompletedTaskIds.includes(task.id)) {
             missingTasks.push({
               periodId: period.id,
-              periodName: period.displayName,
+              periodName: period.display_name,
               taskId: task.id,
-              taskTitle: task.title
+              taskTitle: task.title,
+              taskDescription: task.description || '',
+              submissionType: task.submission_type,
+              uploadRequirement: null // 从数据库已经有 submission_type，不需要额外的 uploadRequirement
             })
           }
         })
@@ -137,7 +231,7 @@ export async function getTaskSummaryStats(
     let totalTasksCompleted = 0
     
     workflowPeriods.forEach(period => {
-      const [startHour, startMinute] = period.startTime.split(':').map(Number)
+      const [startHour, startMinute] = period.start_time.split(':').map(Number)
       const periodStart = new Date(now)
       periodStart.setHours(startHour, startMinute, 0, 0)
       
@@ -153,7 +247,7 @@ export async function getTaskSummaryStats(
         
         totalTasksDue += periodTasks.length
         totalTasksCompleted += periodTasks.filter(t => 
-          completedTaskIds.includes(t.id)
+          effectiveCompletedTaskIds.includes(t.id)
         ).length
       }
     })
@@ -166,7 +260,7 @@ export async function getTaskSummaryStats(
       currentPeriodTasks: currentPeriodStats,
       previousPeriodsMissing: missingTasks,
       overallCompletionRate,
-      completedTaskIds
+      completedTaskIds: effectiveCompletedTaskIds
     }
     
   } catch (error) {
@@ -226,7 +320,8 @@ export async function getPeriodTaskDetails(
   restaurantId: string,
   periodId: string
 ) {
-  const today = new Date().toISOString().split('T')[0]
+  const testTime = getCurrentTestTime()
+  const today = (testTime || new Date()).toISOString().split('T')[0]
   
   const { data, error } = await supabase
     .from('roleplay_task_records')

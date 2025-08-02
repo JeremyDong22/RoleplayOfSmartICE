@@ -198,8 +198,8 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
                 hasContent = true
               }
             }
-          } catch (err) {
-            // Silent fail
+          } catch {
+            // Silent fail - expected for missing files
           }
           
           let imgIdx = 1

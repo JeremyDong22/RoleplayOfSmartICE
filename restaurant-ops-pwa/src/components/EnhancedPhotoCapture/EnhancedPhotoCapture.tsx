@@ -62,7 +62,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
   const streamRef = useRef<MediaStream | null>(null)
 
   // Get sample directory path
-  const getSampleDir = (name: string): string => {
+  const getSampleDir = useCallback((name: string): string => {
     if (isFloatingTask) {
       return `后厨特殊任务/${name}`
     }
@@ -97,7 +97,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
     }
     
     return `${role}/${taskName}`
-  }
+  }, [isFloatingTask, taskId])
 
   // Load samples
   useEffect(() => {
@@ -110,7 +110,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         let sampleIndex = 1
         let foundSamples = true
         
-        while (foundSamples && sampleIndex <= 20) {
+        while (foundSamples && sampleIndex <= 10) {
           const sample: Sample = { 
             id: `sample-${sampleIndex}`,
             images: [], 
@@ -128,8 +128,8 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
                 hasContent = true
               }
             }
-          } catch (err) {
-            // Silent fail
+          } catch {
+            // Silent fail - expected for missing files
           }
           
           let imgIdx = 1
@@ -190,7 +190,7 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
       
       checkSamples()
     }
-  }, [open, taskName, isFloatingTask, taskId])
+  }, [open, taskName, isFloatingTask, taskId, getSampleDir])
 
   // Camera management
   const stopCamera = useCallback(() => {

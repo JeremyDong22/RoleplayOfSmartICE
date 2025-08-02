@@ -207,7 +207,7 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
         let sampleIndex = 1
         let foundSamples = true
         
-        while (foundSamples && sampleIndex <= 20) {
+        while (foundSamples && sampleIndex <= 10) {
           const sample: Sample = { images: [], text: '' }
           let hasContent = false
           
@@ -223,8 +223,8 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
                   hasContent = true
                 }
               }
-            } catch (err) {
-              // Silent fail
+            } catch {
+              // Silent fail - expected for missing files
             }
           }
           
@@ -273,7 +273,7 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
       
       checkSamples()
     }
-  }, [open, taskName, isFloatingTask])
+  }, [open, taskName, isFloatingTask, getSampleDir])
 
   // Start camera when dialog opens
   useEffect(() => {
