@@ -53,27 +53,6 @@ export default function ListSubmissionDialog({
   const [items, setItems] = useState<ListItem[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Load checklist items from props or sample files
-  useEffect(() => {
-    if (open) {
-      // Extract checklist from samples structure
-      const checklistSample = samples?.samples?.find(s => s.checklist)
-      if (checklistSample?.checklist?.items) {
-        // Use checklist data from samples
-        setItems(
-          checklistSample.checklist.items.map((text: string, index: number) => ({
-            id: `item-${index}`,
-            text,
-            status: 'unchecked' as const,
-          }))
-        )
-      } else if (sampleDir) {
-        // Fallback to loading from sample files
-        loadChecklistItems()
-      }
-    }
-  }, [open, sampleDir, samples, loadChecklistItems])
-
   const loadChecklistItems = async () => {
     if (!sampleDir) return
 
@@ -142,6 +121,27 @@ export default function ListSubmissionDialog({
       setLoading(false)
     }
   }
+
+  // Load checklist items from props or sample files
+  useEffect(() => {
+    if (open) {
+      // Extract checklist from samples structure
+      const checklistSample = samples?.samples?.find(s => s.checklist)
+      if (checklistSample?.checklist?.items) {
+        // Use checklist data from samples
+        setItems(
+          checklistSample.checklist.items.map((text: string, index: number) => ({
+            id: `item-${index}`,
+            text,
+            status: 'unchecked' as const,
+          }))
+        )
+      } else if (sampleDir) {
+        // Fallback to loading from sample files
+        loadChecklistItems()
+      }
+    }
+  }, [open, sampleDir, samples])
 
   const handleItemClick = (itemId: string, newStatus: 'checked' | 'failed') => {
     setItems(prevItems =>
