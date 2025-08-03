@@ -1,5 +1,6 @@
-// Component for displaying notice tasks with comment functionality
+// Component for displaying notice tasks
 // Created for lunch-service and dinner-service periods where notices replace regular tasks
+// Updated: Removed comment functionality, only display notices
 import React from 'react'
 import {
   Paper,
@@ -7,53 +8,23 @@ import {
   Box,
   List,
   ListItem,
-  // ListItemText, // Unused import
   Divider,
-  Button,
   Chip
 } from '@mui/material'
 import {
-  Announcement,
-  Comment,
-  CheckCircle
+  Announcement
 } from '@mui/icons-material'
 import type { TaskTemplate } from '../../utils/workflowParser'
-import NoticeCommentDialog from '../NoticeCommentDialog'
-
-interface NoticeComment {
-  noticeId: string
-  comment: string
-  timestamp: Date
-}
 
 interface NoticeContainerProps {
   notices: TaskTemplate[]
-  noticeComments: NoticeComment[]
-  onComment: (noticeId: string, comment: string) => void
   isServicePeriod?: boolean // 是否为服务时段（午餐/晚餐）
 }
 
 export const NoticeContainer: React.FC<NoticeContainerProps> = ({
   notices,
-  noticeComments,
-  onComment,
   isServicePeriod = false
 }) => {
-  const [noticeCommentDialogOpen, setNoticeCommentDialogOpen] = React.useState(false)
-  const [activeNotice, setActiveNotice] = React.useState<TaskTemplate | null>(null)
-
-  const handleNoticeComment = (notice: TaskTemplate) => {
-    setActiveNotice(notice)
-    setNoticeCommentDialogOpen(true)
-  }
-
-  const handleCommentSubmit = (comment: string) => {
-    if (activeNotice) {
-      onComment(activeNotice.id, comment)
-    }
-    setNoticeCommentDialogOpen(false)
-    setActiveNotice(null)
-  }
 
   if (notices.length === 0) {
     return null
@@ -93,9 +64,6 @@ export const NoticeContainer: React.FC<NoticeContainerProps> = ({
         
         <List disablePadding>
           {notices.map((notice, index) => {
-            const noticeCommentList = noticeComments.filter(c => c.noticeId === notice.id)
-            const hasCommented = noticeCommentList.length > 0
-            
             return (
               <React.Fragment key={notice.id}>
                 {index > 0 && <Divider sx={{ my: 2 }} />}
@@ -105,7 +73,6 @@ export const NoticeContainer: React.FC<NoticeContainerProps> = ({
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'stretch',
-                    backgroundColor: hasCommented ? 'action.hover' : 'transparent',
                     borderRadius: 1,
                     p: 2
                   }}
@@ -119,62 +86,15 @@ export const NoticeContainer: React.FC<NoticeContainerProps> = ({
                       >
                         {notice.title}
                       </Typography>
-                      {hasCommented && (
-                        <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
-                      )}
                     </Box>
                     
                     <Typography 
                       variant="body2" 
                       color="text.secondary" 
                       paragraph
-                      sx={{ mb: 2 }}
                     >
                       {notice.description}
                     </Typography>
-                    
-                    {/* Comments section */}
-                    {noticeCommentList.length > 0 && (
-                      <Box sx={{ 
-                        mt: 2, 
-                        p: 2, 
-                        backgroundColor: 'action.selected',
-                        borderRadius: 1
-                      }}>
-                        <Typography 
-                          variant="caption" 
-                          color="text.secondary" 
-                          fontWeight="medium"
-                          gutterBottom
-                        >
-                          留言记录：
-                        </Typography>
-                        {noticeCommentList.map((comment, idx) => (
-                          <Box key={idx} sx={{ mt: 1 }}>
-                            <Typography variant="body2">
-                              {comment.comment}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {new Date(comment.timestamp).toLocaleTimeString('zh-CN')}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
-                    
-                    {/* Action button */}
-                    <Button
-                      variant={hasCommented ? "outlined" : "contained"}
-                      size="small"
-                      startIcon={<Comment />}
-                      onClick={() => handleNoticeComment(notice)}
-                      sx={{ 
-                        mt: 2,
-                        alignSelf: 'flex-start'
-                      }}
-                    >
-                      {hasCommented ? '添加新留言' : '留言'}
-                    </Button>
                   </Box>
                 </ListItem>
               </React.Fragment>
@@ -182,17 +102,6 @@ export const NoticeContainer: React.FC<NoticeContainerProps> = ({
           })}
         </List>
       </Paper>
-
-      {/* Notice Comment Dialog */}
-      <NoticeCommentDialog
-        open={noticeCommentDialogOpen}
-        notice={activeNotice}
-        onClose={() => {
-          setNoticeCommentDialogOpen(false)
-          setActiveNotice(null)
-        }}
-        onSubmit={handleCommentSubmit}
-      />
     </>
   )
 }

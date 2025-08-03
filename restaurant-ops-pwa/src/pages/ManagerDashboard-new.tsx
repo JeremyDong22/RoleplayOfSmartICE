@@ -145,11 +145,6 @@ interface TaskStatus {
   overdue: boolean
 }
 
-interface NoticeComment {
-  noticeId: string
-  comment: string
-  timestamp: Date
-}
 
 export const ManagerDashboard: React.FC = () => {
   // Check if role is correct
@@ -174,7 +169,6 @@ export const ManagerDashboard: React.FC = () => {
   const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
   const [taskStatuses, setTaskStatuses] = useState<TaskStatus[]>([])
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]) // Tracks ALL completed tasks across all periods
-  const [noticeComments, setNoticeComments] = useState<NoticeComment[]>([])
   const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
   const [isManualClosing, setIsManualClosing] = useState(false)
   const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
@@ -808,29 +802,6 @@ export const ManagerDashboard: React.FC = () => {
     }
   }
   
-  const handleNoticeComment = async (noticeId: string, comment: string) => {
-    if (!currentUserId) return
-    
-    // Submit to Supabase
-    // TODO: submitNoticeResponse uses non-existent table - commenting out
-    // const response = await submitNoticeResponse(currentUserId, noticeId, comment)
-    
-    // Simulate response for now
-    const response = {
-      task_id: noticeId,
-      response_content: comment,
-      created_at: new Date().toISOString()
-    }
-    
-    if (response) {
-      const newComment: NoticeComment = {
-        noticeId: response.task_id,
-        comment: response.response_content,
-        timestamp: new Date(response.created_at || new Date().toISOString())
-      }
-      setNoticeComments(prev => [...prev, newComment])
-    }
-  }
   
   const handleLateSubmit = async (taskId: string, data?: any) => {
     
@@ -1268,10 +1239,8 @@ export const ManagerDashboard: React.FC = () => {
                   period={currentPeriod}
                   tasks={regularTasks}
                   completedTaskIds={completedTaskIds}
-                  noticeComments={noticeComments}
                   testTime={testTime}
                   onComplete={handleTaskComplete}
-                  onComment={handleNoticeComment}
                   // Removed: onLastCustomerLeftLunch - duty tasks auto-assigned
                   onAdvancePeriod={handleAdvancePeriod}
                   onReviewReject={handleReviewReject}
@@ -1280,8 +1249,6 @@ export const ManagerDashboard: React.FC = () => {
                     notices.length > 0 ? (
                       <NoticeContainer
                         notices={notices}
-                        noticeComments={noticeComments}
-                        onComment={handleNoticeComment}
                         isServicePeriod={isServicePeriod}
                       />
                     ) : null
@@ -1342,7 +1309,6 @@ export const ManagerDashboard: React.FC = () => {
                 taskStatuses={taskStatuses}
                 completedTaskIds={completedTaskIds}
                 missingTasks={missingTasks}
-                noticeComments={noticeComments}
                 onLateSubmit={handleLateSubmit}
                 testTime={testTime}
                 role="manager"
