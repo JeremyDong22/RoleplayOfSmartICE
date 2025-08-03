@@ -536,36 +536,6 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
           </>
         )}
         
-        {/* Notice Comments */}
-        {noticeComments.length > 0 && (
-          <>
-            <Typography variant="overline" color="info.main" sx={{ px: 2, mb: 1 }}>
-              运营评论 ({noticeComments.length})
-            </Typography>
-            {noticeComments.map((comment, index) => (
-              <ListItem key={`comment-${index}`} divider sx={{ py: 1.5 }}>
-                <ListItemIcon>
-                  <Comment color="info" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={tasks.find(t => t.id === comment.noticeId)?.title || '未知通知'}
-                  secondary={
-                    <Box>
-                      <Typography variant="body2" component="span">
-                        {comment.comment}
-                      </Typography>
-                      <Typography variant="caption" display="block" color="text.secondary">
-                        {comment.timestamp.toLocaleTimeString()}
-                      </Typography>
-                    </Box>
-                  }
-                />
-              </ListItem>
-            ))}
-            {(missingTasks.length > 0 || regularTasks.length === 0) && <Divider sx={{ my: 2 }} />}
-          </>
-        )}
-        
         {/* Missing Tasks from Previous Periods */}
         {((useDatabase && (dbMissingTasks.length > 0 || dbStats?.previousPeriodsMissing.length)) || (!useDatabase && missingTasks.length > 0)) && (
           <>
@@ -676,7 +646,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         )}
         
         {/* Empty State */}
-        {regularTasks.length === 0 && noticeComments.length === 0 && missingTasks.length === 0 && (
+        {regularTasks.length === 0 && missingTasks.length === 0 && (
           <Box textAlign="center" py={4}>
             <Typography color="text.secondary">
               当前时段无任务
