@@ -1,5 +1,6 @@
 // Main App component with routing and Realtime integration
 // Updated: 2025-07-31 - Added restaurant initialization
+// Updated: 2025-08-03 - Added automatic cache management
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -23,6 +24,8 @@ import NotificationPermission from './components/NotificationPermission/Notifica
 import { PrivateRoute } from './components/PrivateRoute'
 import { initializeRestaurant } from './utils/restaurantSetup'
 import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
+import { initializeCacheManager } from './utils/cacheManager'
+import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
 
 const theme = createTheme({
   palette: {
@@ -104,6 +107,9 @@ function App() {
   const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
+    // 初始化缓存管理器（必须最先执行）
+    initializeCacheManager()
+    
     // 初始化Storage
     initializeStorage()
     
@@ -155,6 +161,7 @@ function App() {
         <DutyManagerProvider>
           <RouterProvider router={router} />
           <NotificationPermission />
+          <CacheManagerUI />
         </DutyManagerProvider>
       </TaskDataProvider>
       <Snackbar 

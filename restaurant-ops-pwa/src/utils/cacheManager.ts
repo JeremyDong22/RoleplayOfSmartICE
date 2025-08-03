@@ -1,0 +1,178 @@
+/**
+ * 缓存管理器 - 自动清理浏览器缓存
+ * Created: 2025-08-03
+ * 
+ * 功能：
+ * 1. 版本控制 - 检测应用版本变化自动清理缓存
+ * 2. 开发模式自动清理
+ * 3. 手动清理功能
+ * 4. HTTP请求缓存控制
+ */
+
+import { initializeHttpInterceptor } from './httpInterceptor'
+
+// 应用版本号 - 每次部署时更新此版本号
+export const APP_VERSION = '1.0.1' // 更新版本号会触发缓存清理
+
+const VERSION_KEY = 'app_version'
+const LAST_CLEANUP_KEY = 'last_cache_cleanup'
+
+/**
+ * 清理所有缓存
+ */
+export async function clearAllCaches(): Promise<void> {
+  console.log('[CacheManager] Starting cache cleanup...')
+  
+  // 1. 清理 localStorage
+  const keysToPreserve = ['supabase.auth.token'] // 保留认证信息
+  const allKeys = Object.keys(localStorage)
+  allKeys.forEach(key => {
+    if (!keysToPreserve.some(preserve => key.includes(preserve))) {
+      localStorage.removeItem(key)
+    }
+  })
+  
+  // 2. 清理 sessionStorage
+  sessionStorage.clear()
+  
+  // 3. 清理 Service Worker 缓存
+  if ('caches' in window) {
+    try {
+      const cacheNames = await caches.keys()
+      await Promise.all(
+        cacheNames.map(cacheName => caches.delete(cacheName))
+      )
+      console.log('[CacheManager] Service Worker caches cleared')
+    } catch (error) {
+      console.error('[CacheManager] Error clearing caches:', error)
+    }
+  }
+  
+  // 4. 注销并重新注册 Service Worker
+  if ('serviceWorker' in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      for (const registration of registrations) {
+        await registration.unregister()
+      }
+      console.log('[CacheManager] Service Workers unregistered')
+      
+      // 重新注册会在页面刷新后自动进行
+    } catch (error) {
+      console.error('[CacheManager] Error managing service workers:', error)
+    }
+  }
+  
+  // 记录清理时间
+  localStorage.setItem(LAST_CLEANUP_KEY, new Date().toISOString())
+  console.log('[CacheManager] Cache cleanup completed')
+}
+
+/**
+ * 检查是否需要清理缓存
+ */
+export async function checkAndClearCacheIfNeeded(): Promise<boolean> {
+  // 1. 检查版本变化
+  const storedVersion = localStorage.getItem(VERSION_KEY)
+  const needsCleanup = storedVersion !== APP_VERSION
+  
+  // 2. 开发环境总是清理缓存
+  const isDevelopment = import.meta.env.DEV
+  
+  if (needsCleanup || isDevelopment) {
+    console.log(`[CacheManager] Cache cleanup needed. Reason: ${
+      isDevelopment ? 'Development mode' : `Version changed from ${storedVersion} to ${APP_VERSION}`
+    }`)
+    
+    await clearAllCaches()
+    
+    // 更新存储的版本号
+    localStorage.setItem(VERSION_KEY, APP_VERSION)
+    
+    return true
+  }
+  
+  return false
+}
+
+/**
+ * 强制刷新页面（清理内存缓存）
+ */
+export function forceRefresh(): void {
+  // 使用 location.reload(true) 强制从服务器重新加载
+  // 注意：现代浏览器中 reload() 的 forceReload 参数已被弃用
+  // 但我们仍然可以通过清理缓存后刷新来达到类似效果
+  window.location.reload()
+}
+
+/**
+ * 添加缓存破坏参数到URL
+ */
+export function addCacheBuster(url: string): string {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${APP_VERSION}&_t=${Date.now()}`
+}
+
+/**
+ * 在开发模式下禁用缓存的 fetch 包装器
+ */
+export async function fetchWithoutCache(url: string, options?: RequestInit): Promise<Response> {
+  const isDevelopment = import.meta.env.DEV
+  
+  const fetchOptions: RequestInit = {
+    ...options,
+    // 在开发模式下禁用缓存
+    ...(isDevelopment && {
+      cache: 'no-store',
+      headers: {
+        ...options?.headers,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
+  }
+  
+  // 在开发模式下添加缓存破坏参数
+  const finalUrl = isDevelopment ? addCacheBuster(url) : url
+  
+  return fetch(finalUrl, fetchOptions)
+}
+
+/**
+ * 初始化缓存管理器
+ */
+export async function initializeCacheManager(): Promise<void> {
+  // 初始化HTTP拦截器（仅在开发模式下）
+  if (import.meta.env.DEV) {
+    initializeHttpInterceptor()
+  }
+  
+  // 检查并清理缓存
+  const cleaned = await checkAndClearCacheIfNeeded()
+  
+  if (cleaned) {
+    console.log('[CacheManager] Page will refresh after cache cleanup...')
+    // 给一点时间让清理操作完成
+    setTimeout(() => {
+      forceRefresh()
+    }, 100)
+  }
+  
+  // 监听版本更新事件（可以通过 WebSocket 或轮询实现）
+  // 这里提供一个简单的示例
+  if (import.meta.env.DEV) {
+    console.log('[CacheManager] Development mode: Cache will be cleared on every page load')
+  }
+}
+
+// 导出一个全局函数供调试使用
+if (typeof window !== 'undefined') {
+  (window as any).clearAppCache = async () => {
+    await clearAllCaches()
+    console.log('Cache cleared! Refreshing page...')
+    setTimeout(() => forceRefresh(), 100)
+  }
+  
+  console.log('[CacheManager] Debug function available: window.clearAppCache()')
+}
