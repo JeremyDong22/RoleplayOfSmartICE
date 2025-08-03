@@ -1,6 +1,7 @@
 // Main App component with routing and Realtime integration
 // Updated: 2025-07-31 - Added restaurant initialization
 // Updated: 2025-08-03 - Added automatic cache management
+// Updated: 2025-08-04 - Added force clear cache button
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -26,6 +27,7 @@ import { initializeRestaurant } from './utils/restaurantSetup'
 import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
 import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
+import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton'
 
 const theme = createTheme({
   palette: {
@@ -162,6 +164,7 @@ function App() {
           <RouterProvider router={router} />
           <NotificationPermission />
           <CacheManagerUI />
+          <ClearCacheButton />
         </DutyManagerProvider>
       </TaskDataProvider>
       <Snackbar 

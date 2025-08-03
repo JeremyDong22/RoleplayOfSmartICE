@@ -46,3 +46,4 @@ dist-ssr
 .env.*
 !.env.example
 node_modules
+worktrees/
