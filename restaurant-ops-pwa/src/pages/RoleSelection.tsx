@@ -45,18 +45,17 @@ export const RoleSelection = () => {
   }
 
   return (
-    <Container maxWidth="lg">
+    <Container maxWidth="lg" sx={{ overflow: 'visible', height: 'auto' }}>
       <Box
         sx={{
-          height: '100vh',
-          maxHeight: '100vh',
+          minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           py: { xs: 1, sm: 2, md: 3 },
           px: { xs: 1, sm: 2 },
-          overflow: 'hidden',
+          overflow: 'auto',
           position: 'relative'
         }}
       >
@@ -138,7 +137,7 @@ export const RoleSelection = () => {
             maxWidth: 1200,
             width: '100%',
             flex: 1,
-            overflow: 'hidden'
+            overflow: 'visible'
           }}
         >
           <Box sx={{ flex: 1 }}>
