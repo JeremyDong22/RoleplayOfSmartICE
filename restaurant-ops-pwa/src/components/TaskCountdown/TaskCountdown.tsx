@@ -110,10 +110,8 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const [audioDialogOpen, setAudioDialogOpen] = useState(false)
   const [textDialogOpen, setTextDialogOpen] = useState(false)
   const [listDialogOpen, setListDialogOpen] = useState(false)
-  const [noticeCommentDialogOpen, setNoticeCommentDialogOpen] = useState(false)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [activeTask, setActiveTask] = useState<TaskTemplate | null>(null)
-  const [activeNotice, setActiveNotice] = useState<TaskTemplate | null>(null)
   
   // Track submitting tasks to show loading state
   const [submittingTaskIds, setSubmittingTaskIds] = useState<Set<string>>(new Set())
@@ -892,24 +890,6 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           }}
         />
       )}
-      
-      {/* Notice Comment Dialog */}
-      <NoticeCommentDialog
-        open={noticeCommentDialogOpen && !!activeNotice}
-        noticeTitle={activeNotice?.title || ''}
-        noticeId={activeNotice?.id || ''}
-        existingComments={activeNotice ? noticeComments.filter(c => c.noticeId === activeNotice.id) : []}
-        onClose={() => {
-          setNoticeCommentDialogOpen(false)
-          setActiveNotice(null)
-        }}
-        onSubmit={(comment) => {
-          if (activeNotice) {
-            onComment(activeNotice.id, comment)
-            // Don't close dialog after submit to allow multiple comments
-          }
-        }}
-      />
       
       {/* Review Task Dialog */}
       {activeTask && (
