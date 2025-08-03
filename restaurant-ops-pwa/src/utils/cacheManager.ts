@@ -76,13 +76,12 @@ export async function checkAndClearCacheIfNeeded(): Promise<boolean> {
   const storedVersion = localStorage.getItem(VERSION_KEY)
   const needsCleanup = storedVersion !== APP_VERSION
   
-  // 2. 开发环境总是清理缓存
+  // 2. 开发环境下，只有在版本变化时才清理缓存
+  // 避免每次页面加载都清理缓存导致的无限刷新
   const isDevelopment = import.meta.env.DEV
   
-  if (needsCleanup || isDevelopment) {
-    console.log(`[CacheManager] Cache cleanup needed. Reason: ${
-      isDevelopment ? 'Development mode' : `Version changed from ${storedVersion} to ${APP_VERSION}`
-    }`)
+  if (needsCleanup) {
+    console.log(`[CacheManager] Cache cleanup needed. Version changed from ${storedVersion} to ${APP_VERSION}`)
     
     await clearAllCaches()
     
@@ -90,6 +89,16 @@ export async function checkAndClearCacheIfNeeded(): Promise<boolean> {
     localStorage.setItem(VERSION_KEY, APP_VERSION)
     
     return true
+  }
+  
+  // 开发模式下只清理缓存但不触发刷新
+  if (isDevelopment) {
+    console.log('[CacheManager] Development mode: Clearing caches without refresh')
+    await clearAllCaches()
+    // 更新版本号以防止下次加载时再次清理
+    localStorage.setItem(VERSION_KEY, APP_VERSION)
+    // 返回 false 以避免触发页面刷新
+    return false
   }
   
   return false
@@ -143,6 +152,10 @@ export async function fetchWithoutCache(url: string, options?: RequestInit): Pro
  * 初始化缓存管理器
  */
 export async function initializeCacheManager(): Promise<void> {
+  // 暂时禁用自动缓存刷新逻辑，避免无限刷新问题
+  console.log('[CacheManager] Auto cache refresh disabled for debugging')
+  return
+  
   // 初始化HTTP拦截器（仅在开发模式下）
   if (import.meta.env.DEV) {
     initializeHttpInterceptor()
