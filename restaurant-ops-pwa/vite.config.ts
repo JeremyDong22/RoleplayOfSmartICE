@@ -12,6 +12,12 @@ export default defineConfig({
     hmr: {
       port: 5173,
       host: 'localhost'
+    },
+    // 开发服务器禁用缓存
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
     }
   },
   plugins: [
