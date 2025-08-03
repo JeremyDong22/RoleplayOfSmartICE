@@ -44,16 +44,10 @@ import {
 } from '@mui/icons-material'
 import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
 
-interface NoticeComment {
-  noticeId: string
-  comment: string
-  timestamp: Date
-}
 import useEmblaCarousel from 'embla-carousel-react'
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
-import NoticeCommentDialog from '../NoticeCommentDialog'
 import ListSubmissionDialog from '../ListSubmissionDialog'
 import { ReviewTaskDialog } from '../ReviewTaskDialog/ReviewTaskDialog'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
@@ -67,12 +61,11 @@ interface TaskCountdownProps {
   period: WorkflowPeriod
   tasks: TaskTemplate[]
   completedTaskIds: string[]
-  noticeComments: NoticeComment[]
   testTime?: Date
   onComplete: (taskId: string, data: any) => void
-  onComment: (noticeId: string, comment: string) => void
   // Removed: onLastCustomerLeft and onLastCustomerLeftLunch - duty tasks now auto-assigned
   // Removed: onClosingComplete - moved to ManagerDashboard as separate component
+  // Removed: noticeComments and onComment - notice reply UI removed
   onAdvancePeriod?: () => void
   onReviewReject?: (taskId: string, reason: string) => void
   hideTimer?: boolean  // 新增: 隐藏倒计时器
@@ -91,11 +84,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   period,
   tasks,
   completedTaskIds,
-  noticeComments,
   testTime,
   onComplete,
-  onComment,
-  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch, onClosingComplete
+  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch, onClosingComplete, noticeComments, onComment
   onAdvancePeriod,
   onReviewReject,
   hideTimer = false,

@@ -45,18 +45,11 @@ interface TaskStatus {
   overdue: boolean
 }
 
-interface NoticeComment {
-  noticeId: string
-  comment: string
-  timestamp: Date
-}
-
 interface TaskSummaryProps {
   tasks: TaskTemplate[]
   taskStatuses: TaskStatus[]
   completedTaskIds: string[]  // Add this for accurate completion tracking
   missingTasks?: { task: TaskTemplate; periodName: string }[]
-  noticeComments: NoticeComment[]
   onLateSubmit: (taskId: string, data?: any) => Promise<void>
   testTime?: Date
   role?: 'manager' | 'chef' | 'duty_manager'
@@ -69,7 +62,6 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   taskStatuses,
   completedTaskIds,
   missingTasks = [],
-  noticeComments,
   onLateSubmit,
   testTime,
   role = 'manager',

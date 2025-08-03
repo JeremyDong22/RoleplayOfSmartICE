@@ -137,11 +137,6 @@ interface TaskStatus {
   overdue: boolean
 }
 
-interface NoticeComment {
-  noticeId: string
-  comment: string
-  timestamp: Date
-}
 
 export const ChefDashboard: React.FC = () => {
   // Check if role is correct - keep this for navigation only
@@ -165,7 +160,6 @@ export const ChefDashboard: React.FC = () => {
     const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
     const [taskStatuses, setTaskStatuses] = useState<TaskStatus[]>([])
     const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]) // Tracks ALL completed tasks across all periods
-    const [noticeComments, setNoticeComments] = useState<NoticeComment[]>([])
     const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
     const [isManualClosing, setIsManualClosing] = useState(false)
     const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
@@ -639,16 +633,6 @@ export const ChefDashboard: React.FC = () => {
     }
   }
   
-  const handleNoticeComment = (noticeId: string, comment: string) => {
-    const newComment: NoticeComment = {
-      noticeId,
-      comment,
-      timestamp: testTime || new Date()
-    }
-    setNoticeComments(prev => [...prev, newComment])
-    
-    // TODO: Send comment to backend
-  }
   
   const handleLateSubmit = async (taskId: string, data?: any) => {
     console.log('[ChefDashboard] handleLateSubmit called:', { taskId, data, currentUserId })
@@ -912,10 +896,8 @@ export const ChefDashboard: React.FC = () => {
                   period={currentPeriod}
                   tasks={currentTasks}
                   completedTaskIds={completedTaskIds}
-                  noticeComments={noticeComments}
                   testTime={testTime}
                   onComplete={handleTaskComplete}
-                  onComment={handleNoticeComment}
                   // Removed: onLastCustomerLeft - duty tasks auto-assigned
                   onClosingComplete={undefined} // Chef doesn't need closing button in TaskCountdown
                   onAdvancePeriod={handleAdvancePeriod}
@@ -923,8 +905,6 @@ export const ChefDashboard: React.FC = () => {
                     notices.length > 0 ? (
                       <NoticeContainer
                         notices={notices}
-                        noticeComments={noticeComments}
-                        onComment={handleNoticeComment}
                         isServicePeriod={isServicePeriod}
                       />
                     ) : null
@@ -976,7 +956,6 @@ export const ChefDashboard: React.FC = () => {
                 taskStatuses={taskStatuses}
                 completedTaskIds={completedTaskIds}
                 missingTasks={missingTasks}
-                noticeComments={noticeComments}
                 onLateSubmit={handleLateSubmit}
                 testTime={testTime}
                 role="chef"
