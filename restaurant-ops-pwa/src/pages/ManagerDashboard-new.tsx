@@ -1046,12 +1046,12 @@ export const ManagerDashboard: React.FC = () => {
       // 移除了对floating tasks的检查，因为它们不是强制性的
       
       // Always check database state to see if we can close
-      const restaurantId = getRestaurantId()
+      const restaurantId = await getRestaurantId()
       if (restaurantId && currentUserId) {
-      const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
-      
-      // Always validate, regardless of the state's canManualClose flag
-      const { canClose, reason } = await validateCanClose(restaurantId)
+        const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
+        
+        // Always validate, regardless of the state's canManualClose flag
+        const { canClose, reason } = await validateCanClose(restaurantId)
       
       if (!canClose) {
         alert(reason || '还有未完成的必要任务，无法进行闭店操作。')
