@@ -381,8 +381,9 @@ export const ManagerDashboard: React.FC = () => {
         } else {
           // No current period from database - we're in waiting state
           setCurrentPeriod(null)
-          const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
-          setNextPeriod(openingPeriod || null)
+          // Calculate next period based on current time
+          const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+          setNextPeriod(next)
         }
       } else {
         // No database state available yet
