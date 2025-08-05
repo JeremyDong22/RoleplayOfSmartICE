@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase'
 import { getCurrentTestTime } from '../utils/globalTestTime'
+import { getLocalDateString } from '../utils/dateFormat'
 
 export interface TaskSummaryStats {
   currentPeriodTasks: {
@@ -39,7 +40,8 @@ export async function getTaskSummaryStats(
   currentTime?: Date
 ): Promise<TaskSummaryStats> {
   const now = currentTime || new Date()
-  const today = now.toISOString().split('T')[0]
+  // 使用统一的日期格式化函数
+  const today = getLocalDateString(now)
   
   try {
     // 1. 获取今天所有已提交/完成的任务记录
@@ -89,9 +91,11 @@ export async function getTaskSummaryStats(
     
     // 2. 获取所有任务定义
     // 直接使用传入的 role 参数，它应该已经是正确的值（'manager', 'chef', 或 'duty_manager'）
+    // Updated: 2025-08-04 - Fetch restaurant-specific tasks
     const { data: taskDefs, error: defsError } = await supabase
       .from('roleplay_tasks')
       .select('id, title, description, period_id, role_code, is_notice, is_floating, submission_type')
+      .eq('restaurant_id', restaurantId)
       .eq('role_code', role)
     
     if (defsError) throw defsError
@@ -134,9 +138,11 @@ export async function getTaskSummaryStats(
     }
     
     // 5. 从数据库获取期间数据
+    // Updated: 2025-08-04 - Added restaurant-specific period fetching
     const { data: workflowPeriods, error: periodsError } = await supabase
       .from('roleplay_workflow_periods')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('display_order')
     
     if (periodsError) {
@@ -144,7 +150,7 @@ export async function getTaskSummaryStats(
       throw periodsError
     }
     
-    // 计算当前时段
+    // 直接使用本地时间计算当前时段（在中国就是北京时间）
     const currentHour = now.getHours()
     const currentMinute = now.getMinutes()
     const currentTimeInMinutes = currentHour * 60 + currentMinute
@@ -194,11 +200,34 @@ export async function getTaskSummaryStats(
     workflowPeriods.forEach(period => {
       // 检查时段是否已经开始
       const [startHour, startMinute] = period.start_time.split(':').map(Number)
-      const periodStart = new Date(now)
-      periodStart.setHours(startHour, startMinute, 0, 0)
+      const [endHour, endMinute] = period.end_time.split(':').map(Number)
+      const periodStartMinutes = startHour * 60 + startMinute
+      const periodEndMinutes = endHour * 60 + endMinute
       
-      // 只检查已经开始且不是当前时段的时段
-      if (now >= periodStart && period.id !== currentPeriod?.id) {
+      // 判断时段是否已经结束
+      let periodEnded = false
+      if (period.id !== currentPeriod?.id) {
+        if (periodEndMinutes > periodStartMinutes) {
+          // 同一天的时段（如 10:00-14:00）
+          periodEnded = currentTimeInMinutes >= periodEndMinutes
+        } else {
+          // 跨日时段（如 closing: 21:30-08:00）
+          // 时段结束的条件：当前时间在凌晨且已过结束时间（08:00）
+          if (currentTimeInMinutes < periodEndMinutes) {
+            // 凌晨时间（00:00-08:00），closing时段可能已结束
+            periodEnded = true
+          } else if (currentTimeInMinutes < periodStartMinutes) {
+            // 白天时间（08:00-21:30），closing时段还未开始
+            periodEnded = false
+          } else {
+            // 晚上时间（21:30-24:00），closing时段进行中
+            periodEnded = false
+          }
+        }
+      }
+      
+      // 只检查已经结束且不是当前时段的时段
+      if (periodEnded && period.id !== currentPeriod?.id) {
         // 跳过厨师的收尾时段
         if (role === 'chef' && period.id === 'closing') return
         
@@ -232,12 +261,33 @@ export async function getTaskSummaryStats(
     
     workflowPeriods.forEach(period => {
       const [startHour, startMinute] = period.start_time.split(':').map(Number)
-      const periodStart = new Date(now)
-      periodStart.setHours(startHour, startMinute, 0, 0)
+      const [endHour, endMinute] = period.end_time.split(':').map(Number)
+      const periodStartMinutes = startHour * 60 + startMinute
+      const periodEndMinutes = endHour * 60 + endMinute
       
-      // 包含已开始的时段和当前时段
-      if ((now >= periodStart || period.id === currentPeriod?.id) && 
-          !(role === 'chef' && period.id === 'closing')) {
+      // 判断时段是否已经开始或已经结束
+      let periodStarted = false
+      if (period.id === currentPeriod?.id) {
+        periodStarted = true // 当前时段算作已开始
+      } else {
+        // 判断时段是否已经结束
+        if (periodEndMinutes > periodStartMinutes) {
+          // 同一天的时段
+          periodStarted = currentTimeInMinutes >= periodEndMinutes
+        } else {
+          // 跨日时段（如 closing: 21:30-08:00）
+          if (currentTimeInMinutes < periodEndMinutes) {
+            // 凌晨时间（00:00-08:00），closing时段可能已结束
+            periodStarted = true
+          } else {
+            // 其他时间，closing时段还未结束
+            periodStarted = false
+          }
+        }
+      }
+      
+      // 包含已结束的时段和当前时段
+      if (periodStarted && !(role === 'chef' && period.id === 'closing')) {
         
         const periodTasks = taskDefs.filter(t => 
           t.period_id === period.id && 
@@ -321,7 +371,9 @@ export async function getPeriodTaskDetails(
   periodId: string
 ) {
   const testTime = getCurrentTestTime()
-  const today = (testTime || new Date()).toISOString().split('T')[0]
+  const now = testTime || new Date()
+  // 使用统一的日期格式化函数
+  const today = getLocalDateString(now)
   
   const { data, error } = await supabase
     .from('roleplay_task_records')

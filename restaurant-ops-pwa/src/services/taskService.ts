@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
+import { restaurantConfigService } from './restaurantConfigService'
 import type { TaskTemplate, WorkflowPeriod } from '../utils/workflowParser'
 
 export interface DatabaseTask {
@@ -79,12 +80,22 @@ class TaskService {
 
   /**
    * 加载所有工作流期间
+   * Updated: 2025-08-04 - Added restaurant-specific period loading
    */
   private async loadPeriods(retryCount = 0): Promise<boolean> {
     try {
+      // Get current restaurant ID
+      const restaurantId = await restaurantConfigService.getRestaurantId()
+      
+      if (!restaurantId) {
+        console.error('[TaskService] No restaurant ID available')
+        return false
+      }
+      
       const { data, error } = await supabase
         .from('roleplay_workflow_periods')
         .select('*')
+        .eq('restaurant_id', restaurantId)
         .order('display_order')
 
       if (error) {
@@ -114,12 +125,22 @@ class TaskService {
 
   /**
    * 加载所有任务
+   * Updated: 2025-08-04 - Added restaurant-specific task loading
    */
   private async loadAllTasks(retryCount = 0): Promise<boolean> {
     try {
+      // Get current restaurant ID
+      const restaurantId = await restaurantConfigService.getRestaurantId()
+      
+      if (!restaurantId) {
+        console.error('[TaskService] No restaurant ID available for loading tasks')
+        return false
+      }
+      
       const { data, error } = await supabase
         .from('roleplay_tasks')
         .select('*')
+        .eq('restaurant_id', restaurantId)
         .order('sort_order')
 
       if (error) {

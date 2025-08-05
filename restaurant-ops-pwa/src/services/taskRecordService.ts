@@ -6,6 +6,7 @@
 import { supabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
+import { getLocalDateString } from '../utils/dateFormat'
 
 export interface TaskRecord {
   id?: string
@@ -347,25 +348,29 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
 }> {
   const testTime = getCurrentTestTime()
   const now = testTime || new Date()
-  const today = now.toISOString().split('T')[0]
+  // 使用统一的日期格式化函数
+  const today = getLocalDateString(now)
   
-  // 使用北京时间计算当前时段
-  const beijingTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
-  const currentHour = beijingTime.getHours()
-  const currentMinute = beijingTime.getMinutes()
+  // 直接使用本地时间计算当前时段（在中国就是北京时间）
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
   const currentTimeInMinutes = currentHour * 60 + currentMinute
   
   try {
-    // 1. 获取所有期间定义
+    // 1. 获取餐厅特定的期间定义
+    // Updated: 2025-08-04 - Fetch restaurant-specific periods
     const { data: periods } = await supabase
       .from('roleplay_workflow_periods')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('display_order')
     
     // 2. 获取指定角色的所有任务（包含description和samples）
+    // Updated: 2025-08-04 - Fetch restaurant-specific tasks
     let taskQuery = supabase
       .from('roleplay_tasks')
       .select('id, title, description, role_code, period_id, samples')
+      .eq('restaurant_id', restaurantId)
       .eq('is_active', true)
       .eq('is_notice', false)
       .not('is_floating', 'eq', true)
@@ -378,15 +383,31 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
     
     const { data: allTasks } = await taskQuery
     
-    // 3. 获取今天已完成的任务（包含完成时间）
-    const { data: completedRecords } = await supabase
+    // 3. 获取今天已完成的任务（使用北京时间列）
+    // 重要：需要过滤特定角色的任务，通过关联tasks表来获取role_code
+    let completedQuery = supabase
       .from('roleplay_task_records')
-      .select('task_id, created_at')
+      .select(`
+        task_id, 
+        created_at_beijing,
+        roleplay_tasks!inner (
+          role_code
+        )
+      `)
       .eq('restaurant_id', restaurantId)
       .eq('date', today)
       .eq('review_status', 'approved')
     
-    const completedTaskMap = new Map(completedRecords?.map(r => [r.task_id, r.created_at]) || [])
+    // 只获取指定角色的已完成任务
+    if (role) {
+      completedQuery = completedQuery.eq('roleplay_tasks.role_code', role)
+    } else {
+      completedQuery = completedQuery.in('roleplay_tasks.role_code', ['manager', 'chef', 'duty_manager'])
+    }
+    
+    const { data: completedRecords } = await completedQuery
+    
+    const completedTaskMap = new Map(completedRecords?.map(r => [r.task_id, r.created_at_beijing]) || [])
     const completedTaskIds = new Set(completedTaskMap.keys())
     
     // 4. 找出当前时段
@@ -430,16 +451,22 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       if (period.id !== currentPeriod?.id) {
         // 如果不是当前时段，检查是否已经结束
         if (endInMinutes > startInMinutes) {
-          // 同一天的时段
-          // 如果我们在凌晨（比如closing期间），那么昨天的所有时段都已结束
-          if (currentPeriod?.id === 'closing' && currentTimeInMinutes < 480) { // 480 = 8:00 AM
-            periodEnded = true
-          } else {
-            periodEnded = currentTimeInMinutes >= endInMinutes
-          }
+          // 同一天的时段（如 10:00-14:00）
+          periodEnded = currentTimeInMinutes >= endInMinutes
         } else {
-          // 跨日时段（比如closing: 21:30-08:00）
-          periodEnded = currentTimeInMinutes >= endInMinutes && currentTimeInMinutes < startInMinutes
+          // 跨日时段（如 closing: 21:30-08:00）
+          // 时段结束的条件：当前时间在凌晨且已过结束时间（08:00）
+          // 或者当前时间在前一天且已经是新的一天
+          if (currentTimeInMinutes < endInMinutes) {
+            // 凌晨时间（00:00-08:00），closing时段可能已结束
+            periodEnded = true
+          } else if (currentTimeInMinutes < startInMinutes) {
+            // 白天时间（08:00-21:30），closing时段还未开始
+            periodEnded = false
+          } else {
+            // 晚上时间（21:30-24:00），closing时段进行中
+            periodEnded = false
+          }
         }
       }
       
@@ -455,10 +482,14 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
         continue
       }
       
-      // 对于所有角色，在新的一天开始时（10:00-21:29），跳过closing期间
-      // 因为closing期间（21:30-08:00）跨日，在10:30 AM时它属于昨天的任务
-      if (period.id === 'closing' && currentTimeInMinutes >= 0 && currentTimeInMinutes < 21 * 60 + 30) {
-        continue
+      // 对于所有角色，在新的一天开始时，检查跨日的closing期间
+      // 动态判断基于实际的开始和结束时间
+      if (period.id === 'closing' || period.display_name === '闭店') {
+        // 如果是跨日的closing期间，且当前时间在新一天的开始（10:00）和closing开始时间之间
+        const closingStartMinutes = startInMinutes
+        if (endInMinutes < startInMinutes && currentTimeInMinutes >= 0 && currentTimeInMinutes < closingStartMinutes) {
+          continue
+        }
       }
       
       if (period.id === currentPeriod?.id) {
