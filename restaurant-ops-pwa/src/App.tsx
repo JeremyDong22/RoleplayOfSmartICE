@@ -29,6 +29,10 @@ import { initializeCacheManager } from './utils/cacheManager'
 import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
 import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton'
 
+// CEO Dashboard imports
+import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
+import { DebugAuth } from './pages/DebugAuth'
+
 const theme = createTheme({
   palette: {
     primary: {
@@ -78,6 +82,15 @@ const router = createBrowserRouter([
       </PrivateRoute>
     ),
   },
+  // CEO Dashboard routes
+  {
+    path: '/ceo',
+    element: (
+      <PrivateRoute path="/ceo">
+        <CEODashboard />
+      </PrivateRoute>
+    ),
+  },
   {
     path: '/test-camera',
     element: <TestFloatingCamera />,
@@ -101,6 +114,10 @@ const router = createBrowserRouter([
   {
     path: '/test-realtime-debug',
     element: <TestRealtimeDebug />,
+  },
+  {
+    path: '/debug-auth',
+    element: <DebugAuth />,
   },
 ])
 

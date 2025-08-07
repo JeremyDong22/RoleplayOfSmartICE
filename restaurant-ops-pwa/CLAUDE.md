@@ -257,6 +257,76 @@ The app works without real-time features if needed:
 3. **Error Handling**: Gracefully handle database connection issues
 4. **Performance**: Use caching and batch operations where possible
 
+## CEO Dashboard Features (Updated 2025-08-06)
+
+### Time Period Grouping
+The CEO dashboard now groups tasks by time periods:
+- **开店准备** (10:00-11:00) - Morning preparation tasks
+- **午餐服务** (11:00-14:00) - Lunch service tasks  
+- **晚餐服务** (17:00-21:00) - Dinner service tasks
+- **收市清理** (21:00-22:00) - Closing tasks
+
+Each period shows:
+- Color-coded header with icon
+- Progress bar with period-specific color
+- Expandable/collapsible task list
+- Current period highlighted with border
+- Task completion count
+
+### Task Interaction Features
+- **Clickable task dots**: Click to show preview bubble
+- **Task badges**: Show "迟" for late tasks, "!" for error tasks
+- **Preview bubble**: Shows task summary, click to open full details
+- **Detail dialog**: Full task information with images/checklists
+- **Hover tooltips**: Quick task info on hover
+
+### Mobile Optimizations
+- **2x2 stat cards**: Compact core metrics display
+- **Responsive spacing**: Optimized for touch screens
+- **Full-screen dialogs**: Better mobile viewing experience
+- **Collapsible sections**: Save space on small screens
+- **Touch-friendly targets**: Larger clickable areas
+
+### Visual Improvements
+- **Time period colors**: Morning (yellow), Lunch (green), Dinner (blue), Closing (purple)
+- **Status indicators**: Different icons for completed/late/error states
+- **Animation effects**: Smooth transitions and hover effects
+- **Alert banners**: Top-positioned warnings with restaurant navigation
+
+## CEO Dashboard Features (Updated 2025-08-07)
+
+### Database Structure Improvements Needed
+The database has restaurant-specific periods (e.g., "opening" for restaurant1, "opening-restaurant2" for restaurant2) causing duplicate periods to appear. We need to:
+1. Filter periods by restaurant_id when fetching
+2. Add role_code and department columns to task_records for clearer data relationships
+3. Ensure proper indexing for performance
+
+### Time Period Grouping
+The CEO dashboard now groups tasks by time periods:
+- **开店准备** (10:00-11:00) - Morning preparation tasks
+- **午餐服务** (11:00-14:00) - Lunch service tasks  
+- **晚餐服务** (17:00-21:00) - Dinner service tasks
+- **收市清理** (21:00-22:00) - Closing tasks
+
+Each period shows:
+- Color-coded header with icon (now handles restaurant-specific period IDs)
+- Progress bar with period-specific color
+- Expandable/collapsible task list
+- Current period highlighted with border
+- Task completion count
+
+### Department Filtering (Added 2025-08-07)
+- Filter between 前厅 (Front Office) and 后厨 (Kitchen) departments
+- Duty Manager belongs to 前厅 department
+- Data for both departments loaded simultaneously to avoid re-querying
+- Elegant toggle buttons with department-specific colors
+
+### Database Connection (Added 2025-08-07)
+- CEO dashboard now fetches all data from Supabase in real-time
+- Restaurant-specific period filtering implemented
+- Department-based task filtering with role mapping
+- Automatic alerts generation based on missing/late tasks
+
 ## Stop and talk to me every time if you have confusion or you're not sure that something needs to be done or if you think something needs to be clarified into a better state. For most of the time you will need to search for codebase and make a good clarification of what we should agree on before take off.
 
 ## Be sure to make our codebase clean always after you write and run the test files. Delete those test files also. For SQL scripts and all of the scripts that are unrelated to our project and it's not in use, you should check it every time after you've done the job.
