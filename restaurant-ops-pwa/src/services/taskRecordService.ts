@@ -196,17 +196,35 @@ export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Pr
   const testTime = getCurrentTestTime()
   const today = (testTime || new Date()).toISOString().split('T')[0]
   
+  // 第一步：获取该餐厅的所有值班经理任务ID
+  const { data: dutyManagerTasks, error: tasksError } = await supabase
+    .from('roleplay_tasks')
+    .select('id')
+    .eq('role_code', 'duty_manager')
+    .eq('restaurant_id', restaurantId)
   
+  if (tasksError) {
+    console.error('Error fetching duty manager tasks:', tasksError)
+    return []
+  }
+  
+  const dutyManagerTaskIds = dutyManagerTasks?.map(t => t.id) || []
+  
+  if (dutyManagerTaskIds.length === 0) {
+    return []
+  }
+  
+  // 第二步：查询这些任务今天的已审核通过记录
   const { data, error } = await supabase
     .from('roleplay_task_records')
     .select('task_id, review_status, reviewed_at')
     .eq('restaurant_id', restaurantId)
     .eq('date', today)
     .eq('review_status', 'approved')
-    .like('task_id', '%duty-manager%')
+    .in('task_id', dutyManagerTaskIds)
 
   if (error) {
-    console.error('Error fetching approved duty manager tasks:', error)
+    console.error('Error fetching approved duty manager task records:', error)
     return []
   }
 

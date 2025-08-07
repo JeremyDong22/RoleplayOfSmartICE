@@ -29,12 +29,13 @@ import { NoticeContainer } from '../components/NoticeContainer/NoticeContainer'
 import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../utils/workflowParser'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { useTaskData } from '../contexts/TaskDataContext'
+import { getManualClosingTask } from '../services/taskService'
 import { useDutyManager, type DutyManagerSubmission } from '../contexts/DutyManagerContext'
 // import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
 import notificationService from '../services/notificationService'
-import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuses, getTodayApprovedDutyManagerTasks, validateCanClose, type TaskStatusDetail } from '../services/taskRecordService'
+import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuses, getTodayApprovedDutyManagerTasks, validateCanClose, submitTaskRecord, type TaskStatusDetail } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
 import { authService } from '../services/authService'
@@ -186,10 +187,13 @@ export const ManagerDashboard: React.FC = () => {
   const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
   const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
   
-  // 过滤只显示 Manager 的浮动任务，排除 manual-closing
+  // 过滤只显示 Manager 的浮动任务（已经在service层排除了manual_closing）
   const floatingTasks = allFloatingTasks.filter(task => 
-    task.role === 'Manager' && task.id !== 'manual-closing'
+    task.role === 'Manager'
   )
+  
+  // 获取手动闭店任务（特殊任务，只作为按钮显示）
+  const manualClosingTask = getManualClosingTask('manager')
   
   
   // Load restaurant state from database
@@ -329,7 +333,13 @@ export const ManagerDashboard: React.FC = () => {
           setCurrentPeriod(null)
           // Set next period to opening for display
           const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
-          setNextPeriod(openingPeriod || null)
+          if (openingPeriod) {
+            setNextPeriod(openingPeriod)
+          } else {
+            // If workflowPeriods is not loaded yet, try to get from database
+            const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+            setNextPeriod(next)
+          }
           return
         }
         
@@ -339,7 +349,7 @@ export const ManagerDashboard: React.FC = () => {
           setIsManualClosing(true)
           manualClosingRef.current = true
           // Get closing period
-          const closingPeriod = workflowPeriods.find(p => p.id === 'closing')
+          const closingPeriod = workflowPeriods.length > 0 ? workflowPeriods[workflowPeriods.length - 1] : undefined
           if (closingPeriod) {
             setCurrentPeriod(closingPeriod)
             // Also update next period
@@ -492,7 +502,6 @@ export const ManagerDashboard: React.FC = () => {
         // Reset all task-related states
         setTaskStatuses([])
         setCompletedTaskIds([])
-        setNoticeComments([])
         setMissingTasks([])
         setReviewTasks([])
         
@@ -618,7 +627,8 @@ export const ManagerDashboard: React.FC = () => {
   // Overdue status update effect
   useEffect(() => {
     // Skip event-driven periods as they don't have fixed end times
-    if (!currentPeriod || currentPeriod.isEventDriven || currentPeriod.id === 'closing') return
+    const isLastPeriod = workflowPeriods.length > 0 && currentPeriod?.id === workflowPeriods[workflowPeriods.length - 1].id
+    if (!currentPeriod || currentPeriod.isEventDriven || isLastPeriod) return
     
     const notifiedTasks = new Set<string>() // Track which tasks we've notified about
     
@@ -1036,8 +1046,9 @@ export const ManagerDashboard: React.FC = () => {
       return
     }
     
-    // Check if current period (closing) tasks are all completed
-    if (currentPeriod?.id === 'closing') {
+    // Check if current period (last/closing) tasks are all completed
+    const isClosingPeriod = workflowPeriods.length > 0 && currentPeriod?.id === workflowPeriods[workflowPeriods.length - 1].id
+    if (isClosingPeriod) {
       const uncompletedClosingTasks = currentPeriod.tasks.manager.filter(task => 
         !task.isNotice && !completedTaskIds.includes(task.id)
       )
@@ -1052,19 +1063,28 @@ export const ManagerDashboard: React.FC = () => {
       return
     }
     
-    // Submit manual closing task to database
-    // restaurantId already declared above
-    if (restaurantId && currentUserId) {
-      const success = await restaurantStateService.submitManualClosing(
-        restaurantId,
-        currentUserId,
-        '今日营业结束，手动闭店'
-      )
-      
-      if (!success) {
-        alert('闭店操作失败，请重试。')
+    // Submit manual closing task to database if it exists
+    if (restaurantId && currentUserId && manualClosingTask) {
+      // First check if all tasks are completed
+      const canClose = await restaurantStateService.checkAllTasksCompleted(restaurantId)
+      if (!canClose) {
+        alert('还有任务未完成，请先完成所有任务后再闭店。')
+        setIsCheckingClosure(false)
         return
       }
+      
+      // Record the manual closing task completion
+      await submitTaskRecord({
+        task_id: manualClosingTask.id,
+        user_id: currentUserId,  // Changed from userId to user_id
+        restaurant_id: restaurantId,  // Changed from restaurantId to restaurant_id
+        date: (testTime || new Date()).toISOString().split('T')[0],
+        submission_type: 'text',  // Changed from submissionType to submission_type
+        text_content: '手动闭店确认',
+        status: 'completed',
+        review_status: 'approved',  // Manual closing is auto-approved
+        period_id: workflowPeriods[workflowPeriods.length - 1]?.id  // Last period
+      })
       
       // Reload state after successful submission
       const newState = await restaurantStateService.getCurrentState(restaurantId, testTime)
@@ -1081,7 +1101,6 @@ export const ManagerDashboard: React.FC = () => {
     React.startTransition(() => {
       setTaskStatuses([])
       setCompletedTaskIds([])
-      setNoticeComments([])
       setMissingTasks([])
       setReviewTasks([])
       setIsManualClosing(false)
@@ -1107,52 +1126,13 @@ export const ManagerDashboard: React.FC = () => {
     }
   }
   
-  const handleAdvancePeriod = () => {
-    if (!currentPeriod) return
-    
-    // Find the next period in sequence
-    const currentIndex = workflowPeriods.findIndex(p => p.id === currentPeriod.id)
-    if (currentIndex === -1 || currentIndex >= workflowPeriods.length - 1) return
-    
-    const nextPeriod = workflowPeriods[currentIndex + 1]
-    
-    // Special handling for transitioning to closing (previously was pre-closing)
-    if (nextPeriod.id === 'closing') {
-      // Closing should only be entered when dinner service ends naturally
-      // or through manual advance (representing early end of service)
-    }
-    
-    // Collect uncompleted tasks from current period
-    const uncompletedTasks: { task: TaskTemplate; periodName: string }[] = []
-    currentPeriod.tasks.manager.forEach(task => {
-      if (!task.isNotice && !completedTaskIds.includes(task.id)) {
-        uncompletedTasks.push({
-          task,
-          periodName: currentPeriod.displayName
-        })
-      }
-    })
-    
-    // Add to missing tasks
-    if (uncompletedTasks.length > 0) {
-      setMissingTasks(prev => [...prev, ...uncompletedTasks])
-    }
-    
-    // Set manual advance flag BEFORE updating period
-    setManuallyAdvancedPeriod(nextPeriod.id)
-    manualAdvanceRef.current = nextPeriod.id
-    
-    // Force transition to next period
-    setCurrentPeriod(nextPeriod)
-    setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, testTime))
-  }
+  // Removed: handleAdvancePeriod - advance button removed from UI
 
   // 添加重置任务功能（用于测试）
   const handleResetTasks = useCallback(() => {
     // 清空所有任务相关状态
     setTaskStatuses([])
     setCompletedTaskIds([])
-    setNoticeComments([])
     setMissingTasks([])
     setReviewTasks([])
     setIsManualClosing(false)
@@ -1176,7 +1156,8 @@ export const ManagerDashboard: React.FC = () => {
   // Always append floating tasks at the end
   // Include review tasks for duty manager tasks in closing period
   let baseTasks = currentPeriod?.tasks?.manager || []
-  if (currentPeriod?.id === 'closing') {
+  const isClosingPeriod = workflowPeriods.length > 0 && currentPeriod?.id === workflowPeriods[workflowPeriods.length - 1].id
+  if (isClosingPeriod) {
     baseTasks = [...baseTasks, ...reviewTasks]
   }
   const currentTasks = [...baseTasks, ...floatingTasks]
@@ -1242,7 +1223,7 @@ export const ManagerDashboard: React.FC = () => {
                   testTime={testTime}
                   onComplete={handleTaskComplete}
                   // Removed: onLastCustomerLeftLunch - duty tasks auto-assigned
-                  onAdvancePeriod={handleAdvancePeriod}
+                  // Removed: onAdvancePeriod - advance button removed from UI
                   onReviewReject={handleReviewReject}
                   reviewStatus={reviewStatus}
                   renderNotices={() => 
@@ -1255,14 +1236,14 @@ export const ManagerDashboard: React.FC = () => {
                   }
                 />
                 
-                {/* Show manual closing button in closing period */}
-                {currentPeriod.id === 'closing' && (
+                {/* Show manual closing button in the last period (closing) if the task exists */}
+                {workflowPeriods.length > 0 && currentPeriod.id === workflowPeriods[workflowPeriods.length - 1].id && manualClosingTask && (
                   <Paper elevation={2} sx={{ p: 3, mt: 3, textAlign: 'center' }}>
                     <Typography variant="h6" gutterBottom sx={{ color: 'success.main' }}>
-                      今日营业即将结束
+                      {manualClosingTask.title}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" paragraph>
-                      点击下方按钮进行闭店操作
+                      {manualClosingTask.description}
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
                       系统将自动检查所有任务是否完成
@@ -1286,7 +1267,7 @@ export const ManagerDashboard: React.FC = () => {
                           正在检查...
                         </>
                       ) : (
-                        '确认闭店'
+                        manualClosingTask.title
                       )}
                     </Button>
                   </Paper>

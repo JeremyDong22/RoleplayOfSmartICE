@@ -448,7 +448,7 @@ export const ChefDashboard: React.FC = () => {
       
       setMissingTasks(prev => {
         // Preserve manually added tasks and only update auto-detected ones
-        // Keep all tasks that were manually added (through handleAdvancePeriod)
+        // Keep all tasks that were manually added
         const manuallyAddedTasks = prev.filter(item => {
           // Check if this task's period has not ended naturally yet
           const period = workflowPeriods.find(p => p.displayName === item.periodName)
@@ -764,50 +764,7 @@ export const ChefDashboard: React.FC = () => {
     })
   }
   
-  const handleAdvancePeriod = () => {
-    if (!currentPeriod) return
-    
-    // Find the next period in sequence
-    const currentIndex = workflowPeriods.findIndex(p => p.id === currentPeriod.id)
-    if (currentIndex === -1 || currentIndex >= workflowPeriods.length - 1) return
-    
-    const nextPeriod = workflowPeriods[currentIndex + 1]
-    
-    // Skip closing period for chef
-    if (nextPeriod.id === 'closing') {
-      const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
-      if (openingPeriod) {
-        setIsWaitingForNextDay(true)
-        setCurrentPeriod(null)
-        setNextPeriod(openingPeriod)
-        return
-      }
-    }
-    
-    // Collect uncompleted tasks from current period
-    const uncompletedTasks: { task: TaskTemplate; periodName: string }[] = []
-    currentPeriod.tasks.chef.forEach(task => {
-      if (!task.isNotice && !task.isFloating && !completedTaskIds.includes(task.id)) {
-        uncompletedTasks.push({
-          task,
-          periodName: currentPeriod.displayName
-        })
-      }
-    })
-    
-    // Add to missing tasks
-    if (uncompletedTasks.length > 0) {
-      setMissingTasks(prev => [...prev, ...uncompletedTasks])
-    }
-    
-    // Set manual advance flag BEFORE updating period
-    setManuallyAdvancedPeriod(nextPeriod.id)
-    manualAdvanceRef.current = nextPeriod.id
-    
-    // Force transition to next period
-    setCurrentPeriod(nextPeriod)
-    setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, testTime))
-  }
+  // Removed: handleAdvancePeriod - advance button removed from UI
 
   // 添加重置任务功能（用于测试）
   const handleResetTasks = () => {
@@ -900,7 +857,7 @@ export const ChefDashboard: React.FC = () => {
                   onComplete={handleTaskComplete}
                   // Removed: onLastCustomerLeft - duty tasks auto-assigned
                   onClosingComplete={undefined} // Chef doesn't need closing button in TaskCountdown
-                  onAdvancePeriod={handleAdvancePeriod}
+                  // Removed: onAdvancePeriod - advance button removed from UI
                   renderNotices={() => 
                     notices.length > 0 ? (
                       <NoticeContainer
