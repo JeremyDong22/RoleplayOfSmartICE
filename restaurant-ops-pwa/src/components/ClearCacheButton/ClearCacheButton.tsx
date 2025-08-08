@@ -1,5 +1,7 @@
 // ClearCacheButton component - Force clear browser cache
 // Created: 2025-08-04 - Added button to clear all browser cache and storage
+// Updated: Hide on login and role selection pages
+// Updated: 2025-08-08 - Removed useLocation dependency to work outside Router
 import { useState } from 'react'
 import { IconButton, Tooltip, CircularProgress, Snackbar, Alert } from '@mui/material'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
@@ -8,6 +10,13 @@ export const ClearCacheButton = () => {
   const [isClearing, setIsClearing] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showError, setShowError] = useState(false)
+  
+  // Check current path without using useLocation
+  const currentPath = window.location.pathname
+  const hiddenPaths = ['/', '/role-selection']
+  if (hiddenPaths.includes(currentPath)) {
+    return null
+  }
 
   const handleClearCache = async () => {
     setIsClearing(true)

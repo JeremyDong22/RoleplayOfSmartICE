@@ -1,7 +1,7 @@
 // Role selection page for choosing between Manager, Chef and Duty Manager
 // Updated: 2025-07-24 - Added authentication check for role access
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, Paper, Button, Alert } from '@mui/material'
+import { Box, Container, Typography, Paper, Button, Alert, IconButton } from '@mui/material'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 import NightlightIcon from '@mui/icons-material/Nightlight'
@@ -59,19 +59,27 @@ export const RoleSelection = () => {
           position: 'relative'
         }}
       >
-        {/* Logout button in top-right corner */}
-        <Button
-          variant="outlined"
-          startIcon={<LogoutIcon />}
+        {/* Logout button - icon only, positioned to avoid overlap */}
+        <IconButton
+          color="error"
           onClick={handleLogout}
           sx={{
-            position: 'absolute',
-            top: 20,
-            right: 20
+            position: 'fixed',
+            top: 16,
+            right: 16,
+            zIndex: 1300,
+            backgroundColor: 'background.paper',
+            boxShadow: 2,
+            '&:hover': {
+              backgroundColor: 'error.light',
+              color: 'error.contrastText',
+              boxShadow: 4
+            }
           }}
+          title="退出登录"
         >
-          退出登录
-        </Button>
+          <LogoutIcon />
+        </IconButton>
 
         <Typography 
           variant="h3" 

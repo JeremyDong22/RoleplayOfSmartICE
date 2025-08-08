@@ -26,6 +26,7 @@ import { uploadPhoto } from '../services/storageService'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
 import { restaurantConfigService } from '../services/restaurantConfigService'
+import { isClosingPeriod } from '../utils/periodHelpers'
 
 interface NoticeComment {
   noticeId: string
@@ -235,8 +236,8 @@ const DutyManagerDashboard: React.FC = () => {
     }
     
     // 获取当前时段（使用已经计算好的currentPeriod状态）
-    // 如果当前是闭店时段（22:00-23:30），自动加载值班经理任务
-    if (currentPeriod && currentPeriod.id === 'closing') {
+    // 使用工具函数判断是否为闭店时段（收市与打烊）
+    if (isClosingPeriod(currentPeriod)) {
       // 获取闭店时段的值班经理任务
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
       
