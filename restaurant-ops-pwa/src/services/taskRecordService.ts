@@ -30,8 +30,6 @@ export interface TaskRecord {
 
 // 提交任务（包括值班经理任务）
 export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
-  console.log('[TaskRecordService] submitTaskRecord called with:', taskData);
-  
   // Check if user_id is already provided in taskData
   if (!taskData.user_id) {
     throw new Error('user_id is required in taskData')
@@ -66,8 +64,6 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     record.reviewed_at = new Date().toISOString()
   }
   
-  console.log('[TaskRecordService] Inserting record:', record);
-
   const { data, error } = await supabase
     .from('roleplay_task_records')
     .insert(record)
@@ -75,11 +71,9 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     .single()
 
   if (error) {
-    console.error('[TaskRecordService] Database insert error:', error);
     throw error
   }
   
-  console.log('[TaskRecordService] Insert successful:', data);
   return data
 }
 
@@ -185,7 +179,6 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
     .in('status', ['submitted', 'completed'])
 
   if (error) {
-    console.error('Error fetching today completed tasks:', error)
     return []
   }
 
@@ -205,7 +198,6 @@ export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Pr
     .eq('restaurant_id', restaurantId)
   
   if (tasksError) {
-    console.error('Error fetching duty manager tasks:', tasksError)
     return []
   }
   
@@ -225,7 +217,6 @@ export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Pr
     .in('task_id', dutyManagerTaskIds)
 
   if (error) {
-    console.error('Error fetching approved duty manager task records:', error)
     return []
   }
 
@@ -247,7 +238,6 @@ export async function getCompletedTasksInRange(
     .in('status', ['submitted', 'completed'])
 
   if (error) {
-    console.error('Error fetching completed tasks in range:', error)
     return []
   }
 
@@ -332,7 +322,6 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
     .eq('date', today)
   
   if (error) {
-    console.error('Error fetching task statuses:', error)
     return []
   }
   
@@ -400,7 +389,13 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       taskQuery = taskQuery.in('role_code', ['manager', 'chef', 'duty_manager'])
     }
     
-    const { data: allTasks } = await taskQuery
+    const { data: allTasks, error: taskError } = await taskQuery
+    
+    console.log('[getRealTimeCompletionRate] 查询到的任务:', {
+      role,
+      totalTaskCount: allTasks?.length || 0,
+      dutyManagerTasks: allTasks?.filter(t => t.role_code === 'duty_manager') || []
+    })
     
     // 3. 获取今天已完成的任务（使用北京时间列）
     // 重要：需要过滤特定角色的任务，通过关联tasks表来获取role_code
@@ -451,12 +446,24 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       }
     }
     
+    console.log('[getRealTimeCompletionRate] 当前时段:', {
+      currentTime: `${currentHour}:${currentMinute}`,
+      currentPeriod: currentPeriod ? {
+        id: currentPeriod.id,
+        name: currentPeriod.name,
+        display_name: currentPeriod.display_name,
+        start_time: currentPeriod.start_time,
+        end_time: currentPeriod.end_time
+      } : null
+    })
+    
     // 5. 分类任务
     const missingTasks: Array<{ id: string; title: string; role: string; period: string; periodName?: string }> = []
     const currentPeriodPending: Array<{ id: string; title: string; description?: string }> = []
     const currentPeriodCompleted: Array<{ id: string; title: string; completedAt?: string }> = []
     let totalTasksDue = 0
     let totalTasksCompleted = 0
+    
     
     // 对每个period检查
     for (const period of periods || []) {
@@ -496,34 +503,49 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       // 获取这个period的任务
       const periodTasks = (allTasks || []).filter(task => task.period_id === period.id)
       
+      if (period.name === '收市与打烊' && role === 'duty_manager') {
+        console.log('[getRealTimeCompletionRate] 闭店时段的值班经理任务:', {
+          periodId: period.id,
+          periodName: period.name,
+          periodTaskCount: periodTasks.length,
+          periodTasks: periodTasks.map(t => ({ id: t.id, title: t.title, role: t.role_code }))
+        })
+      }
+      
       // 厨师跳过closing期间
       if (role === 'chef' && isClosingPeriod(period)) {
         continue
       }
       
-      // 对于所有角色，在新的一天开始时，检查跨日的closing期间
-      // 动态判断基于实际的开始和结束时间
-      if (isClosingPeriod(period) || period.display_name === '闭店') {
-        // 如果是跨日的closing期间，且当前时间在新一天的开始（10:00）和closing开始时间之间
-        const closingStartMinutes = startInMinutes
-        if (endInMinutes < startInMinutes && currentTimeInMinutes >= 0 && currentTimeInMinutes < closingStartMinutes) {
+      // 对于duty_manager，不要跳过闭店期间
+      // 只有其他角色在新的一天开始时才跳过
+      if (role !== 'duty_manager' && (isClosingPeriod(period) || period.display_name === '闭店')) {
+        // 如果是跨日的closing期间（21:30-08:00），需要特殊处理
+        const closingStartMinutes = startInMinutes // 21:30 = 1290 minutes
+        const closingEndMinutes = endInMinutes // 08:00 = 480 minutes
+        
+        // 如果当前时间在08:00之后且在21:30之前，说明闭店期间已结束或未开始
+        if (currentTimeInMinutes >= closingEndMinutes && currentTimeInMinutes < closingStartMinutes) {
+          console.log('[getRealTimeCompletionRate] 跳过闭店期间 - 不在时段内', {
+            currentTimeInMinutes,
+            closingEndMinutes,
+            closingStartMinutes,
+            role
+          })
           continue
         }
       }
       
-      // Debug log for duty manager
-      if (role === 'duty_manager' && period.id === currentPeriod?.id) {
-        console.log('[getRealTimeCompletionRate] Duty Manager Current Period Tasks:', {
-          periodId: period.id,
-          periodName: period.name,
-          periodTasks: periodTasks.map(t => ({ id: t.id, title: t.title })),
-          completedTaskIds: Array.from(completedTaskIds),
-          isCurrentPeriod: true
-        })
-      }
       
       if (period.id === currentPeriod?.id) {
         // 当前时段：分类到待完成和已完成
+        console.log('[getRealTimeCompletionRate] 处理当前时段任务:', {
+          periodId: period.id,
+          periodName: period.name,
+          periodTaskCount: periodTasks.length,
+          isCurrentPeriod: true
+        })
+        
         for (const task of periodTasks) {
           totalTasksDue++
           if (completedTaskIds.has(task.id)) {
@@ -566,7 +588,17 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
       : 0
     
-    // Debug logging removed to prevent console spam
+    // Debug for duty manager only
+    if (role === 'duty_manager') {
+      console.log('[getRealTimeCompletionRate] 值班经理最终结果:', {
+        totalTasksDue,
+        totalTasksCompleted,
+        completionRate,
+        currentPeriodPending,
+        currentPeriodCompleted,
+        missingTasks
+      })
+    }
     
     return {
       totalTasks: totalTasksDue,
@@ -579,7 +611,6 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       }
     }
   } catch (error) {
-    console.error('Error getting real-time completion rate:', error)
     return {
       totalTasks: 0,
       completedTasks: 0,

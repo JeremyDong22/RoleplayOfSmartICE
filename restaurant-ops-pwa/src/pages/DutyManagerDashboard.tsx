@@ -119,7 +119,6 @@ const DutyManagerDashboard: React.FC = () => {
         const resetKey = `${currentDateStr}-22:30`
         
         if (lastResetStr !== resetKey) {
-          console.log('[DutyManager] 晚上10:30 - 执行闭店重置')
           // 清空所有任务状态
           clearTrigger()
           setState({
@@ -143,7 +142,6 @@ const DutyManagerDashboard: React.FC = () => {
         const resetKey = `${currentDateStr}-8:00`
         
         if (lastResetStr !== resetKey) {
-          console.log('[DutyManager] 早上8:00 - 新一天开始，清空昨日任务')
           // 清空所有任务状态，准备新的一天
           clearTrigger()
           setState({
@@ -175,7 +173,6 @@ const DutyManagerDashboard: React.FC = () => {
     const loadTaskStatusesFromDB = async () => {
       try {
         // 移除 localStorage 恢复逻辑 - 完全从数据库加载
-        console.log('[DutyManager] 从数据库加载任务状态')
         
         const currentUser = authService.getCurrentUser()
         if (!currentUser) {
@@ -219,7 +216,6 @@ const DutyManagerDashboard: React.FC = () => {
 
         setIsInitialized(true)
       } catch (error) {
-        console.error('[DutyManagerDashboard] Failed to load from database:', error)
         setIsInitialized(true)
       }
     }
@@ -239,35 +235,40 @@ const DutyManagerDashboard: React.FC = () => {
     // 只在初始化完成后执行
     if (!isInitialized) return
     
-    // 获取当前时段（使用已经计算好的currentPeriod状态）
-    // 使用工具函数判断是否为闭店时段（收市与打烊）
-    console.log('[DutyManager] Current period:', currentPeriod?.name, currentPeriod?.id)
-    console.log('[DutyManager] Is closing period?', isClosingPeriod(currentPeriod))
-    console.log('[DutyManager] Current state:', {
-      activeTasks: state.activeTasks.length,
-      isWaitingForTrigger: state.isWaitingForTrigger
-    })
-    
     // 如果是闭店时段，总是尝试加载任务（不管是否已有任务）
     if (isClosingPeriod(currentPeriod)) {
+      console.log('[DutyManager] 当前是闭店时段，检查值班经理任务', {
+        currentPeriod,
+        tasks: currentPeriod.tasks
+      })
+      
       // 获取闭店时段的值班经理任务
-      console.log('[DutyManager] Current period tasks structure:', currentPeriod.tasks)
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
-      console.log('[DutyManager] Found duty tasks:', dutyTasks.length, dutyTasks)
+      
+      console.log('[DutyManager] 找到的值班经理任务:', dutyTasks)
       
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
       const closingTasks = dutyTasks.filter((task: any) => {
-        const includeTask = task.role === 'DutyManager' && 
-                           task.uploadRequirement !== '审核'
-        console.log('[DutyManager] Checking task:', task.title, 'role:', task.role, 'include:', includeTask)
-        return includeTask
+        return task.role === 'DutyManager' && task.uploadRequirement !== '审核'
       })
       
+      console.log('[DutyManager] 过滤后的任务:', closingTasks)
+      
       if (closingTasks.length > 0) {
-        console.log('[DutyManager] Loading closing period tasks:', closingTasks.length, 'tasks')
         setState(prev => ({
           ...prev,
           activeTasks: closingTasks,
+          isWaitingForTrigger: false,
+          currentTrigger: 'last-customer-left-dinner',
+          targetPeriod: currentPeriod,
+          isInClosingPeriod: true,
+        }))
+      } else if (dutyTasks.length > 0) {
+        // 如果有任务但都被过滤掉了，也要设置状态以显示界面
+        console.log('[DutyManager] 设置任务（即使被过滤）')
+        setState(prev => ({
+          ...prev,
+          activeTasks: dutyTasks,
           isWaitingForTrigger: false,
           currentTrigger: 'last-customer-left-dinner',
           targetPeriod: currentPeriod,
@@ -297,7 +298,6 @@ const DutyManagerDashboard: React.FC = () => {
       // 立即提交到Context，任务进入待审核状态
       const task = state.activeTasks.find(t => t.id === taskId)
       if (task) {
-      console.log('[DutyManager] Submitting task:', taskId)
       
       // 处理照片数据格式
       let photos = []
@@ -313,9 +313,6 @@ const DutyManagerDashboard: React.FC = () => {
       // 数据可能在 data.photoGroups 或 data.evidence.photoGroups 中
       const photoGroupsData = data.photoGroups || (data.evidence && data.evidence.photoGroups) || null
       
-      console.log('[DutyManager] Raw submission data:', data)
-      console.log('[DutyManager] Evidence data:', data.evidence)
-      console.log('[DutyManager] PhotoGroups data:', photoGroupsData)
       
       if (photoGroupsData && Array.isArray(photoGroupsData)) {
         // 上传每个照片组的照片
@@ -328,7 +325,6 @@ const DutyManagerDashboard: React.FC = () => {
               if (result) {
                 uploadedUrls.push(result.publicUrl)
               } else {
-                console.error('Failed to upload photo to Storage')
                 throw new Error('Photo upload failed')
               }
             } else {
@@ -344,12 +340,6 @@ const DutyManagerDashboard: React.FC = () => {
         }
         photoGroups = uploadedPhotoGroups
         photos = uploadedPhotoUrls
-        console.log('[DutyManager] After processing photoGroups format:', {
-          photoGroups,
-          photos,
-          uploadedPhotoGroups,
-          uploadedPhotoUrls
-        })
       } else if ((data.evidence && Array.isArray(data.evidence)) || 
                  (data.evidence && data.evidence.evidence && Array.isArray(data.evidence.evidence))) {
         // 处理两种情况：直接的 evidence 数组，或嵌套在 data.evidence.evidence 中的数组
@@ -376,7 +366,6 @@ const DutyManagerDashboard: React.FC = () => {
               if (result) {
                 uploadedUrls.push(result.publicUrl)
               } else {
-                console.error('Failed to upload photo to Storage')
                 throw new Error('Photo upload failed')
               }
             } else {
@@ -438,15 +427,6 @@ const DutyManagerDashboard: React.FC = () => {
           sampleIndex: 0,
           comment: '',
         }]
-      } else {
-        // 没有找到任何照片数据
-        console.warn('[DutyManager] No photo data found in submission:', {
-          hasPhotoGroups: !!data.photoGroups,
-          hasEvidence: !!data.evidence,
-          hasPhotos: !!data.photos,
-          dataKeys: Object.keys(data),
-          fullData: data
-        })
       }
       
       const submission = {
@@ -461,14 +441,6 @@ const DutyManagerDashboard: React.FC = () => {
         },
       }
       
-      console.log('[DutyManager] Photo upload complete, sending submission')
-      console.log('[DutyManager] Submission data:', {
-        taskId: submission.taskId,
-        photoGroups: submission.content.photoGroups,
-        photos: submission.content.photos,
-        photoGroupsCount: submission.content.photoGroups?.length,
-        photosCount: submission.content.photos?.length
-      })
       
       // 移除重复的数据库保存，addSubmission 会处理
       /*
@@ -507,12 +479,10 @@ const DutyManagerDashboard: React.FC = () => {
           setDbTaskStatuses(updatedTaskStatuses)
         }
       } catch (error) {
-        console.error('[DutyManager] Failed to add submission:', error)
         throw error
       }
       }
     } catch (error) {
-      console.error('Error in handleTaskComplete:', error)
       alert('照片上传失败，请检查网络连接并重试')
       // 回滚状态
       setState(prev => {
@@ -553,7 +523,6 @@ const DutyManagerDashboard: React.FC = () => {
     setState(prev => {
       const newCompletedIds = [...new Set([...prev.completedTaskIds, ...approvedTaskIds])]
       if (newCompletedIds.length !== prev.completedTaskIds.length) {
-        console.log('[DutyManager] 更新已完成任务列表，审核通过的任务:', approvedTaskIds)
         return {
           ...prev,
           completedTaskIds: newCompletedIds
@@ -569,7 +538,6 @@ const DutyManagerDashboard: React.FC = () => {
       )
       
       if (allApproved) {
-        console.log('[DutyManager] 所有任务已审核通过，保持完成状态显示')
         // 不再自动清除任务，让界面继续显示完成状态
         // 任务将在晚上10:30（闭店时间）或早上8:00（新一天开始）时清除
       }
