@@ -350,12 +350,12 @@ class TaskService {
         .filter(t => t.role_code === 'duty_manager' && !t.manual_closing)
         .map(t => this.convertTask(t))
 
-      return {
+      const convertedPeriod = {
         id: period.id,
         name: period.name,
         displayName: period.display_name,
-        startTime: period.start_time,
-        endTime: period.end_time,
+        startTime: period.start_time ? period.start_time.substring(0, 5) : '',  // 转换 "21:30:00" 为 "21:30"
+        endTime: period.end_time ? period.end_time.substring(0, 5) : '',      // 转换 "08:00:00" 为 "08:00"
         isEventDriven: period.is_event_driven,
         tasks: {
           manager: managerTasks,
@@ -363,6 +363,19 @@ class TaskService {
           ...(dutyManagerTasks.length > 0 && { dutyManager: dutyManagerTasks })
         }
       }
+      
+      // Debug log for closing period
+      if (period.name === '收市与打烊') {
+        console.log('[TaskService] Converting closing period:', {
+          dbName: period.name,
+          dbDisplayName: period.display_name,
+          convertedName: convertedPeriod.name,
+          startTime: convertedPeriod.startTime,
+          dutyManagerTaskCount: dutyManagerTasks.length
+        })
+      }
+      
+      return convertedPeriod
     })
   }
 

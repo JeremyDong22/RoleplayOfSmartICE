@@ -237,9 +237,13 @@ const DutyManagerDashboard: React.FC = () => {
     
     // 获取当前时段（使用已经计算好的currentPeriod状态）
     // 使用工具函数判断是否为闭店时段（收市与打烊）
+    console.log('[DutyManager] Current period:', currentPeriod?.name, currentPeriod?.id)
+    console.log('[DutyManager] Is closing period?', isClosingPeriod(currentPeriod))
+    
     if (isClosingPeriod(currentPeriod)) {
       // 获取闭店时段的值班经理任务
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
+      console.log('[DutyManager] Found duty tasks:', dutyTasks.length)
       
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
       const closingTasks = dutyTasks.filter((task: any) => {
@@ -248,6 +252,7 @@ const DutyManagerDashboard: React.FC = () => {
       })
       
       if (closingTasks.length > 0) {
+        console.log('[DutyManager] Loading closing period tasks:', closingTasks.length, 'tasks')
         setState(prev => ({
           ...prev,
           activeTasks: closingTasks,
