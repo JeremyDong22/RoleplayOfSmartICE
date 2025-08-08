@@ -303,13 +303,13 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         completedTaskIds: completedTaskIds.length,
         currentPeriod: currentPeriod?.id,
         role,
-        rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 100
+        rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 0
       })
     }
     
     return totalTasksDue > 0 
       ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
-      : 100 // If no tasks due, show 100%
+      : 0 // If no tasks due, show 0%
   }, [completedTaskIds, testTime, role, useDatabase, dbStats, dbCompletionRate, contextWorkflowPeriods])
   
   const handleLateSubmitClick = async (task: TaskTemplate) => {
