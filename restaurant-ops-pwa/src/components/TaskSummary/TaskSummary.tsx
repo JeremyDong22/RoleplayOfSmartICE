@@ -212,8 +212,6 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         !effectiveTaskStatuses.find(s => s.taskId === task.id && (s.completed || s.overdue))
       )
   
-  
-  
   // Use database completion rate only
   const completionRate = useMemo(() => {
     // When using database mode, always use database completion rate
