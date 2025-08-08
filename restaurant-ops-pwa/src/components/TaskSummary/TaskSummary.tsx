@@ -185,7 +185,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   const effectiveTaskStatuses = dbTaskStatuses.length > 0 ? dbTaskStatuses : taskStatuses
   
   // Group tasks by status - use database data if available
-  const completedTasks = useDatabase && dbCurrentCompletedTasks.length > 0
+  const completedTasks = useDatabase
     ? dbCurrentCompletedTasks.map(dbTask => ({
         id: dbTask.id,
         title: dbTask.title,
@@ -200,7 +200,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     effectiveTaskStatuses.find(s => s.taskId === task.id && s.overdue && !s.completed)
   )
   
-  const pendingTasks = useDatabase && dbCurrentPendingTasks.length >= 0
+  const pendingTasks = useDatabase
     ? dbCurrentPendingTasks.map(dbTask => ({
         id: dbTask.id,
         title: dbTask.title,
@@ -209,6 +209,20 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     : regularTasks.filter(task => 
         !effectiveTaskStatuses.find(s => s.taskId === task.id && (s.completed || s.overdue))
       )
+  
+  // Debug log for duty manager tasks
+  if (role === 'duty_manager') {
+    console.log('[TaskSummary] Duty Manager Task Status:', {
+      pendingTasksCount: pendingTasks.length,
+      completedTasksCount: completedTasks.length,
+      overdueTasksCount: overdueTasks.length,
+      dbCurrentPendingTasks: dbCurrentPendingTasks.length,
+      dbCurrentCompletedTasks: dbCurrentCompletedTasks.length,
+      useDatabase,
+      regularTasksCount: regularTasks.length,
+      tasks: tasks.map(t => ({ id: t.id, title: t.title }))
+    })
+  }
   
   // Use database completion rate only
   const completionRate = useMemo(() => {
@@ -354,8 +368,8 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
           <CircularProgress size={24} />
         ) : (
           <Chip 
-            label={completionRate === 0 ? '未完成' : `完成率: ${completionRate}%`}
-            color={completionRate === 100 ? 'success' : completionRate === 0 ? 'error' : 'default'}
+            label={`完成率: ${completionRate}%`}
+            color={completionRate === 100 ? 'success' : completionRate === 0 ? 'warning' : 'default'}
             variant={completionRate === 100 ? 'filled' : 'outlined'}
             size="medium"
             sx={{ fontWeight: 'medium' }}
