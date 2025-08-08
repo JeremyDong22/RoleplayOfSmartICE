@@ -27,6 +27,7 @@ import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
 import { restaurantConfigService } from '../services/restaurantConfigService'
 import { isClosingPeriod } from '../utils/periodHelpers'
+import { getTodayTaskStatuses, type TaskStatusDetail } from '../services/taskRecordService'
 
 interface NoticeComment {
   noticeId: string
@@ -62,6 +63,8 @@ const DutyManagerDashboard: React.FC = () => {
   })
   const [isInitialized, setIsInitialized] = useState(false)
   const [lastResetTime, setLastResetTime] = useState<string | null>(null) // 记录最后重置时间
+  const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
   
   // 获取数据库任务数据
   const { workflowPeriods, isLoading, error } = useTaskData()
@@ -179,12 +182,18 @@ const DutyManagerDashboard: React.FC = () => {
           setIsInitialized(true)
           return
         }
+        
+        setCurrentUserId(currentUser.id)
 
         const restaurantId = currentUser.restaurantId || await restaurantConfigService.getRestaurantId() || ''
         const { taskStatuses } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
           currentUser.id,
           restaurantId
         )
+        
+        // Load today's task statuses for TaskSummary
+        const dbStatuses = await getTodayTaskStatuses(currentUser.id)
+        setDbTaskStatuses(dbStatuses)
 
         // 更新已完成的任务ID列表
         const completedIds = taskStatuses ? Object.keys(taskStatuses).filter(taskId => 
@@ -242,13 +251,16 @@ const DutyManagerDashboard: React.FC = () => {
     // 如果是闭店时段，总是尝试加载任务（不管是否已有任务）
     if (isClosingPeriod(currentPeriod)) {
       // 获取闭店时段的值班经理任务
+      console.log('[DutyManager] Current period tasks structure:', currentPeriod.tasks)
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
-      console.log('[DutyManager] Found duty tasks:', dutyTasks.length)
+      console.log('[DutyManager] Found duty tasks:', dutyTasks.length, dutyTasks)
       
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
       const closingTasks = dutyTasks.filter((task: any) => {
-        return task.role === 'DutyManager' && 
-               task.uploadRequirement !== '审核'
+        const includeTask = task.role === 'DutyManager' && 
+                           task.uploadRequirement !== '审核'
+        console.log('[DutyManager] Checking task:', task.title, 'role:', task.role, 'include:', includeTask)
+        return includeTask
       })
       
       if (closingTasks.length > 0) {
@@ -488,6 +500,12 @@ const DutyManagerDashboard: React.FC = () => {
       // 只调用 addSubmission，它会在 Context 中保存到数据库
       try {
         await addSubmission(submission)
+        
+        // Refresh task statuses from database for TaskSummary
+        if (currentUserId) {
+          const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
+          setDbTaskStatuses(updatedTaskStatuses)
+        }
       } catch (error) {
         console.error('[DutyManager] Failed to add submission:', error)
         throw error
@@ -735,6 +753,7 @@ const DutyManagerDashboard: React.FC = () => {
               onLateSubmit={() => {}}
               testTime={testTime || undefined}
               role="duty_manager"
+              dbTaskStatuses={dbTaskStatuses}
               useDatabase={true}
             />
           </Grid>

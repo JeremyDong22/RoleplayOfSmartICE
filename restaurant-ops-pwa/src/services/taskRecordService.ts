@@ -511,6 +511,17 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
         }
       }
       
+      // Debug log for duty manager
+      if (role === 'duty_manager' && period.id === currentPeriod?.id) {
+        console.log('[getRealTimeCompletionRate] Duty Manager Current Period Tasks:', {
+          periodId: period.id,
+          periodName: period.name,
+          periodTasks: periodTasks.map(t => ({ id: t.id, title: t.title })),
+          completedTaskIds: Array.from(completedTaskIds),
+          isCurrentPeriod: true
+        })
+      }
+      
       if (period.id === currentPeriod?.id) {
         // 当前时段：分类到待完成和已完成
         for (const task of periodTasks) {
