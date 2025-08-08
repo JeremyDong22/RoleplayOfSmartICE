@@ -267,6 +267,18 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         // 处理role名称的映射：'duty_manager' -> 'dutyManager'
         const roleKey = role === 'duty_manager' ? 'dutyManager' : role
         const roleTasks = period.tasks[roleKey as keyof typeof period.tasks]
+        
+        // Debug log for duty_manager
+        if (role === 'duty_manager' && isClosingPeriod(period)) {
+          console.log('[TaskSummary] Duty Manager closing period tasks:', {
+            periodName: period.name,
+            roleKey,
+            roleTasks: roleTasks?.length || 0,
+            completedTaskIds: completedTaskIds.length,
+            periodTasks: roleTasks?.filter(t => !t.isNotice && !t.isFloating).length || 0
+          })
+        }
+        
         if (!roleTasks) return // 跳过没有该角色任务的时段（在forEach中使用return而非continue）
         
         const periodTasks = roleTasks.filter(t => !t.isNotice && !t.isFloating)
@@ -283,14 +295,17 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     
     // Floating tasks不计入完成率统计，因为它们可以无限提交
     
-    // console.log('[Completion Rate]', {
-    //   totalTasksDue,
-    //   totalTasksCompleted,
-    //   completedTaskIds: completedTaskIds.length,
-    //   currentPeriod: currentPeriod?.id,
-    //   role,
-    //   rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 100
-    // })
+    // Debug log for completion rate
+    if (role === 'duty_manager') {
+      console.log('[TaskSummary] Duty Manager Completion Rate:', {
+        totalTasksDue,
+        totalTasksCompleted,
+        completedTaskIds: completedTaskIds.length,
+        currentPeriod: currentPeriod?.id,
+        role,
+        rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 100
+      })
+    }
     
     return totalTasksDue > 0 
       ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
