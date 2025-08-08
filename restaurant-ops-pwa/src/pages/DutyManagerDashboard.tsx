@@ -230,16 +230,16 @@ const DutyManagerDashboard: React.FC = () => {
     // 只在初始化完成后执行
     if (!isInitialized) return
     
-    // 如果已经有激活的任务，不需要重新处理
-    if (state.activeTasks.length > 0 && !state.isWaitingForTrigger) {
-      return
-    }
-    
     // 获取当前时段（使用已经计算好的currentPeriod状态）
     // 使用工具函数判断是否为闭店时段（收市与打烊）
     console.log('[DutyManager] Current period:', currentPeriod?.name, currentPeriod?.id)
     console.log('[DutyManager] Is closing period?', isClosingPeriod(currentPeriod))
+    console.log('[DutyManager] Current state:', {
+      activeTasks: state.activeTasks.length,
+      isWaitingForTrigger: state.isWaitingForTrigger
+    })
     
+    // 如果是闭店时段，总是尝试加载任务（不管是否已有任务）
     if (isClosingPeriod(currentPeriod)) {
       // 获取闭店时段的值班经理任务
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
@@ -263,7 +263,7 @@ const DutyManagerDashboard: React.FC = () => {
         }))
       }
     }
-  }, [currentPeriod, state.activeTasks.length, state.isWaitingForTrigger, testTime, isInitialized])
+  }, [currentPeriod, testTime, isInitialized])  // 简化依赖，避免循环
 
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {
