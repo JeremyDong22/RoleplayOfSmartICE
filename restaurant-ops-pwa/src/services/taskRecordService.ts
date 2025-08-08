@@ -553,7 +553,7 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
     
     const completionRate = totalTasksDue > 0 
       ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
-      : 100
+      : 0
     
     // Debug logging removed to prevent console spam
     
