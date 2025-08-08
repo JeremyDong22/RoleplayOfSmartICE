@@ -6,6 +6,7 @@
 import { supabase } from './supabase'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { getLocalDateString } from '../utils/dateFormat'
+import { isClosingPeriod } from '../utils/periodHelpers'
 
 export interface TaskSummaryStats {
   currentPeriodTasks: {
@@ -229,7 +230,7 @@ export async function getTaskSummaryStats(
       // 只检查已经结束且不是当前时段的时段
       if (periodEnded && period.id !== currentPeriod?.id) {
         // 跳过厨师的收尾时段
-        if (role === 'chef' && period.id === 'closing') return
+        if (role === 'chef' && isClosingPeriod(period)) return
         
         // 获取该时段的任务
         const periodTasks = taskDefs.filter(t => 
@@ -287,7 +288,7 @@ export async function getTaskSummaryStats(
       }
       
       // 包含已结束的时段和当前时段
-      if (periodStarted && !(role === 'chef' && period.id === 'closing')) {
+      if (periodStarted && !(role === 'chef' && isClosingPeriod(period))) {
         
         const periodTasks = taskDefs.filter(t => 
           t.period_id === period.id && 

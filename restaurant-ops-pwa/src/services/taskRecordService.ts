@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { getLocalDateString } from '../utils/dateFormat'
+import { isClosingPeriod } from '../utils/periodHelpers'
 
 export interface TaskRecord {
   id?: string
@@ -496,13 +497,13 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       const periodTasks = (allTasks || []).filter(task => task.period_id === period.id)
       
       // 厨师跳过closing期间
-      if (role === 'chef' && period.id === 'closing') {
+      if (role === 'chef' && isClosingPeriod(period)) {
         continue
       }
       
       // 对于所有角色，在新的一天开始时，检查跨日的closing期间
       // 动态判断基于实际的开始和结束时间
-      if (period.id === 'closing' || period.display_name === '闭店') {
+      if (isClosingPeriod(period) || period.display_name === '闭店') {
         // 如果是跨日的closing期间，且当前时间在新一天的开始（10:00）和closing开始时间之间
         const closingStartMinutes = startInMinutes
         if (endInMinutes < startInMinutes && currentTimeInMinutes >= 0 && currentTimeInMinutes < closingStartMinutes) {

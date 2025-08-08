@@ -30,6 +30,7 @@ import {
   Comment
 } from '@mui/icons-material'
 import type { TaskTemplate } from '../../utils/workflowParser'
+import { isClosingPeriod } from '../../utils/periodHelpers'
 import TaskSubmissionDialog from '../TaskSubmissionDialog'
 import { useTaskData } from '../../contexts/TaskDataContext'
 import { type TaskStatusDetail, getRealTimeCompletionRate } from '../../services/taskRecordService'
@@ -260,7 +261,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       // 2. OR it's the current period
       // 3. BUT skip closing period for chef
       if ((now >= periodStart || period.id === currentPeriod?.id) && 
-          !(role === 'chef' && period.id === 'closing')) {
+          !(role === 'chef' && isClosingPeriod(period))) {
         
         // 排除floating tasks，因为它们不计入完成率
         // 处理role名称的映射：'duty_manager' -> 'dutyManager'
