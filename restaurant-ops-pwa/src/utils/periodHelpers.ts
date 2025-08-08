@@ -10,14 +10,6 @@ import type { WorkflowPeriod } from './workflowParser'
 export function isClosingPeriod(period: WorkflowPeriod | null | undefined): boolean {
   if (!period) return false
   
-  console.log('[periodHelpers] Checking closing period:', {
-    name: period.name,
-    displayName: period.displayName,
-    id: period.id,
-    startTime: period.startTime,
-    result: period.name === '收市与打烊'
-  })
-  
   // 只检查名称是否为"收市与打烊"
   return period.name === '收市与打烊'
 }

@@ -551,11 +551,20 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                           component="img"
                           src={img}
                           alt={`示例图片 ${imgIdx + 1}`}
+                          crossOrigin="anonymous"
                           onClick={() => setEnlargedImage(img)}
                           onError={(e) => {
-                            // 隐藏加载失败的图片
+                            console.error('[PhotoSubmission] Image failed to load:', img)
+                            // Don't hide the image, show a placeholder instead
                             const target = e.target as HTMLImageElement
-                            target.style.display = 'none'
+                            // Try to use a fallback image or keep showing broken image icon
+                            if (!target.src.includes('placeholder')) {
+                              target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120"%3E%3Crect width="120" height="120" fill="%23f0f0f0"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3E图片加载失败%3C/text%3E%3C/svg%3E'
+                            }
+                          }}
+                          onLoad={(e) => {
+                            // Log successful loads for debugging
+                            console.log('[PhotoSubmission] Image loaded successfully:', img)
                           }}
                           sx={{
                             height: 120,
@@ -567,6 +576,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                             cursor: 'pointer',
                             border: '2px solid transparent',
                             transition: 'border-color 0.2s',
+                            backgroundColor: '#f5f5f5', // Add background color for loading state
                             '&:hover': {
                               borderColor: 'primary.main'
                             }

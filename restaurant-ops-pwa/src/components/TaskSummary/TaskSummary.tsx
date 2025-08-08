@@ -96,16 +96,6 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     try {
       const result = await getRealTimeCompletionRate(restaurantId, role)
       
-      // Debug log for duty manager
-      if (role === 'duty_manager') {
-        console.log('[TaskSummary] Database refresh result:', {
-          completionRate: result.completionRate,
-          pendingCount: result.currentPeriodTasks.pending.length,
-          completedCount: result.currentPeriodTasks.completed.length,
-          pendingTasks: result.currentPeriodTasks.pending,
-          completedTasks: result.currentPeriodTasks.completed
-        })
-      }
       
       // Refreshed from database successfully
       setDbCompletionRate(result.completionRate)
@@ -222,31 +212,12 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         !effectiveTaskStatuses.find(s => s.taskId === task.id && (s.completed || s.overdue))
       )
   
-  // Debug log for duty manager tasks
-  if (role === 'duty_manager') {
-    console.log('[TaskSummary] Duty Manager Task Status:', {
-      pendingTasksCount: pendingTasks.length,
-      completedTasksCount: completedTasks.length,
-      overdueTasksCount: overdueTasks.length,
-      dbCurrentPendingTasks: dbCurrentPendingTasks.length,
-      dbCurrentCompletedTasks: dbCurrentCompletedTasks.length,
-      useDatabase,
-      regularTasksCount: regularTasks.length,
-      tasks: tasks.map(t => ({ id: t.id, title: t.title }))
-    })
-  }
+  
   
   // Use database completion rate only
   const completionRate = useMemo(() => {
     // When using database mode, always use database completion rate
     if (useDatabase && dbCompletionRate !== null) {
-      console.log('[TaskSummary] Using database completion rate:', {
-        role,
-        dbCompletionRate,
-        dbMissingTasks: dbMissingTasks.length,
-        dbCurrentPendingTasks: dbCurrentPendingTasks.length,
-        dbCurrentCompletedTasks: dbCurrentCompletedTasks.length
-      })
       return dbCompletionRate
     }
     
