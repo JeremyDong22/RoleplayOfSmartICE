@@ -1,9 +1,11 @@
 // 任务提交辅助函数
 // Created: 2025-07-29
 // 处理任务数据的上传，包括照片、音频等媒体文件
+// Updated: 2025-08-05 - Added retry mechanism and progress tracking for better reliability
 
 import { submitTaskRecord } from '../services/taskRecordService'
 import { uploadPhoto, uploadAudio } from '../services/storageService'
+import { compressImage, needsCompression, formatFileSize, estimateFileSize } from './imageCompressor'
 
 interface TaskSubmissionData {
   taskId: string
@@ -13,6 +15,84 @@ interface TaskSubmissionData {
   periodId: string
   uploadRequirement?: string | null
   data?: any
+  onProgress?: (progress: number, message?: string) => void
+  maxRetries?: number
+}
+
+interface UploadResult {
+  success: boolean
+  url?: string
+  error?: string
+  retryCount?: number
+}
+
+/**
+ * Uploads a photo with retry mechanism
+ */
+async function uploadPhotoWithRetry(
+  photoData: string,
+  userId: string,
+  taskId: string,
+  maxRetries: number = 3,
+  onProgress?: (message: string) => void
+): Promise<UploadResult> {
+  let retryCount = 0
+  let lastError: Error | null = null
+  
+  while (retryCount <= maxRetries) {
+    try {
+      if (retryCount > 0) {
+        onProgress?.(`重试上传 (${retryCount}/${maxRetries})...`)
+        // Wait before retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount - 1), 5000)))
+      }
+      
+      // Compress if needed
+      let processedPhoto = photoData
+      if (needsCompression(photoData, 800)) {
+        onProgress?.('压缩图片中...')
+        processedPhoto = await compressImage(photoData, {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.8
+        })
+        const originalSize = estimateFileSize(photoData)
+        const compressedSize = estimateFileSize(processedPhoto)
+        console.log(`Photo compressed: ${formatFileSize(originalSize)} -> ${formatFileSize(compressedSize)}`)
+      }
+      
+      onProgress?.('正在上传...')
+      const result = await uploadPhoto(processedPhoto, userId, taskId)
+      
+      if (result) {
+        return {
+          success: true,
+          url: result.publicUrl,
+          retryCount
+        }
+      } else {
+        throw new Error('Upload returned null')
+      }
+    } catch (error) {
+      lastError = error as Error
+      console.error(`Upload attempt ${retryCount + 1} failed:`, error)
+      retryCount++
+      
+      // Don't retry for certain errors
+      if (error instanceof Error) {
+        if (error.message.includes('File size exceeds') ||
+            error.message.includes('Invalid image')) {
+          break
+        }
+      }
+    }
+  }
+  
+  return {
+    success: false,
+    error: lastError?.message || 'Upload failed after retries',
+    retryCount
+  }
 }
 
 /**
@@ -25,7 +105,9 @@ export async function submitTaskWithMedia({
   date,
   periodId,
   uploadRequirement,
-  data
+  data,
+  onProgress,
+  maxRetries = 3
 }: TaskSubmissionData) {
   try {
     console.log('[TaskSubmissionHelper] ===== SUBMISSION START =====');
@@ -89,21 +171,47 @@ export async function submitTaskWithMedia({
         }
       }
       
-      // 上传照片到Storage
-      for (const item of evidenceArray) {
+      // 上传照片到Storage with retry and progress
+      const totalPhotos = evidenceArray.length
+      let uploadedPhotos = 0
+      
+      for (let i = 0; i < evidenceArray.length; i++) {
+        const item = evidenceArray[i]
         const photoData = item.photo || item.image
+        
         if (photoData && photoData.startsWith('data:')) {
-          console.log('[TaskSubmissionHelper] Uploading photo for task:', taskId)
-          const result = await uploadPhoto(photoData, userId, taskId)
-          if (result) {
-            submissionData.photo_urls.push(result.publicUrl)
+          console.log(`[TaskSubmissionHelper] Uploading photo ${i + 1}/${totalPhotos} for task:`, taskId)
+          
+          // Update progress
+          const progressPercent = Math.round((uploadedPhotos / totalPhotos) * 100)
+          onProgress?.(progressPercent, `上传照片 ${i + 1}/${totalPhotos}`)
+          
+          // Upload with retry
+          const uploadResult = await uploadPhotoWithRetry(
+            photoData,
+            userId,
+            taskId,
+            maxRetries,
+            (msg) => onProgress?.(progressPercent, msg)
+          )
+          
+          if (uploadResult.success && uploadResult.url) {
+            submissionData.photo_urls.push(uploadResult.url)
+            uploadedPhotos++
           } else {
-            console.error('[TaskSubmissionHelper] Failed to upload photo')
+            console.error('[TaskSubmissionHelper] Failed to upload photo after retries:', uploadResult.error)
+            // Continue with other photos even if one fails
           }
         } else if (photoData && photoData.startsWith('http')) {
           // 已经是URL，直接使用
           submissionData.photo_urls.push(photoData)
+          uploadedPhotos++
         }
+      }
+      
+      // Update final progress
+      if (totalPhotos > 0) {
+        onProgress?.(100, `完成 ${uploadedPhotos}/${totalPhotos} 张照片上传`)
       }
       
       // 添加描述文本
@@ -133,7 +241,7 @@ export async function submitTaskWithMedia({
       submissionData.submission_type = null
     }
 
-    // 提交到数据库
+    // 提交到数据库 with retry
     console.log('[TaskSubmissionHelper] Final submission data before database:', {
       taskId,
       submissionType: submissionData.submission_type,
@@ -143,11 +251,35 @@ export async function submitTaskWithMedia({
     })
     
     console.log('[TaskSubmissionHelper] Calling submitTaskRecord...');
-    const result = await submitTaskRecord(submissionData)
-    console.log('[TaskSubmissionHelper] Submission successful:', result.id)
-    console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
     
-    return result
+    // Retry submission if it fails
+    let submitRetries = 0
+    let submitError: Error | null = null
+    
+    while (submitRetries <= maxRetries) {
+      try {
+        if (submitRetries > 0) {
+          onProgress?.(95, `重试提交 (${submitRetries}/${maxRetries})...`)
+          await new Promise(resolve => setTimeout(resolve, 1000 * submitRetries))
+        } else {
+          onProgress?.(90, '保存任务记录...')
+        }
+        
+        const result = await submitTaskRecord(submissionData)
+        console.log('[TaskSubmissionHelper] Submission successful:', result.id)
+        console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
+        
+        onProgress?.(100, '提交成功!')
+        return result
+      } catch (error) {
+        submitError = error as Error
+        console.error(`Submit attempt ${submitRetries + 1} failed:`, error)
+        submitRetries++
+      }
+    }
+    
+    // If all retries failed, throw the last error
+    throw submitError || new Error('Failed to submit task after retries')
   } catch (error) {
     console.error('[TaskSubmissionHelper] Error submitting task:', {
       taskId,

@@ -237,22 +237,85 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
               return null
             })()}
             {submissions.map((submission, subIndex) => {
-              // 检查是否有照片组数据
-              let hasPhotoGroups = submission.content.photoGroups && submission.content.photoGroups.length > 0
-              let photoGroups = submission.content.photoGroups || []
+              // Debug logging
+              console.log('[ReviewTaskDialog] Processing submission:', {
+                taskId: submission.taskId,
+                photos: submission.content.photos,
+                photoGroups: submission.content.photoGroups,
+                photosType: typeof submission.content.photos,
+                photoGroupsType: typeof submission.content.photoGroups
+              })
+              
+              // 处理photoGroups - 确保它是数组格式
+              let photoGroups = submission.content.photoGroups
+              if (photoGroups && typeof photoGroups === 'string') {
+                try {
+                  photoGroups = JSON.parse(photoGroups)
+                } catch (e) {
+                  console.error('[ReviewTaskDialog] Failed to parse photoGroups:', e)
+                  photoGroups = []
+                }
+              }
+              
+              // 确保photoGroups是数组
+              if (!Array.isArray(photoGroups)) {
+                photoGroups = []
+              }
+              
+              // 确保每个group的photos字段是数组
+              photoGroups = photoGroups.map(group => {
+                if (group.photos && typeof group.photos === 'string') {
+                  try {
+                    group.photos = JSON.parse(group.photos)
+                  } catch (e) {
+                    group.photos = [group.photos]
+                  }
+                }
+                if (!Array.isArray(group.photos)) {
+                  group.photos = []
+                }
+                return group
+              })
+              
+              let hasPhotoGroups = photoGroups && photoGroups.length > 0
+              
+              // 处理photos字段 - 确保它是数组格式
+              let photos = submission.content.photos
+              if (photos && typeof photos === 'string') {
+                try {
+                  // 如果photos是字符串，尝试解析为数组
+                  photos = JSON.parse(photos)
+                } catch (e) {
+                  // 如果解析失败，尝试将单个URL转为数组
+                  photos = [photos]
+                }
+              }
+              
+              // 确保photos是数组
+              if (photos && !Array.isArray(photos)) {
+                photos = []
+              }
               
               // 如果没有photoGroups但有photos，创建一个默认组
-              if (!hasPhotoGroups && submission.content.photos && submission.content.photos.length > 0) {
+              if (!hasPhotoGroups && photos && photos.length > 0) {
                 photoGroups = [{
                   id: 'default-group',
-                  photos: submission.content.photos,
+                  photos: photos,
                   comment: submission.content.text
                 }]
                 hasPhotoGroups = true
               }
               
+              // Debug: log final processed data
+              console.log('[ReviewTaskDialog] Processed data:', {
+                hasPhotoGroups,
+                photoGroups,
+                photosArray: photos
+              })
+              
               // 如果还是没有照片数据，跳过此submission
               if (!hasPhotoGroups || photoGroups.length === 0) {
+                console.log('[ReviewTaskDialog] No photo data for submission:', submission.taskId)
                 // No photo data for this submission
                 return null
               }
@@ -301,7 +364,13 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                               }}
                             >
                               {group.photos.map((photo, photoIdx) => {
-                                const isValidPhoto = photo && (photo.startsWith('data:') || photo.startsWith('http'))
+                                // 确保photo是字符串
+                                let photoUrl = photo
+                                if (typeof photoUrl !== 'string') {
+                                  photoUrl = String(photoUrl || '')
+                                }
+                                
+                                const isValidPhoto = photoUrl && (photoUrl.startsWith('data:') || photoUrl.startsWith('http'))
                                 
                                 return (
                                   <Box
@@ -320,12 +389,12 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                                         transform: 'scale(1.05)'
                                       }
                                     }}
-                                    onClick={() => isValidPhoto && handleImageClick(photo)}
+                                    onClick={() => isValidPhoto && handleImageClick(photoUrl)}
                                   >
                                     {isValidPhoto ? (
                                       <Box
                                         component="img"
-                                        src={photo}
+                                        src={photoUrl}
                                         alt={`组${groupIndex + 1}-照片${photoIdx + 1}`}
                                         sx={{
                                           width: '100%',

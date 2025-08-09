@@ -30,6 +30,7 @@ import {
   Comment
 } from '@mui/icons-material'
 import type { TaskTemplate } from '../../utils/workflowParser'
+import { isClosingPeriod } from '../../utils/periodHelpers'
 import TaskSubmissionDialog from '../TaskSubmissionDialog'
 import { useTaskData } from '../../contexts/TaskDataContext'
 import { type TaskStatusDetail, getRealTimeCompletionRate } from '../../services/taskRecordService'
@@ -94,6 +95,8 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     setIsLoadingCompletionRate(true)
     try {
       const result = await getRealTimeCompletionRate(restaurantId, role)
+      
+      
       // Refreshed from database successfully
       setDbCompletionRate(result.completionRate)
       setDbMissingTasks(result.missingTasks)
@@ -184,7 +187,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   const effectiveTaskStatuses = dbTaskStatuses.length > 0 ? dbTaskStatuses : taskStatuses
   
   // Group tasks by status - use database data if available
-  const completedTasks = useDatabase && dbCurrentCompletedTasks.length > 0
+  const completedTasks = useDatabase
     ? dbCurrentCompletedTasks.map(dbTask => ({
         id: dbTask.id,
         title: dbTask.title,
@@ -199,7 +202,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     effectiveTaskStatuses.find(s => s.taskId === task.id && s.overdue && !s.completed)
   )
   
-  const pendingTasks = useDatabase && dbCurrentPendingTasks.length >= 0
+  const pendingTasks = useDatabase
     ? dbCurrentPendingTasks.map(dbTask => ({
         id: dbTask.id,
         title: dbTask.title,
@@ -209,92 +212,21 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         !effectiveTaskStatuses.find(s => s.taskId === task.id && (s.completed || s.overdue))
       )
   
-  // Calculate completion rate for ALL PERIODS up to current
+  // Use database completion rate only
   const completionRate = useMemo(() => {
-    // Prioritize database completion rate
-    if (dbCompletionRate !== null) {
+    // When using database mode, always use database completion rate
+    if (useDatabase && dbCompletionRate !== null) {
       return dbCompletionRate
     }
     
-    // Use database stats if available
+    // Fallback for database stats
     if (useDatabase && dbStats) {
       return dbStats.overallCompletionRate
     }
     
-    // Otherwise, use local calculation
-    const now = testTime || new Date()
-    const currentHour = now.getHours()
-    const currentMinute = now.getMinutes()
-    const currentTimeInMinutes = currentHour * 60 + currentMinute
-    
-    // Find current period from context data (has tasks property)
-    const currentPeriod = contextWorkflowPeriods.find(p => {
-      const [startHour, startMinute] = p.startTime.split(':').map(Number)
-      const [endHour, endMinute] = p.endTime.split(':').map(Number)
-      const startInMinutes = startHour * 60 + startMinute
-      const endInMinutes = endHour * 60 + endMinute
-      
-      if (endInMinutes < startInMinutes) {
-        if (currentTimeInMinutes >= startInMinutes || currentTimeInMinutes < endInMinutes) {
-          return true
-        }
-      } else {
-        if (currentTimeInMinutes >= startInMinutes && currentTimeInMinutes < endInMinutes) {
-          return true
-        }
-      }
-      return false
-    })
-    
-    let totalTasksDue = 0
-    let totalTasksCompleted = 0
-    
-    // Count all tasks from periods that have started (including current)
-    contextWorkflowPeriods.forEach(period => {
-      const [startHour, startMinute] = period.startTime.split(':').map(Number)
-      const periodStart = new Date(now)
-      periodStart.setHours(startHour, startMinute, 0, 0)
-      
-      // Include this period if:
-      // 1. It has already started (now >= periodStart)
-      // 2. OR it's the current period
-      // 3. BUT skip closing period for chef
-      if ((now >= periodStart || period.id === currentPeriod?.id) && 
-          !(role === 'chef' && period.id === 'closing')) {
-        
-        // 排除floating tasks，因为它们不计入完成率
-        // 处理role名称的映射：'duty_manager' -> 'dutyManager'
-        const roleKey = role === 'duty_manager' ? 'dutyManager' : role
-        const roleTasks = period.tasks[roleKey as keyof typeof period.tasks]
-        if (!roleTasks) return // 跳过没有该角色任务的时段（在forEach中使用return而非continue）
-        
-        const periodTasks = roleTasks.filter(t => !t.isNotice && !t.isFloating)
-        totalTasksDue += periodTasks.length
-        
-        // Count how many are completed
-        periodTasks.forEach(task => {
-          if (completedTaskIds.includes(task.id)) {
-            totalTasksCompleted++
-          }
-        })
-      }
-    })
-    
-    // Floating tasks不计入完成率统计，因为它们可以无限提交
-    
-    // console.log('[Completion Rate]', {
-    //   totalTasksDue,
-    //   totalTasksCompleted,
-    //   completedTaskIds: completedTaskIds.length,
-    //   currentPeriod: currentPeriod?.id,
-    //   role,
-    //   rate: totalTasksDue > 0 ? Math.round((totalTasksCompleted / totalTasksDue) * 100) : 100
-    // })
-    
-    return totalTasksDue > 0 
-      ? Math.round((totalTasksCompleted / totalTasksDue) * 100)
-      : 100 // If no tasks due, show 100%
-  }, [completedTaskIds, testTime, role, useDatabase, dbStats, dbCompletionRate, contextWorkflowPeriods])
+    // Default to 0 if no database data available
+    return 0
+  }, [useDatabase, dbStats, dbCompletionRate, role, dbMissingTasks, dbCurrentPendingTasks, dbCurrentCompletedTasks])
   
   const handleLateSubmitClick = async (task: TaskTemplate) => {
     // Handle late submission for task
@@ -418,7 +350,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
         ) : (
           <Chip 
             label={`完成率: ${completionRate}%`}
-            color={completionRate === 100 ? 'success' : 'default'}
+            color={completionRate === 100 ? 'success' : completionRate === 0 ? 'warning' : 'default'}
             variant={completionRate === 100 ? 'filled' : 'outlined'}
             size="medium"
             sx={{ fontWeight: 'medium' }}

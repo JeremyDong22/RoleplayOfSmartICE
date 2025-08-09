@@ -6,6 +6,7 @@
 import { supabase } from './supabase'
 import { restaurantConfigService } from './restaurantConfigService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
+import { getLocalDateString } from '../utils/dateFormat'
 
 // 营业时间将从数据库动态获取
 interface BusinessHours {
@@ -32,12 +33,22 @@ interface BusinessCycle {
  * 从 roleplay_workflow_periods 获取营业时间
  * 使用第一个时段的开始时间作为开店时间
  * 使用最后一个时段的结束时间作为闭店时间
+ * Updated: 2025-08-04 - Added restaurant-specific period fetching
  */
-async function getBusinessHoursFromDatabase(): Promise<BusinessHours> {
+async function getBusinessHoursFromDatabase(restaurantId?: string): Promise<BusinessHours> {
   try {
+    // Get restaurant ID if not provided
+    const targetRestaurantId = restaurantId || await restaurantConfigService.getRestaurantId()
+    
+    if (!targetRestaurantId) {
+      console.error('[BusinessCycleService] No restaurant ID available')
+      return { openingTime: null, closingTime: null }
+    }
+    
     const { data: periods, error } = await supabase
       .from('roleplay_workflow_periods')
       .select('start_time, end_time, display_order')
+      .eq('restaurant_id', targetRestaurantId)
       .order('display_order')
     
     if (error || !periods || periods.length === 0) {
@@ -53,8 +64,8 @@ async function getBusinessHoursFromDatabase(): Promise<BusinessHours> {
     const closingTime = lastPeriod.end_time
     
     return {
-      openingTime: openingTime ? `${openingTime}:00` : null,
-      closingTime: closingTime ? `${closingTime}:00` : null
+      openingTime: openingTime ? `${openingTime}` : null,
+      closingTime: closingTime ? `${closingTime}` : null
     }
   } catch (error) {
     console.error('[BusinessCycleService] Error fetching business hours:', error)
@@ -93,7 +104,7 @@ export async function getBusinessCycleRange(
   }
   
   // 如果没有完整的实际记录，从数据库获取营业时间
-  const businessHours = await getBusinessHoursFromDatabase()
+  const businessHours = await getBusinessHoursFromDatabase(restaurantId)
   
   // 使用数据库中的时间，如果没有则使用默认值
   const openingTime = businessHours.openingTime || '10:00:00'
@@ -129,8 +140,10 @@ export async function getBusinessCycleTaskCompletion(
   restaurantId: string,
   businessDate: string
 ): Promise<TaskCompletionStatus> {
-  // 使用传入的businessDate或获取当前UTC日期
-  const utcDate = businessDate || (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
+  // 使用传入的businessDate或获取当前本地日期
+  const testTime = getCurrentTestTime()
+  const now = testTime || new Date()
+  const dateToUse = businessDate || getLocalDateString(now)
   
   
   // 1. 获取所有需要完成的任务（Manager + DutyManager，排除 Chef）
@@ -152,7 +165,7 @@ export async function getBusinessCycleTaskCompletion(
     .from('roleplay_task_records')
     .select('task_id, status, review_status')
     .eq('restaurant_id', restaurantId)
-    .eq('date', utcDate)  // 使用date列而不是created_at
+    .eq('date', dateToUse)  // 使用date列
     .eq('review_status', 'approved')
 
   if (recordsError) {
@@ -170,7 +183,7 @@ export async function getBusinessCycleTaskCompletion(
   const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0
 
   return {
-    date: utcDate,
+    date: dateToUse,
     totalTasks,
     completedTasks,
     pendingTasks: missingTasks.length,
@@ -188,10 +201,12 @@ export async function canCloseBusinessCycle(
   businessDate?: string
 ): Promise<{ canClose: boolean; reason?: string }> {
   try {
-    // 如果没有传入日期，使用当前UTC日期
-    const utcDate = businessDate || (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
+    // 如果没有传入日期，使用当前本地日期
+    const testTime = getCurrentTestTime()
+    const now = testTime || new Date()
+    const dateToUse = businessDate || getLocalDateString(now)
     
-    const completion = await getBusinessCycleTaskCompletion(restaurantId, utcDate)
+    const completion = await getBusinessCycleTaskCompletion(restaurantId, dateToUse)
     
     // Check pendingTasks instead of completionRate to avoid floating point issues
     if (completion.pendingTasks === 0) {

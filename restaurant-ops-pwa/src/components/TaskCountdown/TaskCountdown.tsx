@@ -66,7 +66,7 @@ interface TaskCountdownProps {
   // Removed: onLastCustomerLeft and onLastCustomerLeftLunch - duty tasks now auto-assigned
   // Removed: onClosingComplete - moved to ManagerDashboard as separate component
   // Removed: noticeComments and onComment - notice reply UI removed
-  onAdvancePeriod?: () => void
+  // Removed: onAdvancePeriod - advance button removed from UI
   onReviewReject?: (taskId: string, reason: string) => void
   hideTimer?: boolean  // 新增: 隐藏倒计时器
   reviewStatus?: {
@@ -86,8 +86,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   completedTaskIds,
   testTime,
   onComplete,
-  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch, onClosingComplete, noticeComments, onComment
-  onAdvancePeriod,
+  // Removed: onLastCustomerLeft, onLastCustomerLeftLunch, onClosingComplete, noticeComments, onComment, onAdvancePeriod
   onReviewReject,
   hideTimer = false,
   reviewStatus = {},
@@ -358,23 +357,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             </Typography>
           )}
           
-          {/* Advance Period Button - Hide during in-service, pre-closing and closing */}
-          {onAdvancePeriod && period?.id !== 'lunch-service' && period?.id !== 'dinner-service' && period?.id !== 'pre-closing' && period?.id !== 'closing' && (
-            <Box mt={2}>
-              <Button
-                variant="outlined"
-                color="warning"
-                size="small"
-                onClick={() => {
-                  if (window.confirm('确定要提前进入下一阶段吗？\n\nAre you sure you want to advance to the next period?')) {
-                    onAdvancePeriod()
-                  }
-                }}
-              >
-                提前进入下一阶段
-              </Button>
-            </Box>
-          )}
+          {/* Advance Period Button - Removed as requested */}
         </Box>
       </Paper>
       )}

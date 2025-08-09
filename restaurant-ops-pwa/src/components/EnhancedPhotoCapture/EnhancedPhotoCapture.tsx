@@ -4,6 +4,9 @@
 // 2. Changed "提交" to "保存" for individual photos
 // 3. Added photo management drawer for viewing/editing all photos
 // 4. Batch submission of all photos at once
+// 5. Added Huawei device compatibility fixes
+// 6. Integrated image compression for better upload performance
+// 7. Added camera selection and zoom controls
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
@@ -17,7 +20,11 @@ import {
   Badge,
   Fab,
   CircularProgress,
-  TextField
+  TextField,
+  Menu,
+  MenuItem,
+  Slider,
+  Tooltip
 } from '@mui/material'
 import {
   Close as CloseIcon,
@@ -25,12 +32,31 @@ import {
   Refresh,
   CloudUpload,
   PhotoLibrary,
-  Save as SaveIcon
+  Save as SaveIcon,
+  CameraSwitch,
+  ZoomIn,
+  Settings
 } from '@mui/icons-material'
 import { SampleSelector } from './SampleSelector'
 import { PhotoManagementDrawer } from './PhotoManagementDrawer'
 import type { EnhancedPhotoCaptureProps, Sample, CapturedPhoto, PhotoSession } from './types'
 import { v4 as uuidv4 } from 'uuid'
+import {
+  getCameraDevices,
+  getOptimizedConstraints,
+  initializeCamera,
+  applyZoom,
+  isHuaweiDevice,
+  getCameraLabel,
+  type CameraDevice
+} from '../../utils/cameraHelper'
+import {
+  compressImage,
+  needsCompression,
+  compressToSize,
+  formatFileSize,
+  estimateFileSize
+} from '../../utils/imageCompressor'
 
 export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
   open,
@@ -55,6 +81,14 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
   const [showPhotoDrawer, setShowPhotoDrawer] = useState(false)
   // const [isCapturing, setIsCapturing] = useState(false)
   const [loading, setLoading] = useState(true)
+  
+  // Camera selection and controls
+  const [availableCameras, setAvailableCameras] = useState<CameraDevice[]>([])
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('')
+  const [cameraMenuAnchor, setCameraMenuAnchor] = useState<null | HTMLElement>(null)
+  const [zoomLevel, setZoomLevel] = useState(1)
+  const [showZoomControl, setShowZoomControl] = useState(false)
+  const [isCompressing, setIsCompressing] = useState(false)
   
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -192,6 +226,22 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
     }
   }, [open, taskName, isFloatingTask, taskId, getSampleDir])
 
+  // Load available cameras
+  useEffect(() => {
+    const loadCameras = async () => {
+      const cameras = await getCameraDevices()
+      setAvailableCameras(cameras)
+      
+      // Select default camera
+      const defaultCamera = cameras.find(cam => cam.isDefault) || cameras[0]
+      if (defaultCamera) {
+        setSelectedCameraId(defaultCamera.deviceId)
+      }
+    }
+    
+    loadCameras()
+  }, [])
+
   // Camera management
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -212,13 +262,12 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
       setCameraError(false)
       stopCamera()
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1920, max: 2560 },
-          height: { ideal: 1080, max: 1440 }
-        } 
-      })
+      // Use optimized constraints for the device
+      const constraints = await getOptimizedConstraints(selectedCameraId || undefined)
+      
+      console.log('Starting camera with constraints:', constraints)
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       
       if (videoRef.current && stream) {
         videoRef.current.srcObject = stream
@@ -230,12 +279,22 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
             setCameraError(true)
           })
         }
+        
+        // Apply initial zoom for Huawei devices
+        if (isHuaweiDevice()) {
+          setTimeout(() => {
+            if (streamRef.current) {
+              applyZoom(streamRef.current, 1)
+              setZoomLevel(1)
+            }
+          }, 500)
+        }
       }
     } catch (error) {
       console.error('Failed to start camera:', error)
       setCameraError(true)
     }
-  }, [stopCamera])
+  }, [stopCamera, selectedCameraId])
 
   // Start camera when dialog opens
   useEffect(() => {
@@ -255,8 +314,8 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
     }
   }, [open, loading, startCamera, stopCamera])
 
-  // Capture photo
-  const capturePhoto = () => {
+  // Capture photo with compression
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current && videoRef.current.readyState === 4) {
       // setIsCapturing(true)
       const video = videoRef.current
@@ -270,7 +329,21 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(video, 0, 0)
         
-        const photoData = canvas.toDataURL('image/jpeg', 0.8)
+        let photoData = canvas.toDataURL('image/jpeg', 0.9)
+        
+        // Compress if needed
+        if (needsCompression(photoData, 800)) {
+          setIsCompressing(true)
+          try {
+            photoData = await compressToSize(photoData, 800, 0.5)
+            console.log('Photo compressed:', formatFileSize(estimateFileSize(photoData)))
+          } catch (error) {
+            console.error('Compression failed:', error)
+          } finally {
+            setIsCompressing(false)
+          }
+        }
+        
         setCurrentPhoto(photoData)
         
         ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -279,6 +352,23 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
           // setIsCapturing(false)
         }, 300)
       }
+    }
+  }
+  
+  // Handle camera switch
+  const handleCameraSwitch = (cameraId: string) => {
+    setSelectedCameraId(cameraId)
+    setCameraMenuAnchor(null)
+    // Camera will restart automatically due to useEffect dependency
+  }
+  
+  // Handle zoom change
+  const handleZoomChange = async (event: Event, value: number | number[]) => {
+    const zoom = value as number
+    setZoomLevel(zoom)
+    
+    if (streamRef.current) {
+      await applyZoom(streamRef.current, zoom)
     }
   }
 
@@ -384,13 +474,95 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         <Typography variant="h6" color="white">
           {taskName}
         </Typography>
-        <IconButton onClick={handleClose} sx={{ color: 'white' }}>
-          <CloseIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {/* Camera Switch Button (show if multiple cameras) */}
+          {availableCameras.length > 1 && (
+            <Tooltip title="切换摄像头">
+              <IconButton
+                onClick={(e) => setCameraMenuAnchor(e.currentTarget)}
+                sx={{ color: 'white' }}
+              >
+                <CameraSwitch />
+              </IconButton>
+            </Tooltip>
+          )}
+          
+          {/* Zoom Control Button */}
+          {!cameraError && (
+            <Tooltip title="调整缩放">
+              <IconButton
+                onClick={() => setShowZoomControl(!showZoomControl)}
+                sx={{ color: 'white' }}
+              >
+                <ZoomIn />
+              </IconButton>
+            </Tooltip>
+          )}
+          
+          <IconButton onClick={handleClose} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
       </Paper>
+      
+      {/* Camera Selection Menu */}
+      <Menu
+        anchorEl={cameraMenuAnchor}
+        open={Boolean(cameraMenuAnchor)}
+        onClose={() => setCameraMenuAnchor(null)}
+      >
+        {availableCameras.map((camera, index) => (
+          <MenuItem
+            key={camera.deviceId}
+            selected={camera.deviceId === selectedCameraId}
+            onClick={() => handleCameraSwitch(camera.deviceId)}
+          >
+            {getCameraLabel(camera, index)}
+            {camera.isDefault && ' (推荐)'}
+          </MenuItem>
+        ))}
+      </Menu>
 
       {/* Camera View */}
       <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {/* Zoom Control Slider */}
+        {showZoomControl && !cameraError && !currentPhoto && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 10,
+              bgcolor: 'rgba(0,0,0,0.6)',
+              borderRadius: 2,
+              p: 2,
+              minWidth: 200
+            }}
+          >
+            <Typography variant="caption" color="white" gutterBottom>
+              缩放: {zoomLevel.toFixed(1)}x
+            </Typography>
+            <Slider
+              value={zoomLevel}
+              onChange={handleZoomChange}
+              min={1}
+              max={3}
+              step={0.1}
+              marks={[
+                { value: 1, label: '1x' },
+                { value: 2, label: '2x' },
+                { value: 3, label: '3x' }
+              ]}
+              sx={{
+                color: 'white',
+                '& .MuiSlider-markLabel': {
+                  color: 'white'
+                }
+              }}
+            />
+          </Box>
+        )}
         {loading ? (
           <Box
             sx={{
@@ -525,14 +697,31 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
               </Button>
             </Box>
           ) : (
-            <Fab
-              color="primary"
-              size="large"
-              onClick={capturePhoto}
-              disabled={cameraError || loading}
-            >
-              <CameraAlt />
-            </Fab>
+            <Box sx={{ position: 'relative' }}>
+              <Fab
+                color="primary"
+                size="large"
+                onClick={capturePhoto}
+                disabled={cameraError || loading || isCompressing}
+              >
+                {isCompressing ? <CircularProgress size={24} /> : <CameraAlt />}
+              </Fab>
+              {isCompressing && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    position: 'absolute',
+                    bottom: -20,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    color: 'white',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  压缩中...
+                </Typography>
+              )}
+            </Box>
           )}
 
           {/* Submit All Button */}
@@ -570,6 +759,29 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         message="照片已保存"
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       />
+      
+      {/* Device Info (Debug - only show on Huawei) */}
+      {isHuaweiDevice() && process.env.NODE_ENV === 'development' && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 100,
+            left: 10,
+            bgcolor: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            p: 1,
+            borderRadius: 1,
+            fontSize: '10px'
+          }}
+        >
+          <Typography variant="caption" display="block">
+            华为设备检测: 已启用兼容模式
+          </Typography>
+          <Typography variant="caption" display="block">
+            摄像头数量: {availableCameras.length}
+          </Typography>
+        </Box>
+      )}
     </Box>
   )
 }
