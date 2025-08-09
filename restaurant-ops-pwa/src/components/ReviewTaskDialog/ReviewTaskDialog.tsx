@@ -77,13 +77,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
         task.linkedTasks?.includes(sub.taskId)
       )
       
-      console.log('[ReviewTaskDialog] Relevant submissions:', relevantSubmissions)
-      console.log('[ReviewTaskDialog] Submission content:', relevantSubmissions.map(sub => ({
-        taskId: sub.taskId,
-        content: sub.content,
-        hasPhotos: sub.content.photos?.length,
-        hasPhotoGroups: sub.content.photoGroups?.length
-      })))
       
       if (relevantSubmissions.length > 0) {
         setSubmissions(relevantSubmissions)
@@ -104,7 +97,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
             })
           }
         })
-        console.log('[ReviewTaskDialog] All images collected:', images)
         setAllImages(images)
       } else {
         // 如果没有提交数据，显示等待状态
@@ -149,7 +141,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
       alert('请填写驳回原因')
       return
     }
-    console.log(`ReviewTaskDialog: Rejecting task ${task.id} with reason: ${rejectReason}`)
     onReject(task.id, rejectReason)
   }
 
@@ -237,14 +228,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
               return null
             })()}
             {submissions.map((submission, subIndex) => {
-              // Debug logging
-              console.log('[ReviewTaskDialog] Processing submission:', {
-                taskId: submission.taskId,
-                photos: submission.content.photos,
-                photoGroups: submission.content.photoGroups,
-                photosType: typeof submission.content.photos,
-                photoGroupsType: typeof submission.content.photoGroups
-              })
               
               // 处理photoGroups - 确保它是数组格式
               let photoGroups = submission.content.photoGroups
@@ -252,7 +235,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                 try {
                   photoGroups = JSON.parse(photoGroups)
                 } catch (e) {
-                  console.error('[ReviewTaskDialog] Failed to parse photoGroups:', e)
                   photoGroups = []
                 }
               }
@@ -306,16 +288,9 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                 hasPhotoGroups = true
               }
               
-              // Debug: log final processed data
-              console.log('[ReviewTaskDialog] Processed data:', {
-                hasPhotoGroups,
-                photoGroups,
-                photosArray: photos
-              })
               
               // 如果还是没有照片数据，跳过此submission
               if (!hasPhotoGroups || photoGroups.length === 0) {
-                console.log('[ReviewTaskDialog] No photo data for submission:', submission.taskId)
                 // No photo data for this submission
                 return null
               }

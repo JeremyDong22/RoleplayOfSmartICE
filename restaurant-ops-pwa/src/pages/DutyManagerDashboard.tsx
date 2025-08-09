@@ -237,22 +237,16 @@ const DutyManagerDashboard: React.FC = () => {
     
     // 如果是闭店时段，总是尝试加载任务（不管是否已有任务）
     if (isClosingPeriod(currentPeriod)) {
-      console.log('[DutyManager] 当前是闭店时段，检查值班经理任务', {
-        currentPeriod,
-        tasks: currentPeriod.tasks
-      })
       
       // 获取闭店时段的值班经理任务
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
       
-      console.log('[DutyManager] 找到的值班经理任务:', dutyTasks)
       
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
       const closingTasks = dutyTasks.filter((task: any) => {
         return task.role === 'DutyManager' && task.uploadRequirement !== '审核'
       })
       
-      console.log('[DutyManager] 过滤后的任务:', closingTasks)
       
       if (closingTasks.length > 0) {
         setState(prev => ({
@@ -265,7 +259,6 @@ const DutyManagerDashboard: React.FC = () => {
         }))
       } else if (dutyTasks.length > 0) {
         // 如果有任务但都被过滤掉了，也要设置状态以显示界面
-        console.log('[DutyManager] 设置任务（即使被过滤）')
         setState(prev => ({
           ...prev,
           activeTasks: dutyTasks,
@@ -344,7 +337,6 @@ const DutyManagerDashboard: React.FC = () => {
                  (data.evidence && data.evidence.evidence && Array.isArray(data.evidence.evidence))) {
         // 处理两种情况：直接的 evidence 数组，或嵌套在 data.evidence.evidence 中的数组
         const evidenceArray = Array.isArray(data.evidence) ? data.evidence : data.evidence.evidence
-        console.log('[DutyManager] Processing evidence format:', evidenceArray)
         // 旧格式：evidence 是一个数组，需要转换为照片组
         const groupedByIndex: { [key: number]: any[] } = {}
         
@@ -462,9 +454,7 @@ const DutyManagerDashboard: React.FC = () => {
             amount: submission.content.amount
           }
         })
-        console.log('[DutyManager] Task saved to database')
       } catch (dbError) {
-        console.error('[DutyManager] Failed to save to database:', dbError)
         // 继续执行，不影响本地功能
       }
       */

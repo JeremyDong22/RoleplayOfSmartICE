@@ -175,11 +175,6 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
     }
   }, [role, useDatabase]) // Only recreate interval when role or useDatabase changes
   
-  // console.log('TaskSummary received props:', {
-  //   tasksCount: tasks.length,
-  //   missingTasksCount: missingTasks.length,
-  //   missingTasks: missingTasks
-  // })
   // Filter out notices and floating tasks (they don't appear in summary)
   const regularTasks = tasks.filter(t => !t.isNotice && !t.isFloating)
   
