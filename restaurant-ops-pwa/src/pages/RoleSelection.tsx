@@ -1,11 +1,13 @@
-// Role selection page for choosing between Manager, Chef and Duty Manager
+// Role selection page for choosing between Manager, Chef, Duty Manager and CEO
 // Updated: 2025-07-24 - Added authentication check for role access
+// Updated: 2025-08-04 - Added CEO role selection
 import { useNavigate } from 'react-router-dom'
 import { Box, Container, Typography, Paper, Button, Alert, IconButton } from '@mui/material'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 import NightlightIcon from '@mui/icons-material/Nightlight'
 import LogoutIcon from '@mui/icons-material/Logout'
+import BusinessIcon from '@mui/icons-material/Business'
 import { authService } from '../services/authService'
 import { useState } from 'react'
 
@@ -13,19 +15,31 @@ export const RoleSelection = () => {
   const navigate = useNavigate()
   const [error, setError] = useState('')
   const currentUser = authService.getCurrentUser()
+  
+  // Debug: Log current user info
+  console.log('Current User:', currentUser)
+  console.log('Role Code:', currentUser?.roleCode)
+  console.log('Role:', currentUser?.role)
 
-  const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager') => {
+  const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager' | 'ceo') => {
     console.log(`[Navigation] Attempting to navigate to: /${role}`)
     
     // Check if user has permission to access this role
     const roleCodeMap: Record<string, string> = {
       'manager': 'manager',
       'chef': 'chef',
-      'duty-manager': 'duty_manager'
+      'duty-manager': 'duty_manager',
+      'ceo': 'ceo'
     }
     
     const requiredRole = roleCodeMap[role]
-    if (currentUser?.roleCode !== requiredRole) {
+    // Special handling for CEO role - also check if role name is "总经理"
+    if (role === 'ceo') {
+      if (currentUser?.roleCode !== 'ceo' && currentUser?.role !== '总经理') {
+        setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
+        return
+      }
+    } else if (currentUser?.roleCode !== requiredRole) {
       setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
       return
     }
@@ -139,10 +153,14 @@ export const RoleSelection = () => {
 
         <Box 
           sx={{ 
-            display: 'flex', 
-            flexDirection: { xs: 'column', md: 'row' },
+            display: 'grid',
+            gridTemplateColumns: { 
+              xs: '1fr', 
+              sm: 'repeat(2, 1fr)', 
+              lg: 'repeat(4, 1fr)' 
+            },
             gap: { xs: 2, sm: 3, md: 4 },
-            maxWidth: 1200,
+            maxWidth: 1400,
             width: '100%',
             flex: 1,
             overflow: 'visible'
@@ -308,6 +326,105 @@ export const RoleSelection = () => {
                 onClick={(e) => {
                   e.stopPropagation()
                   handleRoleSelect('duty-manager')
+                }}
+              >
+                选择此角色 / Select
+              </Button>
+            </Paper>
+          </Box>
+
+          {/* CEO Role Card */}
+          <Box sx={{ flex: 1 }}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: { xs: 2, sm: 3, md: 4 },
+                textAlign: 'center',
+                cursor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 'pointer' : 'not-allowed',
+                transition: 'all 0.3s ease',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 1 : 0.5,
+                background: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 
+                  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 
+                  'inherit',
+                '&:hover': (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? {
+                  transform: 'translateY(-4px)',
+                  boxShadow: 8,
+                  background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
+                } : {},
+              }}
+              onClick={() => handleRoleSelect('ceo')}
+            >
+              <BusinessIcon 
+                sx={{ 
+                  fontSize: { xs: 48, sm: 64, md: 80 }, 
+                  mb: 1,
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                }} 
+              />
+              <Typography 
+                variant="h4" 
+                gutterBottom 
+                sx={{ 
+                  fontSize: { xs: '1.25rem', sm: '1.75rem', md: '2.125rem' },
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                }}
+              >
+                首席执行官
+              </Typography>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '1.25rem' },
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                }}
+              >
+                CEO
+              </Typography>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  mt: 1, 
+                  opacity: 0.9, 
+                  fontSize: { xs: '0.75rem', sm: '0.875rem', md: '1rem' }, 
+                  display: { xs: 'none', sm: 'block' },
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                }}
+              >
+                全局运营监控
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  opacity: 0.8, 
+                  fontSize: { xs: '0.625rem', sm: '0.75rem', md: '0.875rem' }, 
+                  display: { xs: 'none', sm: 'block' },
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                }}
+              >
+                Executive Dashboard
+              </Typography>
+              <Button
+                variant="contained"
+                size="large"
+                sx={{ 
+                  mt: { xs: 2, sm: 3 },
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
+                  py: { xs: 1, sm: 1.5 },
+                  px: { xs: 2, sm: 3 },
+                  bgcolor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 'rgba(255,255,255,0.2)' : 'primary.main',
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit',
+                  '&:hover': {
+                    bgcolor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 'rgba(255,255,255,0.3)' : 'primary.dark'
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleRoleSelect('ceo')
                 }}
               >
                 选择此角色 / Select

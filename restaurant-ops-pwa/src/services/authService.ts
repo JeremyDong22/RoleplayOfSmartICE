@@ -66,13 +66,21 @@ class AuthService {
         return { user: null as any, error: '用户名或密码错误' }
       }
 
-      // Create auth session
+      // Debug: Log the userData to see structure
+      console.log('Login userData:', userData)
+      console.log('Role data:', userData.roleplay_roles)
+      
+      // Create auth session - handle both single object and array response
+      const roleData = Array.isArray(userData.roleplay_roles) 
+        ? userData.roleplay_roles[0] 
+        : userData.roleplay_roles
+      
       const authUser: AuthUser = {
         id: userData.id,
         email: `${username}@restaurant.com`,
         name: userData.full_name,
-        role: userData.roleplay_roles.role_name_zh,
-        roleCode: userData.roleplay_roles.role_code,
+        role: roleData?.role_name_zh || '',
+        roleCode: roleData?.role_code || '',
         restaurantId: userData.restaurant_id
       }
 
