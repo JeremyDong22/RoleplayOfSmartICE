@@ -79,6 +79,21 @@ export class DutyManagerPersistenceService {
     try {
       const targetDate = date || (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
+      // 首先获取所有duty_manager角色的任务ID
+      const { data: dutyManagerTasks, error: tasksError } = await supabase
+        .from('roleplay_tasks')
+        .select('id')
+        .eq('role_code', 'duty_manager')
+        .eq('restaurant_id', restaurantId)
+      
+      if (tasksError) throw tasksError
+      
+      const dutyManagerTaskIds = dutyManagerTasks?.map(t => t.id) || []
+      
+      if (dutyManagerTaskIds.length === 0) {
+        return { taskStatuses: {}, submissions: [] }
+      }
+      
       const { data, error } = await supabase
         .from('roleplay_task_records')
         .select(`
@@ -88,7 +103,7 @@ export class DutyManagerPersistenceService {
         .eq('user_id', userId)
         .eq('restaurant_id', restaurantId)
         .eq('date', targetDate)
-        .like('task_id', 'closing-duty-manager-%')
+        .in('task_id', dutyManagerTaskIds)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -139,6 +154,21 @@ export class DutyManagerPersistenceService {
   // 获取待审核和被驳回的值班经理任务
   async getPendingSubmissions(restaurantId: string, date?: string): Promise<DutyManagerSubmission[]> {
     try {
+      // 首先获取所有duty_manager角色的任务ID
+      const { data: dutyManagerTasks, error: tasksError } = await supabase
+        .from('roleplay_tasks')
+        .select('id')
+        .eq('role_code', 'duty_manager')
+        .eq('restaurant_id', restaurantId)
+      
+      if (tasksError) throw tasksError
+      
+      const dutyManagerTaskIds = dutyManagerTasks?.map(t => t.id) || []
+      
+      if (dutyManagerTaskIds.length === 0) {
+        return []
+      }
+      
       const query = supabase
         .from('roleplay_task_records')
         .select(`
@@ -147,7 +177,7 @@ export class DutyManagerPersistenceService {
         `)
         .eq('restaurant_id', restaurantId)
         .in('review_status', ['pending', 'rejected'])
-        .like('task_id', 'closing-duty-manager-%')
+        .in('task_id', dutyManagerTaskIds)
         .order('created_at', { ascending: false })
 
       if (date) {
