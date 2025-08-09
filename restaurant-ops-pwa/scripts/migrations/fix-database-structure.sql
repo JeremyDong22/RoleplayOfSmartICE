@@ -64,7 +64,7 @@ WITH task_ordering AS (
   WHERE is_active = true
 )
 UPDATE roleplay_tasks t
-SET sort_order = to_new_sort_order
+SET sort_order = task_ordering.new_sort_order
 FROM task_ordering
 WHERE t.id = task_ordering.id;
 
