@@ -37,6 +37,13 @@ export interface CEOEmployeeStat {
   late_count: number;
 }
 
+export interface FloatingTaskInfo {
+  task_id: string;
+  task_title: string;
+  submission_count: number;
+  submission_type: string;
+}
+
 export interface CEORestaurantData {
   restaurant_id: string;
   restaurant_name: string;
@@ -51,6 +58,9 @@ export interface CEORestaurantData {
   missing_tasks_count: number;
   late_tasks_count: number;
   error_tasks_count: number;
+  is_manually_closed: boolean;
+  manually_closed_at?: string;
+  floating_task_info: FloatingTaskInfo[];
 }
 
 export interface CEOPeriod {
@@ -185,11 +195,13 @@ class CEODashboardService {
           period_id,
           submission_type,
           is_notice,
-          is_floating
+          is_floating,
+          manual_closing
         `)
         .in('role_code', roleFilter)
         .eq('is_active', true)
-        .eq('is_notice', false); // 不统计通知类任务
+        .eq('is_notice', false) // 不统计通知类任务
+        .or('manual_closing.is.null,manual_closing.eq.false'); // 排除手动闭店任务
 
       if (tasksError) throw tasksError;
 
@@ -232,11 +244,37 @@ class CEODashboardService {
       // 3. 处理任务数据
       const taskDetails: CEOTaskDetail[] = [];
       const tasksByPeriod: Record<string, CEOTaskDetail[]> = {};
+      let isManuallyClosedToday = false;
+      let manuallyClosedAt: string | undefined;
       
-      // 初始化时段分组 - 只包含有任务的时段
+      // 首先识别特殊任务
+      const manualClosingTask = tasks?.find(t => t.manual_closing === true);
+      const floatingTasks = tasks?.filter(t => t.is_floating === true) || [];
+      
+      // 检查手动闭店任务是否已完成
+      if (manualClosingTask) {
+        const closingRecord = records?.find(r => r.task_id === manualClosingTask.id);
+        if (closingRecord) {
+          isManuallyClosedToday = true;
+          manuallyClosedAt = closingRecord.created_at;
+        }
+      }
+      
+      // 构建浮动任务信息
+      const floatingTaskInfo: FloatingTaskInfo[] = floatingTasks.map(task => {
+        const submissions = records?.filter(r => r.task_id === task.id) || [];
+        return {
+          task_id: task.id,
+          task_title: task.title,
+          submission_count: submissions.length,
+          submission_type: task.submission_type || 'none'
+        };
+      });
+      
+      // 初始化时段分组 - 只包含有任务的时段（排除手动闭店任务）
       const relevantPeriodIds = new Set<string>();
       tasks?.forEach(task => {
-        if (task.period_id) {
+        if (task.period_id && !task.manual_closing) {
           relevantPeriodIds.add(task.period_id);
         }
       });
@@ -302,31 +340,13 @@ class CEODashboardService {
       tasks?.forEach(task => {
         if (taskMap.has(task.id)) return; // 已经有记录了
         
+        // 跳过手动闭店任务，不显示在任务列表中
+        if (task.manual_closing) return;
+        
         // 处理浮动任务（没有 period_id 的任务）
         if (!task.period_id || task.is_floating) {
-          const taskDetail: CEOTaskDetail = {
-            id: `pending-${task.id}`,
-            task_id: task.id,
-            task_title: task.title,
-            user_id: '',
-            user_name: '',
-            role_name: '',
-            submission_type: task.submission_type || 'none',
-            created_at: '',
-            is_late: false,
-            has_errors: false,
-            scheduled_time: '',
-            period_id: '',
-            period_name: '浮动任务',
-            status: 'pending' // 浮动任务不算 missing
-          };
-          
-          taskDetails.push(taskDetail);
-          // 为浮动任务创建特殊分组
-          if (!tasksByPeriod['floating']) {
-            tasksByPeriod['floating'] = [];
-          }
-          tasksByPeriod['floating'].push(taskDetail);
+          // 浮动任务已经在上面统计了提交次数，这里不再添加到任务列表
+          // 因为浮动任务应该显示提交记录而不是待完成状态
           return;
         }
         
@@ -446,7 +466,10 @@ class CEODashboardService {
         employee_stats: employeeStats,
         missing_tasks_count: missingCount,
         late_tasks_count: lateTasks,
-        error_tasks_count: errorTasks
+        error_tasks_count: errorTasks,
+        is_manually_closed: isManuallyClosedToday,
+        manually_closed_at: manuallyClosedAt,
+        floating_task_info: floatingTaskInfo
       };
     } catch (error) {
       console.error('[CEODashboardService] Error fetching restaurant data:', error);
@@ -510,6 +533,28 @@ class CEODashboardService {
           timestamp: new Date().toISOString()
         });
       }
+      
+      // 为每个List任务的失败项生成具体警告
+      restaurant.task_details.forEach(task => {
+        if (task.status === 'completed' && task.submission_type === 'list' && task.submission_metadata?.checklist) {
+          const failedItems = task.submission_metadata.checklist.filter((item: any) => 
+            item.status === 'fail' || item.status === 'error'
+          );
+          
+          if (failedItems.length > 0) {
+            alerts.push({
+              id: `${restaurant.restaurant_id}-${department}-list-${task.id}`,
+              type: 'error',
+              restaurant_id: restaurant.restaurant_id,
+              restaurant_name: restaurant.restaurant_name,
+              department: department,
+              message: `${task.task_title} - ${failedItems.length}项检查未通过`,
+              count: failedItems.length,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      });
     });
 
     // 按优先级排序：错误 > 警告
@@ -680,5 +725,6 @@ export type {
   CEORestaurantData,
   CEOPeriod,
   CEOAlert,
-  CombinedRestaurantData
+  CombinedRestaurantData,
+  FloatingTaskInfo
 };

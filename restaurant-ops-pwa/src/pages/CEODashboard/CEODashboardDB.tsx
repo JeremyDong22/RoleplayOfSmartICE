@@ -63,7 +63,8 @@ import type {
   CEOTaskDetail, 
   CEOAlert,
   CEOPeriod,
-  CombinedRestaurantData 
+  CombinedRestaurantData,
+  FloatingTaskInfo 
 } from '../../services/ceoDashboardService';
 
 // 动画组件
@@ -487,8 +488,8 @@ export const CEODashboardDB: React.FC = () => {
           );
         })}
         
-        {/* 显示浮动任务（如果有） */}
-        {currentRestaurant.tasks_by_period['floating'] && currentRestaurant.tasks_by_period['floating'].length > 0 && (
+        {/* 显示浮动任务提交统计（如果有） */}
+        {currentRestaurant.floating_task_info && currentRestaurant.floating_task_info.length > 0 && (
           <Box 
             sx={{ 
               mb: 2,
@@ -529,17 +530,20 @@ export const CEODashboardDB: React.FC = () => {
               </Box>
             </Box>
 
-            {/* 浮动任务列表 */}
+            {/* 浮动任务统计列表 */}
             <Box sx={{ bgcolor: 'background.paper' }}>
               <List sx={{ py: 0 }}>
-                {currentRestaurant.tasks_by_period['floating'].map((task, index) => (
+                {currentRestaurant.floating_task_info.map((taskInfo, index) => (
                   <ListItem
-                    key={task.id}
+                    key={taskInfo.task_id}
                     component="div"
-                    onClick={() => handleTaskClick(task)}
+                    onClick={() => {
+                      // TODO: 显示该浮动任务的所有提交记录
+                      console.log('View submissions for', taskInfo.task_id);
+                    }}
                     sx={{
                       cursor: 'pointer',
-                      borderBottom: index < currentRestaurant.tasks_by_period['floating'].length - 1 ? '1px solid #f0f0f0' : 'none',
+                      borderBottom: index < currentRestaurant.floating_task_info.length - 1 ? '1px solid #f0f0f0' : 'none',
                       '&:hover': {
                         bgcolor: '#f5f5f5'
                       }
@@ -550,34 +554,29 @@ export const CEODashboardDB: React.FC = () => {
                         sx={{
                           width: 28,
                           height: 28,
-                          bgcolor: task.status === 'completed' ? TASK_TYPE_COLORS[task.submission_type] : '#e0e0e0'
+                          bgcolor: taskInfo.submission_count > 0 ? TASK_TYPE_COLORS[taskInfo.submission_type] : '#e0e0e0'
                         }}
                       >
-                        {TASK_TYPE_ICONS[task.submission_type]}
+                        {TASK_TYPE_ICONS[taskInfo.submission_type]}
                       </Avatar>
                     </ListItemIcon>
                     
                     <ListItemText
-                      primary={task.task_title}
+                      primary={taskInfo.task_title}
                       secondary={
-                        task.status === 'completed' ? (
-                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            {task.user_name} · {format(new Date(task.created_at), 'HH:mm')}
-                          </Typography>
-                        ) : (
-                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            待完成
-                          </Typography>
-                        )
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          今日已提交 {taskInfo.submission_count} 次
+                        </Typography>
                       }
                     />
                     
                     <ListItemSecondaryAction>
-                      {task.status === 'completed' ? (
-                        <CheckCircleIcon sx={{ color: '#4CAF50' }} />
-                      ) : (
-                        <TimeIcon sx={{ color: '#999' }} />
-                      )}
+                      <Chip 
+                        label={taskInfo.submission_count} 
+                        size="small" 
+                        color={taskInfo.submission_count > 0 ? "success" : "default"}
+                        sx={{ minWidth: 32 }}
+                      />
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}
@@ -640,19 +639,59 @@ export const CEODashboardDB: React.FC = () => {
             </Paper>
           )}
 
-          {selectedTask.submission_type === 'photo' && selectedTask.photo_urls && selectedTask.photo_urls.length > 0 && (
-            <ImageList cols={isMobile ? 1 : 2} gap={8}>
-              {selectedTask.photo_urls.map((url, index) => (
-                <ImageListItem key={index}>
-                  <img
-                    src={url}
-                    alt={`图片 ${index + 1}`}
-                    loading="lazy"
-                    style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
-                  />
-                </ImageListItem>
-              ))}
-            </ImageList>
+          {selectedTask.submission_type === 'photo' && (
+            <>
+              {/* 如果有photoGroups metadata，按组显示 */}
+              {selectedTask.submission_metadata?.photoGroups ? (
+                <Box>
+                  {selectedTask.submission_metadata.photoGroups.map((group: any, groupIndex: number) => (
+                    <Box key={group.id || groupIndex} sx={{ mb: 3 }}>
+                      {/* 组标题和参考信息 */}
+                      <Box sx={{ mb: 1, p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                          组 {groupIndex + 1} {group.sampleRef && `- ${group.sampleRef}`}
+                        </Typography>
+                        {group.comment && (
+                          <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                            备注：{group.comment}
+                          </Typography>
+                        )}
+                      </Box>
+                      
+                      {/* 该组的照片 */}
+                      <ImageList cols={isMobile ? 1 : 2} gap={8}>
+                        {group.photos.map((url: string, photoIndex: number) => (
+                          <ImageListItem key={photoIndex}>
+                            <img
+                              src={url}
+                              alt={`组${groupIndex + 1} 图片${photoIndex + 1}`}
+                              loading="lazy"
+                              style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
+                            />
+                          </ImageListItem>
+                        ))}
+                      </ImageList>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                /* 兼容旧格式，直接显示photo_urls */
+                selectedTask.photo_urls && selectedTask.photo_urls.length > 0 && (
+                  <ImageList cols={isMobile ? 1 : 2} gap={8}>
+                    {selectedTask.photo_urls.map((url, index) => (
+                      <ImageListItem key={index}>
+                        <img
+                          src={url}
+                          alt={`图片 ${index + 1}`}
+                          loading="lazy"
+                          style={{ borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
+                        />
+                      </ImageListItem>
+                    ))}
+                  </ImageList>
+                )
+              )}
+            </>
           )}
 
           {selectedTask.submission_type === 'list' && selectedTask.submission_metadata?.checklist && (
@@ -891,7 +930,7 @@ export const CEODashboardDB: React.FC = () => {
                   </ToggleButtonGroup>
                 </Box>
                 
-                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
                   <Chip 
                     label={`${currentRestaurant.completed_tasks}/${currentRestaurant.total_tasks} 完成`}
                     color="primary" 
@@ -902,6 +941,15 @@ export const CEODashboardDB: React.FC = () => {
                     color="success" 
                     size="small" 
                   />
+                  {currentRestaurant.is_manually_closed && (
+                    <Chip 
+                      label="已手动闭店"
+                      color="error"
+                      size="small"
+                      icon={<CheckCircleIcon sx={{ fontSize: 16 }} />}
+                      sx={{ fontWeight: 'bold' }}
+                    />
+                  )}
                 </Box>
 
                 {/* 按时段分组的任务列表 */}
