@@ -694,36 +694,77 @@ export const CEODashboardDB: React.FC = () => {
             </>
           )}
 
-          {selectedTask.submission_type === 'list' && selectedTask.submission_metadata?.checklist && (
+          {/* List类型任务 - 兼容checklist和items两种格式 */}
+          {selectedTask.submission_type === 'list' && (selectedTask.submission_metadata?.checklist || selectedTask.submission_metadata?.items) && (
             <Box>
-              {selectedTask.submission_metadata.checklist.map((item: any, index: number) => (
-                <Box
-                  key={index}
-                  sx={{
-                    p: 1.5,
-                    mb: 1,
-                    bgcolor: item.status === 'pass' ? '#e8f5e9' : '#ffebee',
-                    borderRadius: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1
-                  }}
-                >
-                  {item.status === 'pass' ? (
-                    <CheckCircleIcon sx={{ color: '#4CAF50' }} />
-                  ) : (
-                    <WarningIcon sx={{ color: '#f44336' }} />
-                  )}
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="body2">{item.title}</Typography>
-                    {item.note && (
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        备注：{item.note}
-                      </Typography>
+              {/* 统计信息 */}
+              {(() => {
+                // 兼容两种数据格式：checklist 和 items
+                const listItems = selectedTask.submission_metadata.checklist || selectedTask.submission_metadata.items || [];
+                const passCount = listItems.filter((item: any) => 
+                  item.status === 'pass' || item.status === 'checked'
+                ).length;
+                const totalCount = listItems.length;
+                const hasErrors = passCount < totalCount;
+                return (
+                  <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2">
+                      完成进度：{passCount}/{totalCount}
+                    </Typography>
+                    {hasErrors && (
+                      <Chip 
+                        label="有未完成项" 
+                        size="small" 
+                        color="error" 
+                        icon={<WarningIcon />}
+                      />
                     )}
                   </Box>
-                </Box>
-              ))}
+                );
+              })()}
+
+              {/* 检查项列表 */}
+              {(selectedTask.submission_metadata.checklist || selectedTask.submission_metadata.items || []).map((item: any, index: number) => {
+                // 兼容不同的状态格式
+                const isCompleted = item.status === 'pass' || item.status === 'checked';
+                // 获取显示文本（兼容 title 和 text 字段）
+                const displayText = item.title || item.text || '未知项';
+                
+                return (
+                  <Box
+                    key={index}
+                    sx={{
+                      p: 1.5,
+                      mb: 1,
+                      bgcolor: isCompleted ? '#e8f5e9' : '#ffebee',
+                      borderRadius: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      border: !isCompleted ? '1px solid #f44336' : 'none'
+                    }}
+                  >
+                    {isCompleted ? (
+                      <CheckCircleIcon sx={{ color: '#4CAF50' }} />
+                    ) : (
+                      <WarningIcon sx={{ color: '#f44336' }} />
+                    )}
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: !isCompleted ? 600 : 400 }}>
+                        {displayText}
+                      </Typography>
+                      {item.note && (
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          备注：{item.note}
+                        </Typography>
+                      )}
+                    </Box>
+                    {!isCompleted && (
+                      <Chip label="未完成" size="small" color="error" />
+                    )}
+                  </Box>
+                );
+              })}
             </Box>
           )}
 

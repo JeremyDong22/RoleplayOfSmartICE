@@ -19,6 +19,7 @@ export interface CEOTaskDetail {
   submission_metadata?: any;
   created_at: string;
   is_late: boolean;
+  makeup_reason?: string;  // 补救原因
   has_errors?: boolean;
   scheduled_time?: string;
   actual_time?: string;
@@ -218,6 +219,7 @@ class CEODashboardService {
           photo_urls,
           submission_metadata,
           created_at,
+          created_at_beijing,
           is_late,
           scheduled_start,
           actual_complete,
@@ -316,8 +318,9 @@ class CEODashboardService {
           text_content: record.text_content,
           photo_urls: record.photo_urls,
           submission_metadata: record.submission_metadata,
-          created_at: record.created_at,
+          created_at: record.created_at_beijing || record.created_at,
           is_late: record.is_late || false,
+          makeup_reason: record.makeup_reason,  // 添加补救原因
           has_errors: this.checkTaskErrors(record),
           scheduled_time: record.scheduled_start,
           actual_time: record.actual_complete,
@@ -419,7 +422,8 @@ class CEODashboardService {
         const stat = employeeMap.get(userId)!;
         stat.total_tasks++;
         
-        if (record.status === 'completed') {
+        // 任务状态可能是 'submitted' 或 'completed'，都算作已完成
+        if (record.status === 'completed' || record.status === 'submitted') {
           stat.completed_tasks++;
           if (record.is_late) {
             stat.late_count++;
@@ -429,8 +433,13 @@ class CEODashboardService {
 
       // 计算准时率
       employeeMap.forEach(stat => {
-        if (stat.completed_tasks > 0) {
-          stat.on_time_rate = ((stat.completed_tasks - stat.late_count) / stat.completed_tasks) * 100;
+        // 如果有总任务，则基于总任务计算准时率
+        // 准时完成的任务数 / 总任务数
+        if (stat.total_tasks > 0) {
+          const onTimeCompletedTasks = stat.completed_tasks - stat.late_count;
+          stat.on_time_rate = (onTimeCompletedTasks / stat.total_tasks) * 100;
+        } else {
+          stat.on_time_rate = 0; // 没有任务时准时率为0
         }
       });
 
