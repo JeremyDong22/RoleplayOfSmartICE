@@ -71,6 +71,8 @@ export interface CEOPeriod {
   start_time: string;
   end_time: string;
   display_order: number;
+  warning_count?: number;  // 该时段的警告数量
+  error_count?: number;    // 该时段的错误数量
 }
 
 export interface CEOAlert {
@@ -221,6 +223,7 @@ class CEODashboardService {
           created_at,
           created_at_beijing,
           is_late,
+          makeup_reason,
           scheduled_start,
           actual_complete,
           roleplay_tasks!roleplay_task_records_task_id_fkey (
@@ -600,6 +603,21 @@ class CEODashboardService {
     };
   }
 
+  // 计算时段的警告和错误数量
+  private calculatePeriodStatistics(periods: CEOPeriod[], tasksByPeriod: Record<string, CEOTaskDetail[]>): CEOPeriod[] {
+    return periods.map(period => {
+      const periodTasks = tasksByPeriod[period.id] || [];
+      const warningCount = periodTasks.filter(t => t.is_late).length;
+      const errorCount = periodTasks.filter(t => t.status === 'missing' || t.has_errors).length;
+      
+      return {
+        ...period,
+        warning_count: warningCount,
+        error_count: errorCount
+      };
+    });
+  }
+
   // 获取所有餐厅的数据（前厅和后厨分别获取）
   async getAllRestaurantsData(): Promise<{
     frontOfficeData: {
@@ -663,11 +681,21 @@ class CEODashboardService {
         }
       });
       
-      // 5. 分别生成前厅和后厨的警告
+      // 5. 计算时段统计（基于当前选中的餐厅和部门）
+      let periodsWithStats = periods;
+      if (frontOfficeData.length > 0 || kitchenData.length > 0) {
+        // 获取当前显示的第一个餐厅的任务数据来计算时段统计
+        const currentRestaurantData = frontOfficeData[0] || kitchenData[0];
+        if (currentRestaurantData) {
+          periodsWithStats = this.calculatePeriodStatistics(periods, currentRestaurantData.tasks_by_period);
+        }
+      }
+      
+      // 6. 分别生成前厅和后厨的警告
       const frontOfficeAlerts = this.generateAlerts(frontOfficeData, '前厅');
       const kitchenAlerts = this.generateAlerts(kitchenData, '后厨');
       
-      // 6. 合并所有警告
+      // 7. 合并所有警告
       const allAlerts = [...frontOfficeAlerts, ...kitchenAlerts].sort((a, b) => {
         if (a.type === 'error' && b.type !== 'error') return -1;
         if (a.type !== 'error' && b.type === 'error') return 1;
@@ -685,7 +713,7 @@ class CEODashboardService {
         },
         combinedData,
         allAlerts,
-        periods
+        periods: periodsWithStats
       };
     } catch (error) {
       console.error('[CEODashboardService] Error fetching all restaurants data:', error);

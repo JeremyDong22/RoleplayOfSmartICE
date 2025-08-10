@@ -133,10 +133,33 @@ export const CEODashboardDB: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [currentPeriodId, setCurrentPeriodId] = useState('');
   const [expandedPeriods, setExpandedPeriods] = useState<Record<string, boolean>>({});
+  const [expandedFloatingTasks, setExpandedFloatingTasks] = useState(false);
   
   // 任务交互状态
   const [selectedTask, setSelectedTask] = useState<CEOTaskDetail | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+
+  // 更新时段统计
+  const updatePeriodStatistics = (restaurant: CEORestaurantData | undefined, basePeriods?: CEOPeriod[]) => {
+    if (!restaurant || (!periods.length && !basePeriods)) return;
+    
+    // 使用传入的 basePeriods 或现有的 periods
+    const periodsToUpdate = basePeriods || periods;
+    
+    const updatedPeriods = periodsToUpdate.map(period => {
+      const periodTasks = restaurant.tasks_by_period[period.id] || [];
+      const warningCount = periodTasks.filter(t => t.is_late).length;
+      const errorCount = periodTasks.filter(t => t.status === 'missing' || t.has_errors).length;
+      
+      return {
+        ...period,
+        warning_count: warningCount || undefined,  // 如果是0则设为undefined
+        error_count: errorCount || undefined      // 如果是0则设为undefined
+      };
+    });
+    
+    setPeriods(updatedPeriods);
+  };
 
   // 加载数据
   const loadData = async (showRefreshIndicator = false) => {
@@ -182,6 +205,9 @@ export const CEODashboardDB: React.FC = () => {
           [currentRestaurant.current_period_id]: true
         }));
       }
+      
+      // 更新时段统计 - 传入基础 periods 数据
+      updatePeriodStatistics(currentRestaurant, data.periods);
       
       setLoading(false);
       setRefreshing(false);
@@ -231,6 +257,11 @@ export const CEODashboardDB: React.FC = () => {
           [restaurant.current_period_id]: true
         }));
       }
+      
+      // 更新时段统计 - 不传入 basePeriods，使用现有的
+      if (restaurant && periods.length > 0) {
+        updatePeriodStatistics(restaurant);
+      }
     }
   };
 
@@ -262,9 +293,12 @@ export const CEODashboardDB: React.FC = () => {
   const handleDepartmentChange = (department: '前厅' | '后厨') => {
     setSelectedDepartment(department);
     
-    // 警告不再需要更新，因为现在始终显示所有部门的警告
-    // 保持当前选中的餐厅不变，不需要切换餐厅
-    // 因为同一家餐厅会有前厅和后厨两个部门的数据
+    // 更新时段统计（基于新部门的数据）
+    const currentRestaurants = department === '前厅' ? frontOfficeRestaurants : kitchenRestaurants;
+    const restaurant = currentRestaurants.find(r => r.restaurant_id === selectedRestaurantId);
+    if (restaurant && periods.length > 0) {
+      updatePeriodStatistics(restaurant);
+    }
   };
 
   // 任务列表组件 - 按时段分组
@@ -339,6 +373,23 @@ export const CEODashboardDB: React.FC = () => {
                             bgcolor: periodColor,
                             color: 'white'
                           }} 
+                        />
+                      )}
+                      {/* 显示警告和错误数量 - 只在大于0时显示，不显示图标 */}
+                      {period.error_count > 0 && (
+                        <Chip 
+                          label={period.error_count} 
+                          size="small" 
+                          color="error"
+                          sx={{ ml: 0.5, height: 20, minWidth: 24 }}
+                        />
+                      )}
+                      {period.warning_count > 0 && (
+                        <Chip 
+                          label={period.warning_count} 
+                          size="small" 
+                          color="warning"
+                          sx={{ ml: 0.5, height: 20, minWidth: 24 }}
                         />
                       )}
                     </Typography>
@@ -498,15 +549,20 @@ export const CEODashboardDB: React.FC = () => {
               overflow: 'hidden'
             }}
           >
-            {/* 浮动任务标题栏 */}
+            {/* 浮动任务标题栏 - 可点击折叠 */}
             <Box
               sx={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 p: 1.5,
-                bgcolor: '#f5f5f5'
+                bgcolor: '#f5f5f5',
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: '#eeeeee'
+                }
               }}
+              onClick={() => setExpandedFloatingTasks(!expandedFloatingTasks)}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Avatar 
@@ -522,17 +578,33 @@ export const CEODashboardDB: React.FC = () => {
                 <Box>
                   <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
                     浮动任务
+                    {currentRestaurant.floating_task_info.length > 0 && (
+                      <Chip 
+                        label={`${currentRestaurant.floating_task_info.reduce((sum, task) => sum + task.submission_count, 0)} 次提交`} 
+                        size="small" 
+                        sx={{ 
+                          ml: 1, 
+                          height: 20,
+                          bgcolor: '#9E9E9E',
+                          color: 'white'
+                        }} 
+                      />
+                    )}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    可随时完成的任务
+                    可随时完成的任务 · {currentRestaurant.floating_task_info.length} 个任务
                   </Typography>
                 </Box>
               </Box>
+              <IconButton size="small">
+                {expandedFloatingTasks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
             </Box>
 
-            {/* 浮动任务统计列表 */}
-            <Box sx={{ bgcolor: 'background.paper' }}>
-              <List sx={{ py: 0 }}>
+            {/* 浮动任务统计列表 - 可折叠 */}
+            <Collapse in={expandedFloatingTasks}>
+              <Box sx={{ bgcolor: 'background.paper' }}>
+                <List sx={{ py: 0 }}>
                 {currentRestaurant.floating_task_info.map((taskInfo, index) => (
                   <ListItem
                     key={taskInfo.task_id}
@@ -580,8 +652,9 @@ export const CEODashboardDB: React.FC = () => {
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}
-              </List>
-            </Box>
+                </List>
+              </Box>
+            </Collapse>
           </Box>
         )}
       </Box>
@@ -628,6 +701,18 @@ export const CEODashboardDB: React.FC = () => {
                 计划时间：{format(new Date(selectedTask.scheduled_time), 'HH:mm')}
                 {selectedTask.actual_time && ` | 实际完成：${format(new Date(selectedTask.actual_time), 'HH:mm')}`}
                 {selectedTask.is_late && <Chip label="延迟提交" size="small" color="warning" sx={{ ml: 1 }} />}
+              </Typography>
+            </Box>
+          )}
+
+          {/* 迟交原因 - 显示在时间信息下方 */}
+          {selectedTask.is_late && selectedTask.makeup_reason && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: '#fff8e1', borderRadius: 1, border: '1px solid #ffb74d' }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5, color: '#ff6f00' }}>
+                迟交原因 (Makeup Reason):
+              </Typography>
+              <Typography variant="body2">
+                {selectedTask.makeup_reason}
               </Typography>
             </Box>
           )}
