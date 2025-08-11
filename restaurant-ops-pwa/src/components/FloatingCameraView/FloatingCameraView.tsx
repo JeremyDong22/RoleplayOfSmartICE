@@ -49,7 +49,7 @@ import {
 import { useDrag } from '@use-gesture/react'
 import { animated, useSpring } from '@react-spring/web'
 import { checkFileExists } from '../../utils/silentFileCheck'
-import { isIPadDevice } from '../../utils/cameraHelper'
+import { isIPadDevice, getOptimizedConstraints } from '../../utils/cameraHelper'
 
 interface Evidence {
   photo: string
@@ -173,13 +173,9 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
       setCameraError(false)
       stopCamera()
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1920, max: 2560 },
-          height: { ideal: 1080, max: 1440 }
-        } 
-      })
+      // 使用优化的约束条件（特别是对iPad）
+      const constraints = await getOptimizedConstraints()
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       
       if (videoRef.current && stream) {
         videoRef.current.srcObject = stream

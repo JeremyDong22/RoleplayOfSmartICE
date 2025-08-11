@@ -3,9 +3,11 @@
 // 支持数据持久化，退出后再进入仍保留拍摄记录
 // 2025-01-22: 更新任务ID映射 - 添加lunch-closing-manager-2/3/4，删除lunch-duty-manager-1/2/3/4
 // 2025-01-25: 使用预生成的文件列表避免404错误
+// 2025-08-11: 添加iPad相机比例优化
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { loadExistingFiles } from '../../utils/silentFileCheck'
+import { isIPadDevice, getOptimizedConstraints } from '../../utils/cameraHelper'
 import {
   Dialog,
   DialogTitle,
@@ -315,11 +317,9 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       setCameraError(false)
       stopCamera()
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment'
-        } 
-      })
+      // 使用优化的约束条件（特别是对iPad）
+      const constraints = await getOptimizedConstraints()
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       
       if (videoRef.current && stream) {
         videoRef.current.srcObject = stream
@@ -711,7 +711,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'contain'  // 改为contain以显示完整画面
+                objectFit: isIPadDevice() ? 'contain' : 'cover',
+                backgroundColor: '#000'
               }}
             />
             <canvas
