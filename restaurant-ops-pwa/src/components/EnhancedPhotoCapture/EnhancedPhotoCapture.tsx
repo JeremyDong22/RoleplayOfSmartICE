@@ -47,6 +47,7 @@ import {
   initializeCamera,
   applyZoom,
   isHuaweiDevice,
+  isIPadDevice,
   getCameraLabel,
   type CameraDevice
 } from '../../utils/cameraHelper'
@@ -618,7 +619,8 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'cover'
+                objectFit: isIPadDevice() ? 'contain' : 'cover',
+                backgroundColor: '#000'
               }}
             />
             <canvas
@@ -760,8 +762,8 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       />
       
-      {/* Device Info (Debug - only show on Huawei) */}
-      {isHuaweiDevice() && process.env.NODE_ENV === 'development' && (
+      {/* Device Info (Debug - show on Huawei and iPad) */}
+      {(isHuaweiDevice() || isIPadDevice()) && process.env.NODE_ENV === 'development' && (
         <Box
           sx={{
             position: 'absolute',
@@ -774,11 +776,21 @@ export const EnhancedPhotoCapture: React.FC<EnhancedPhotoCaptureProps> = ({
             fontSize: '10px'
           }}
         >
-          <Typography variant="caption" display="block">
-            华为设备检测: 已启用兼容模式
-          </Typography>
+          {isHuaweiDevice() && (
+            <Typography variant="caption" display="block">
+              华为设备检测: 已启用兼容模式
+            </Typography>
+          )}
+          {isIPadDevice() && (
+            <Typography variant="caption" display="block">
+              iPad设备检测: 已优化视频显示
+            </Typography>
+          )}
           <Typography variant="caption" display="block">
             摄像头数量: {availableCameras.length}
+          </Typography>
+          <Typography variant="caption" display="block">
+            视频模式: {isIPadDevice() ? 'contain' : 'cover'}
           </Typography>
         </Box>
       )}

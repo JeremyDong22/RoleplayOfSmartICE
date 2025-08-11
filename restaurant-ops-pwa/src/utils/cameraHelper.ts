@@ -1,10 +1,11 @@
 /**
  * Camera Helper Utilities
  * 
- * Provides camera compatibility fixes for Huawei and other multi-camera devices
+ * Provides camera compatibility fixes for Huawei, iPad, and other multi-camera devices
  * Handles camera selection, constraints optimization, and device-specific workarounds
  * 
  * Created: 2025-08-05
+ * Updated: 2025-08-11 - Added iPad detection and optimization
  */
 
 interface CameraDevice {
@@ -34,6 +35,32 @@ export function isHuaweiDevice(): boolean {
          ua.includes('hms') ||
          // Check for Huawei-specific browser features
          ua.includes('hbrowser')
+}
+
+/**
+ * Detects if the current device is an iPad
+ */
+export function isIPadDevice(): boolean {
+  const ua = navigator.userAgent
+  // Check for iPad in user agent
+  if (ua.includes('iPad')) return true
+  
+  // Check for iPadOS 13+ which reports as Mac
+  if (ua.includes('Macintosh') && 'ontouchend' in document) {
+    // Additional check for iPad features
+    return navigator.maxTouchPoints > 1
+  }
+  
+  return false
+}
+
+/**
+ * Detects if the current device is any iOS device
+ */
+export function isIOSDevice(): boolean {
+  const ua = navigator.userAgent
+  return /iPad|iPhone|iPod/.test(ua) || 
+         (ua.includes('Macintosh') && 'ontouchend' in document)
 }
 
 /**
@@ -123,8 +150,22 @@ export async function getOptimizedConstraints(preferredDeviceId?: string): Promi
     facingMode: 'environment'
   }
   
+  // For iPad devices, use specific constraints to prevent zoom issues
+  if (isIPadDevice()) {
+    // Use ranges instead of exact values for Safari compatibility
+    baseConstraints.width = { min: 640, ideal: 1280, max: 1920 }
+    baseConstraints.height = { min: 480, ideal: 960, max: 1440 }
+    
+    // Set 4:3 aspect ratio which is standard for iPad cameras
+    baseConstraints.aspectRatio = { ideal: 4/3 }
+    
+    // If we have a preferred device ID, use it
+    if (preferredDeviceId) {
+      baseConstraints.deviceId = { exact: preferredDeviceId }
+    }
+  }
   // For Huawei devices, use specific constraints
-  if (isHuaweiDevice()) {
+  else if (isHuaweiDevice()) {
     // Use standard resolutions that work well on Huawei devices
     baseConstraints.width = { ideal: 1280, max: 1920 }
     baseConstraints.height = { ideal: 720, max: 1080 }
@@ -306,12 +347,15 @@ export function getDeviceInfo(): { [key: string]: any } {
     userAgent: navigator.userAgent,
     isHuawei: isHuaweiDevice(),
     isHuaweiMate30: isHuaweiMate30(),
+    isIPad: isIPadDevice(),
+    isIOS: isIOSDevice(),
     platform: navigator.platform,
     vendor: navigator.vendor,
     screenResolution: `${window.screen.width}x${window.screen.height}`,
     devicePixelRatio: window.devicePixelRatio,
     mediaDevicesSupported: 'mediaDevices' in navigator,
     getUserMediaSupported: 'getUserMedia' in navigator.mediaDevices,
-    enumerateDevicesSupported: 'enumerateDevices' in navigator.mediaDevices
+    enumerateDevicesSupported: 'enumerateDevices' in navigator.mediaDevices,
+    maxTouchPoints: navigator.maxTouchPoints
   }
 }

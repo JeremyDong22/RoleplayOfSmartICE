@@ -49,6 +49,7 @@ import {
 import { useDrag } from '@use-gesture/react'
 import { animated, useSpring } from '@react-spring/web'
 import { checkFileExists } from '../../utils/silentFileCheck'
+import { isIPadDevice } from '../../utils/cameraHelper'
 
 interface Evidence {
   photo: string
@@ -457,7 +458,8 @@ export const FloatingCameraView: React.FC<FloatingCameraViewProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'cover'
+                objectFit: isIPadDevice() ? 'contain' : 'cover',
+                backgroundColor: '#000'
               }}
             />
             <canvas
