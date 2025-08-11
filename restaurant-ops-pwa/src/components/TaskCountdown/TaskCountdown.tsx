@@ -45,10 +45,7 @@ import {
 import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
 
 import useEmblaCarousel from 'embla-carousel-react'
-import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
-import AudioRecordingDialog from '../AudioRecordingDialog'
-import TextInputDialog from '../TextInputDialog'
-import ListSubmissionDialog from '../ListSubmissionDialog'
+import { TaskSubmissionDialog } from '../TaskSubmissionDialog'
 import { ReviewTaskDialog } from '../ReviewTaskDialog/ReviewTaskDialog'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
 import RateReviewIcon from '@mui/icons-material/RateReview'
@@ -225,28 +222,53 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     prevPeriodRef.current = period?.id
   }, [period?.id, emblaApi])
   
-  // Update currentTime for pre-closing/closing periods
+  // Update currentTime continuously
   useEffect(() => {
-    if (period?.id === 'pre-closing' || period?.id === 'closing') {
+    const updateTime = () => {
       setCurrentTime(testTime || new Date())
     }
-  }, [period?.id, testTime])
+    
+    updateTime()
+    const interval = setInterval(updateTime, 1000)
+    return () => clearInterval(interval)
+  }, [testTime])
   
   // Calculate time remaining for countdown periods
   useEffect(() => {
     const calculateTime = () => {
       const now = testTime || new Date()
       
-      // For event-driven periods (pre-closing, closing), show current time instead of countdown
-      // These periods don't have fixed end times - they end based on events
-      if (!period || period.isEventDriven || period.id === 'pre-closing' || period.id === 'closing') {
-        setCurrentTime(now)
+      // For event-driven periods, show current time instead of countdown
+      if (!period || period.isEventDriven || !period.endTime) {
+        // Current time is now handled by the separate effect above
         return
       }
       
       const [endHour, endMinute] = period.endTime.split(':').map(Number)
+      const [startHour, startMinute] = period.startTime ? period.startTime.split(':').map(Number) : [0, 0]
+      
       const endTime = new Date(now)
       endTime.setHours(endHour, endMinute, 0, 0)
+      
+      // Handle cross-day periods (e.g., 21:30 to 08:00)
+      // If end time is earlier than start time, it means the period crosses midnight
+      if (endHour < startHour || (endHour === startHour && endMinute < startMinute)) {
+        // If current time is after start time (e.g., 22:00), end time is tomorrow
+        if (now.getHours() >= startHour || now.getHours() < endHour) {
+          if (now.getHours() >= startHour) {
+            // We're in the evening part, end time is tomorrow
+            endTime.setDate(endTime.getDate() + 1)
+          }
+          // else we're in the morning part, end time is today
+        }
+      } else {
+        // Normal period within the same day
+        // If we've already passed the end time, it's actually tomorrow's period
+        if (now > endTime) {
+          setTimeRemaining({ hours: 0, minutes: 0, seconds: 0 })
+          return
+        }
+      }
       
       const total = endTime.getTime() - now.getTime()
       
@@ -265,11 +287,11 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
     calculateTime()
     const interval = setInterval(calculateTime, 1000)
     return () => clearInterval(interval)
-  }, [period?.id, period?.endTime, testTime])
+  }, [period?.id, period?.endTime, period?.startTime, period?.isEventDriven, testTime])
   
   // Get urgency level
   const getUrgencyLevel = () => {
-    if (!period || period.id === 'pre-closing' || period.id === 'closing') return 'normal'
+    if (!period || period.isEventDriven || !period.endTime) return 'normal'
     
     const totalMinutes = timeRemaining.hours * 60 + timeRemaining.minutes
     const totalSeconds = totalMinutes * 60 + timeRemaining.seconds
@@ -333,7 +355,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                        'text.primary'
               }}
             >
-              {period?.id === 'pre-closing' || period?.id === 'closing' ? (
+              {period?.isEventDriven || !period?.endTime ? (
                 currentTime.toLocaleTimeString('zh-CN', { 
                   hour: '2-digit', 
                   minute: '2-digit',
@@ -797,79 +819,27 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
       {/* Removed: Closing Complete Button - moved to ManagerDashboard as separate component */}
       {/* Removed: Notices Section - moved to separate NoticeContainer component */}
       
-      {/* Photo Submission Dialog */}
+      {/* Task Submission Dialog with Face Recognition */}
       {activeTask && (
-        <PhotoSubmissionDialog
-          open={photoDialogOpen}
-          taskName={activeTask.title}
-          taskId={activeTask.id}
-          initialPhotoGroups={previousSubmissions[activeTask.id]?.photoGroups} // 传递之前的照片组
-          samples={activeTask.samples}
+        <TaskSubmissionDialog
+          open={photoDialogOpen || audioDialogOpen || textDialogOpen || listDialogOpen}
+          task={activeTask}
+          initialPhotoGroups={previousSubmissions[activeTask.id]?.photoGroups}
           onClose={() => {
             setPhotoDialogOpen(false)
-            setActiveTask(null)
-          }}
-          onSubmit={async (evidence) => {
-            await handleTaskComplete(activeTask.id, { evidence, type: 'photo' })
-            // 对话框会自己关闭，这里只需要清理状态
-            setActiveTask(null)
-          }}
-        />
-      )}
-      
-      {/* Audio Recording Dialog */}
-      {activeTask && (
-        <AudioRecordingDialog
-          open={audioDialogOpen}
-          taskName={activeTask.title}
-          taskId={activeTask.id}
-          samples={activeTask.samples}
-          onClose={() => {
             setAudioDialogOpen(false)
-            setActiveTask(null)
-          }}
-          onSubmit={async (transcription, audioBlob) => {
-            await handleTaskComplete(activeTask.id, { transcription, audioBlob, type: 'audio' })
-            // 对话框会自己关闭，这里只需要清理状态
-            setActiveTask(null)
-          }}
-        />
-      )}
-      
-      {/* Text Input Dialog */}
-      {activeTask && (
-        <TextInputDialog
-          open={textDialogOpen}
-          taskName={activeTask.title}
-          taskId={activeTask.id}
-          samples={activeTask.samples}
-          onClose={() => {
             setTextDialogOpen(false)
-            setActiveTask(null)
-          }}
-          onSubmit={async (textInput) => {
-            await handleTaskComplete(activeTask.id, { textInput, type: 'text' })
-            // 对话框会自己关闭，这里只需要清理状态
-            setActiveTask(null)
-          }}
-        />
-      )}
-      
-      {/* List Submission Dialog */}
-      {activeTask && (
-        <ListSubmissionDialog
-          open={listDialogOpen}
-          taskName={activeTask.title}
-          sampleDir={getSampleDirForTask(activeTask)}
-          samples={activeTask.samples}
-          onClose={() => {
             setListDialogOpen(false)
             setActiveTask(null)
           }}
-          onSubmit={async (data) => {
-            await handleTaskComplete(activeTask.id, { items: data.items, type: 'list' })
+          onSubmit={async (taskId, data) => {
+            await handleTaskComplete(taskId, data)
             // 对话框会自己关闭，这里只需要清理状态
             setActiveTask(null)
+            setPhotoDialogOpen(false)
+            setAudioDialogOpen(false)
+            setTextDialogOpen(false)
+            setListDialogOpen(false)
           }}
         />
       )}

@@ -14,10 +14,15 @@ export const ClosedPeriodDisplay: React.FC<ClosedPeriodDisplayProps> = ({ nextPe
   const [timeUntilNext, setTimeUntilNext] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
   
   useEffect(() => {
-    if (!nextPeriod) return
-    
     const calculateTime = () => {
       const now = testTime || new Date()
+      
+      // Handle case when there's no next period
+      if (!nextPeriod || !nextPeriod.startTime) {
+        setTimeUntilNext({ hours: 0, minutes: 0, seconds: 0 })
+        return
+      }
+      
       const [startHour, startMinute] = nextPeriod.startTime.split(':').map(Number)
       const nextStart = new Date(now)
       nextStart.setHours(startHour, startMinute, 0, 0)

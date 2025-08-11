@@ -26,12 +26,15 @@ import { NoticeContainer } from '../components/NoticeContainer/NoticeContainer'
 import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
 import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../utils/workflowParser'
 import { useTaskData } from '../contexts/TaskDataContext'
+import { getManualClosingTask } from '../services/taskService'
 // import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
 import { clearAllAppStorage } from '../utils/clearAllStorage'
-import { getTodayCompletedTaskIds, getTodayTaskStatuses, type TaskStatusDetail } from '../services/taskRecordService'
+import { getTodayCompletedTaskIds, getTodayTaskStatuses, validateCanClose, submitTaskRecord, type TaskStatusDetail } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
+import { authService } from '../services/authService'
 import { getRestaurantId } from '../utils/restaurantSetup'
+import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -163,7 +166,6 @@ export const ChefDashboard: React.FC = () => {
     const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
     const [isManualClosing, setIsManualClosing] = useState(false)
     const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
-    const [showPreClosingComplete, setShowPreClosingComplete] = useState(false)
     const waitingRef = useRef(false) // Ref to prevent race conditions
     const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded initial data
     const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
@@ -171,30 +173,66 @@ export const ChefDashboard: React.FC = () => {
     const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
     const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
     const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
+    const [dbState, setDbState] = useState<RestaurantState | null>(null) // Restaurant state from database
+    const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
+    const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
+    const manualClosingRef = useRef(false) // Ref to prevent race conditions
     
     // 过滤只显示 Chef 的浮动任务
     const floatingTasks = allFloatingTasks.filter(task => task.role === 'Chef')
+    
+    // 获取手动闭店任务（特殊任务，只作为按钮显示）
+    const manualClosingTask = getManualClosingTask('chef')
   
+  // Load restaurant state from database
+  useEffect(() => {
+    if (!currentUserId) {
+      return
+    }
+    
+    const loadState = async () => {
+      const restaurantId = await getRestaurantId()
+      if (!restaurantId) {
+        return
+      }
+      
+      const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
+      
+      if (state) {
+        setDbState(state)
+        setIsWaitingForNextDay(state.isWaitingForNextDay)
+        setIsManualClosing(state.isManualClosing)
+        setCanManualClose(state.canManualClose)
+        
+        // Update refs for immediate access
+        waitingRef.current = state.isWaitingForNextDay
+        manualClosingRef.current = state.isManualClosing
+      }
+    }
+    
+    loadState()
+  }, [currentUserId, testTime]) // 添加 testTime 依赖
+
   // Load completed tasks from Supabase on mount
   useEffect(() => {
     async function loadFromDatabase() {
       try {
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          console.error('No authenticated user')
+        // Get current user from authService instead of supabase.auth
+        const currentUser = authService.getCurrentUser()
+        if (!currentUser) {
+          console.error('No authenticated user from authService')
           setIsLoadingFromDb(false)
           return
         }
         
-        setCurrentUserId(user.id)
+        setCurrentUserId(currentUser.id)
         
         // Load today's completed tasks
-        const completedIds = await getTodayCompletedTaskIds(user.id)
+        const completedIds = await getTodayCompletedTaskIds(currentUser.id)
         setCompletedTaskIds(completedIds)
         
         // Load today's task statuses for TaskSummary
-        const taskStatuses = await getTodayTaskStatuses(user.id)
+        const taskStatuses = await getTodayTaskStatuses(currentUser.id)
         setDbTaskStatuses(taskStatuses)
         
         // Check for global test time
@@ -218,68 +256,86 @@ export const ChefDashboard: React.FC = () => {
   
   // Listen for clear storage broadcast from other tabs - REMOVED: Using only Supabase Realtime
   
-  // Helper function to get next period for Chef (only special case for closing)
-  const getNextPeriodForChef = (currentTime?: Date) => {
-    const current = getCurrentPeriodFromDatabase(workflowPeriods, currentTime)
-    const normalNext = getNextPeriodFromDatabase(workflowPeriods, currentTime)
-    
-    // Special case: if we're in closing, show opening as next period
-    if (current?.id === 'closing' && normalNext?.id === 'opening') {
-      // Chef shows opening as next period after closing
-      return workflowPeriods.find(p => p.id === 'opening') || null
-    }
-    
-    // For all other cases, use normal next period logic
-    return normalNext
-  }
-  
-  // Period update effect
+  // Period update effect - now primarily uses database state (same as Manager)
   useEffect(() => {
-    const updatePeriods = () => {
-      // IMPORTANT: Check waiting state FIRST before manual advance
-      // Check waitingRef first for immediate feedback
-      if (waitingRef.current || isWaitingForNextDay) {
-        const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
-        // Still update next period for display even in waiting state
-        setNextPeriod(getNextPeriodForChef(testTime))
+    let intervalId: NodeJS.Timeout | null = null
+    let lastPeriodId = currentPeriod?.id // Track last period to detect changes
+    
+    const updatePeriods = async () => {
+      // Use database state if available
+      if (dbState) {
+        // If database says we're waiting, respect that
+        if (dbState.isWaitingForNextDay) {
+          setIsWaitingForNextDay(true)
+          waitingRef.current = true
+          // Clear current period to show waiting display
+          setCurrentPeriod(null)
+          // Set next period to opening for display
+          const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
+          if (openingPeriod) {
+            setNextPeriod(openingPeriod)
+          } else {
+            // If workflowPeriods is not loaded yet, try to get from database
+            const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+            setNextPeriod(next)
+          }
+          return
+        }
         
-        // Only exit waiting state if we've reached opening time (10:00)
-        if (current && current.id === 'opening') {
-          waitingRef.current = false
-          setIsWaitingForNextDay(false)
-          setShowPreClosingComplete(false)
-          // Clear any lingering manual advance state
-          setManuallyAdvancedPeriod(null)
-          manualAdvanceRef.current = null
+        // If database says we're in manual closing, respect that
+        if (dbState.isManualClosing) {
+          setIsManualClosing(true)
+          manualClosingRef.current = true
+          // Get closing period
+          const closingPeriod = workflowPeriods.length > 0 ? workflowPeriods[workflowPeriods.length - 1] : undefined
+          if (closingPeriod) {
+            setCurrentPeriod(closingPeriod)
+            // Also update next period
+            const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+            setNextPeriod(next)
+          }
+          return
+        }
+        
+        // Normal operation - use database current period and calculate next
+        if (dbState.currentPeriodId) {
+          const currentFromDb = workflowPeriods.find(p => p.id === dbState.currentPeriodId)
+          if (currentFromDb) {
+            // Check if period changed
+            if (lastPeriodId && lastPeriodId !== currentFromDb.id) {
+              // Reload state when period changes
+              const restaurantId = await getRestaurantId()
+              if (restaurantId) {
+                const newState = await restaurantStateService.getCurrentState(restaurantId, testTime)
+                if (newState) {
+                  setIsManualClosing(newState.isManualClosing)
+                  setIsWaitingForNextDay(newState.isWaitingForNextDay)
+                  waitingRef.current = newState.isWaitingForNextDay
+                  manualClosingRef.current = newState.isManualClosing
+                }
+              }
+            }
+            lastPeriodId = currentFromDb.id
+            setCurrentPeriod(currentFromDb)
+            const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+            setNextPeriod(next)
+          }
+        } else {
+          // No current period from database - we're in waiting state
+          setCurrentPeriod(null)
+          // Calculate next period based on current time
+          const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+          setNextPeriod(next)
+        }
+      } else {
+        // No database state available yet
+        // Still calculate periods based on time for display purposes
+        const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
+        const next = getNextPeriodFromDatabase(workflowPeriods, testTime)
+        if (current) {
           setCurrentPeriod(current)
-          setNextPeriod(getNextPeriodForChef(testTime))
-        } else {
-          // Update periods even in waiting state to reflect time changes
-          setCurrentPeriod(getCurrentPeriodFromDatabase(workflowPeriods, testTime))
-          setNextPeriod(getNextPeriodForChef(testTime))
+          setNextPeriod(next)
         }
-        // Still waiting, don't update state flags
-        return
-      }
-      
-      // Check if we have a manually advanced period
-      if (manualAdvanceRef.current || manuallyAdvancedPeriod) {
-        const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
-        // Check if actual time has caught up to the manually advanced period
-        if (current?.id === manualAdvanceRef.current || current?.id === manuallyAdvancedPeriod) {
-          setManuallyAdvancedPeriod(null)
-          manualAdvanceRef.current = null
-        } else {
-          return // Don't update periods while manually advanced
-        }
-      }
-      
-      // Normal period updates
-      if (!isManualClosing) {
-        const current = getCurrentPeriodFromDatabase(workflowPeriods, testTime)
-        const next = getNextPeriodForChef(testTime)
-        setCurrentPeriod(current)
-        setNextPeriod(next)
       }
     }
     
@@ -287,18 +343,27 @@ export const ChefDashboard: React.FC = () => {
     updatePeriods()
     
     // Always set interval to check for period changes
-    const interval = setInterval(updatePeriods, 1000)
-    return () => clearInterval(interval)
-  }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod])
+    intervalId = setInterval(updatePeriods, 1000)
+    
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [testTime, isManualClosing, isWaitingForNextDay, manuallyAdvancedPeriod, currentPeriod, workflowPeriods, dbState])
   
   // Sync refs with state
   useEffect(() => {
-    waitingRef.current = isWaitingForNextDay
-  }, [isWaitingForNextDay])
+    manualClosingRef.current = isManualClosing
+  }, [isManualClosing])
   
   useEffect(() => {
     manualAdvanceRef.current = manuallyAdvancedPeriod
   }, [manuallyAdvancedPeriod])
+
+  useEffect(() => {
+    waitingRef.current = isWaitingForNextDay
+  }, [isWaitingForNextDay])
 
   // Subscribe to broadcast messages - REMOVED: Using only Supabase Realtime
   // useEffect(() => {
@@ -356,14 +421,13 @@ export const ChefDashboard: React.FC = () => {
         // Reset all task-related states
         setTaskStatuses([])
         setCompletedTaskIds([])
-        setNoticeComments([])
         setMissingTasks([])
-        setShowPreClosingComplete(false)
         
         // Always clear waiting state and manual advance state at daily reset
         setIsWaitingForNextDay(false)
         waitingRef.current = false
         setIsManualClosing(false)
+        manualClosingRef.current = false
         setManuallyAdvancedPeriod(null)
         manualAdvanceRef.current = null
       }
@@ -378,111 +442,104 @@ export const ChefDashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [testTime, isWaitingForNextDay])
   
-  // Missing tasks update effect
+  // Missing tasks update effect - based on database (same as Manager)
   useEffect(() => {
-    if (!currentPeriod) return
+    if (!currentPeriod || !currentUserId || isLoadingFromDb) return
     
     // Don't update missing tasks if we're in manual closing mode or have manually advanced
     // This prevents overwriting the missing tasks set during transition
-    if (isManualClosing || currentPeriod.id === 'closing' || manuallyAdvancedPeriod) {
+    if (isManualClosing || manuallyAdvancedPeriod) {
       return
     }
 
-    const updateMissingTasks = () => {
+    const updateMissingTasks = async () => {
       const now = testTime || new Date()
-      const updatedMissingTasks: { task: TaskTemplate; periodName: string }[] = []
+      const today = now.toISOString().split('T')[0]
       
-      // Check all periods that have passed
-      workflowPeriods.forEach(period => {
-        // Skip event-driven periods - they don't end by time
-        if (period.isEventDriven) return
+      try {
+        // Get all completed tasks for today from database
+        const completedIds = await getTodayCompletedTaskIds(currentUserId)
         
-        // Special handling for closing period (cross-day period)
-        // Chef skips the closing period entirely
-        if (period.id === 'closing') {
-          return
-        }
+        const updatedMissingTasks: { task: TaskTemplate; periodName: string }[] = []
         
-        const [periodStartHour, periodStartMinute] = period.startTime.split(':').map(Number)
-        const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
-        
-        // Create period start and end times for today
-        const periodStart = new Date(now)
-        periodStart.setHours(periodStartHour, periodStartMinute, 0, 0)
-        
-        const periodEnd = new Date(now)
-        periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
-        
-        // For cross-day periods, adjust the end date
-        if (periodEndHour < periodStartHour) {
-          // Period ends tomorrow
-          periodEnd.setDate(periodEnd.getDate() + 1)
-        }
-        
-        // Skip if this period hasn't started yet today
-        if (now < periodStart) {
-          return
-        }
-        
-        // If this period has ended and it's not the current period
-        if (now > periodEnd && period.id !== currentPeriod.id) {
-          // Check for uncompleted tasks using completedTaskIds
-          period.tasks.chef.forEach(task => {
-            // Skip notices - they are not actionable tasks
-            if (task.isNotice === true) return
-            // Skip floating tasks - they're always current
-            if (task.isFloating === true) return
-            // Skip tasks without proper structure
-            if (!task.id || !task.title) return
-            
-            // Use completedTaskIds for consistency
-            if (!completedTaskIds.includes(task.id)) {
-              updatedMissingTasks.push({
-                task,
-                periodName: period.displayName
-              })
-            }
-          })
-        }
-      })
-      
-      setMissingTasks(prev => {
-        // Preserve manually added tasks and only update auto-detected ones
-        // Keep all tasks that were manually added
-        const manuallyAddedTasks = prev.filter(item => {
-          // Check if this task's period has not ended naturally yet
-          const period = workflowPeriods.find(p => p.displayName === item.periodName)
-          if (!period) return true // Keep if period not found
+        // Check all periods that have passed
+        workflowPeriods.forEach(period => {
+          // Skip event-driven periods as they don't end by time
+          if (period.isEventDriven) return
           
+          // Special handling for closing period (cross-day period)
+          if (period.id === 'closing') {
+            // Closing runs from 21:30 PM to 08:00 AM next day
+            // At 10:20 AM, we're past the end time (08:00) but this closing period
+            // belongs to yesterday, not today. We should only check today's tasks.
+            
+            const currentHour = now.getHours()
+            const currentMinutes = now.getMinutes()
+            const currentTimeInMinutes = currentHour * 60 + currentMinutes
+            
+            // If we're between 00:00-21:29 (before today's closing starts),
+            // skip checking the closing period entirely
+            if (currentTimeInMinutes < 21 * 60 + 30) {
+              return
+            }
+            
+            // If we're at 21:30 or later, this is today's closing period
+            // Continue with normal checking below
+          }
+          
+          const [periodStartHour, periodStartMinute] = period.startTime.split(':').map(Number)
           const [periodEndHour, periodEndMinute] = period.endTime.split(':').map(Number)
+          
+          // Create period start and end times for today
+          const periodStart = new Date(now)
+          periodStart.setHours(periodStartHour, periodStartMinute, 0, 0)
+          
           const periodEnd = new Date(now)
           periodEnd.setHours(periodEndHour, periodEndMinute, 0, 0)
           
-          // Keep tasks from periods that haven't naturally ended yet
-          return now <= periodEnd
+          // For cross-day periods, adjust the end date
+          if (periodEndHour < periodStartHour) {
+            // Period ends tomorrow
+            periodEnd.setDate(periodEnd.getDate() + 1)
+          }
+          
+          // Skip if this period hasn't started yet today
+          if (now < periodStart) {
+            return
+          }
+          
+          // If this period has ended and it's not the current period
+          if (now > periodEnd && period.id !== currentPeriod.id) {
+            // Check for uncompleted tasks using database data
+            period.tasks.chef.forEach((task: TaskTemplate) => {
+              if (task.isNotice) return // Skip notices
+              
+              // Use database completedIds instead of local state
+              if (!completedIds.includes(task.id)) {
+                updatedMissingTasks.push({
+                  task,
+                  periodName: period.displayName
+                })
+              }
+            })
+          }
         })
         
-        // Combine manually added tasks with auto-detected ones
-        const combined = [...manuallyAddedTasks, ...updatedMissingTasks]
+        setMissingTasks(updatedMissingTasks)
         
-        // Remove duplicates based on task ID
-        const uniqueTasks = combined.filter((item, index, self) =>
-          index === self.findIndex(t => t.task.id === item.task.id)
-        )
-        
-        // Only update if the tasks have changed
-        const hasChanged = prev.length !== uniqueTasks.length || 
-          prev.some((item, index) => item.task.id !== uniqueTasks[index]?.task.id)
-        
-        return hasChanged ? uniqueTasks : prev
-      })
+      } catch (error) {
+        console.error('Error updating missing tasks from database:', error)
+      }
     }
 
+    // Initial update
     updateMissingTasks()
-    const interval = setInterval(updateMissingTasks, 5000) // Check every 5 seconds instead of every second
+    
+    // Update every 30 seconds (less frequent since database calls are involved)
+    const interval = setInterval(updateMissingTasks, 30000)
     
     return () => clearInterval(interval)
-  }, [testTime, currentPeriod?.id, workflowPeriods, completedTaskIds, isManualClosing, manuallyAdvancedPeriod])
+  }, [testTime, currentPeriod?.id, workflowPeriods, currentUserId, isLoadingFromDb, isManualClosing])
   
   // Overdue status update effect
   useEffect(() => {
@@ -574,17 +631,6 @@ export const ChefDashboard: React.FC = () => {
             // Refresh task statuses from database for TaskSummary
             const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
             setDbTaskStatuses(updatedTaskStatuses)
-            
-            // Check if this is the last task in closing period for chef
-            if (currentPeriod?.id === 'closing') {
-              const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
-              const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
-              
-              if (allCompleted) {
-                // All closing tasks completed, show completion message
-                setShowPreClosingComplete(true)
-              }
-            }
           } else {
             console.log('[ChefDashboard] Floating task submitted but not marked as completed (can be resubmitted)')
             
@@ -619,17 +665,6 @@ export const ChefDashboard: React.FC = () => {
       
       const newCompletedIds = [...completedTaskIds, taskId]
       setCompletedTaskIds(newCompletedIds)
-      
-      // Check if this is the last task in closing period for chef
-      if (currentPeriod?.id === 'closing') {
-        const allTasks = currentPeriod.tasks.chef.filter(t => !t.isNotice)
-        const allCompleted = allTasks.every(task => newCompletedIds.includes(task.id))
-        
-        if (allCompleted) {
-          // All closing tasks completed, show completion message
-          setShowPreClosingComplete(true)
-        }
-      }
     }
   }
   
@@ -725,43 +760,108 @@ export const ChefDashboard: React.FC = () => {
   
   // Removed handleLastCustomerLeft as it's not used for Chef
   
-  const handleClosingComplete = () => {
-    // 移除了对floating tasks的检查，因为它们不是强制性的
+  const handleClosingComplete = async () => {
     
-    // Check if there are any missing tasks
+    setIsCheckingClosure(true)
+    
+    try {
+      // 移除了对floating tasks的检查，因为它们不是强制性的
+      
+      // Always check database state to see if we can close
+      const restaurantId = await getRestaurantId()
+      if (restaurantId && currentUserId) {
+        const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
+        
+        // Always validate, regardless of the state's canManualClose flag
+        const { canClose, reason } = await validateCanClose(restaurantId)
+      
+      if (!canClose) {
+        alert(reason || '还有未完成的必要任务，无法进行闭店操作。')
+        return
+      }
+    }
+    
+    // Double check local state as well
     if (missingTasks.length > 0) {
-      alert(`还有 ${missingTasks.length} 个未完成的任务，请先完成所有缺失任务后再收尾。`)
+      alert(`还有 ${missingTasks.length} 个未完成的任务，请先完成所有缺失任务后再闭店。`)
       return
+    }
+    
+    // Check if current period (last/closing) tasks are all completed
+    const isClosingPeriod = workflowPeriods.length > 0 && currentPeriod?.id === workflowPeriods[workflowPeriods.length - 1].id
+    if (isClosingPeriod) {
+      const uncompletedClosingTasks = currentPeriod.tasks.chef.filter(task => 
+        !task.isNotice && !completedTaskIds.includes(task.id)
+      )
+      if (uncompletedClosingTasks.length > 0) {
+        alert(`还有 ${uncompletedClosingTasks.length} 个闭店任务未完成，请先完成所有闭店任务。`)
+        return
+      }
     }
     
     // Confirm closing
-    if (!confirm('确认要完成收尾工作吗？完成后将进入等待状态直到明天开店时间。')) {
+    if (!confirm('确认要闭店吗？闭店后将进入等待状态直到明天开店时间。')) {
       return
     }
     
-    // Set ref immediately to prevent race conditions
-    waitingRef.current = true
+    // Submit manual closing task to database if it exists
+    if (restaurantId && currentUserId && manualClosingTask) {
+      // First check if all tasks are completed
+      const canClose = await restaurantStateService.checkAllTasksCompleted(restaurantId)
+      if (!canClose) {
+        alert('还有任务未完成，请先完成所有任务后再闭店。')
+        setIsCheckingClosure(false)
+        return
+      }
+      
+      // Record the manual closing task completion
+      await submitTaskRecord({
+        task_id: manualClosingTask.id,
+        user_id: currentUserId,
+        restaurant_id: restaurantId,
+        date: (testTime || new Date()).toISOString().split('T')[0],
+        submission_type: 'text',
+        text_content: '手动闭店确认',
+        status: 'completed',
+        review_status: 'approved',  // Manual closing is auto-approved
+        period_id: workflowPeriods[workflowPeriods.length - 1]?.id  // Last period
+      })
+      
+      // Reload state after successful submission
+      const newState = await restaurantStateService.getCurrentState(restaurantId, testTime)
+      if (newState) {
+        setIsManualClosing(newState.isManualClosing)
+        setIsWaitingForNextDay(newState.isWaitingForNextDay)
+        waitingRef.current = newState.isWaitingForNextDay
+        manualClosingRef.current = newState.isManualClosing
+      }
+    }
     
     // Clear all data and reset to tomorrow's opening
     React.startTransition(() => {
       setTaskStatuses([])
       setCompletedTaskIds([])
-      setNoticeComments([])
       setMissingTasks([])
       setIsManualClosing(false)
-      setShowPreClosingComplete(false)
+      manualClosingRef.current = false // Clear ref too
       // Clear manual advance state to prevent conflicts
       setManuallyAdvancedPeriod(null)
       manualAdvanceRef.current = null
-      setIsWaitingForNextDay(true) // Set waiting state
+      setIsWaitingForNextDay(true) // Set waiting state BEFORE clearing period
       setCurrentPeriod(null) // Clear current period - should show waiting display
       
-      // Set next period to tomorrow's opening (Chef skips closing period)
+      // Set next period to tomorrow's opening
       const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
       if (openingPeriod) {
         setNextPeriod(openingPeriod)
       }
     })
+    } catch (error) {
+      console.error('[ChefDashboard] Error during closure check:', error)
+      alert('检查闭店条件时出错，请重试。')
+    } finally {
+      setIsCheckingClosure(false)
+    }
   }
   
   // Removed: handleAdvancePeriod - advance button removed from UI
@@ -771,18 +871,19 @@ export const ChefDashboard: React.FC = () => {
     // 清空所有任务相关状态
     setTaskStatuses([])
     setCompletedTaskIds([])
-    setNoticeComments([])
     setMissingTasks([])
     setIsManualClosing(false)
-    setShowPreClosingComplete(false)
+    manualClosingRef.current = false
     setManuallyAdvancedPeriod(null)
     manualAdvanceRef.current = null
+    setIsWaitingForNextDay(false)
+    waitingRef.current = false
     
     // 保持当前时段不变，但重新初始化
     const now = testTime || new Date()
-    const newPeriod = getCurrentPeriod(now)
+    const newPeriod = getCurrentPeriodFromDatabase(workflowPeriods, now)
     setCurrentPeriod(newPeriod)
-    setNextPeriod(getNextPeriod(now))
+    setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, now))
   }
   
   // Combine current period tasks with floating tasks for unified display
@@ -868,14 +969,17 @@ export const ChefDashboard: React.FC = () => {
                   }
                 />
                 
-                {/* Show completion message and button for chef when closing tasks are done */}
-                {currentPeriod.id === 'closing' && showPreClosingComplete && (
+                {/* Show manual closing button in the last period (closing) if the task exists */}
+                {workflowPeriods.length > 0 && currentPeriod.id === workflowPeriods[workflowPeriods.length - 1].id && manualClosingTask && (
                   <Paper elevation={2} sx={{ p: 3, mt: 3, textAlign: 'center' }}>
                     <Typography variant="h6" gutterBottom sx={{ color: 'success.main' }}>
-                      当前状态已完成
+                      {manualClosingTask.title}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" paragraph>
-                      所有闭店任务已完成
+                      {manualClosingTask.description}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                      系统将自动检查所有任务是否完成
                     </Typography>
                     <Button
                       variant="contained"
@@ -883,13 +987,21 @@ export const ChefDashboard: React.FC = () => {
                       fullWidth
                       size="large"
                       onClick={handleClosingComplete}
+                      disabled={isCheckingClosure}
                       sx={{ 
                         py: 2,
                         fontSize: '1.1rem',
                         fontWeight: 'bold'
                       }}
                     >
-                      完成收尾工作
+                      {isCheckingClosure ? (
+                        <>
+                          <CircularProgress size={24} sx={{ mr: 1, color: 'inherit' }} />
+                          正在检查...
+                        </>
+                      ) : (
+                        manualClosingTask.title
+                      )}
                     </Button>
                   </Paper>
                 )}

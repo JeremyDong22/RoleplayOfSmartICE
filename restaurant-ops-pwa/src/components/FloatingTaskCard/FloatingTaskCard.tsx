@@ -20,7 +20,7 @@ import {
   Loop
 } from '@mui/icons-material'
 import type { TaskTemplate } from '../../utils/workflowParser'
-import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
+import { TaskSubmissionDialog } from '../TaskSubmissionDialog'
 import { specialTaskTheme } from '../../theme/specialTaskTheme'
 
 interface FloatingTaskCardProps {
@@ -36,26 +36,23 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
   onTaskComplete
 }) => {
   const [expanded, setExpanded] = useState(true)
-  const [photoDialogOpen, setPhotoDialogOpen] = useState(false)
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<TaskTemplate | null>(null)
   const [successMessage, setSuccessMessage] = useState<string>('')
 
   const handleTaskClick = (taskId: string) => {
     const task = tasks.find(t => t.id === taskId)
-    if (task?.uploadRequirement === '拍照') {
-      setSelectedTaskId(taskId)
-      setPhotoDialogOpen(true)
-    } else {
-      onTaskComplete(taskId)
-      setSuccessMessage(`${task?.title || '任务'}已提交成功`)
+    if (task) {
+      setSelectedTask(task)
+      setDialogOpen(true)
     }
   }
 
-  const handlePhotoSubmit = (evidence: unknown[]) => {
-    const task = tasks.find(t => t.id === selectedTaskId)
-    onTaskComplete(selectedTaskId, evidence)
-    setPhotoDialogOpen(false)
-    setSelectedTaskId('')
+  const handleTaskSubmit = (taskId: string, data: any) => {
+    const task = tasks.find(t => t.id === taskId)
+    onTaskComplete(taskId, data)
+    setDialogOpen(false)
+    setSelectedTask(null)
     setSuccessMessage(`${task?.title || '任务'}已提交成功`)
   }
 
@@ -175,15 +172,18 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
         </Collapse>
       </Paper>
 
-      {/* Photo Dialog */}
-      <PhotoSubmissionDialog
-        open={photoDialogOpen}
-        onClose={() => setPhotoDialogOpen(false)}
-        onSubmit={handlePhotoSubmit}
-        taskName={tasks.find(t => t.id === selectedTaskId)?.title || ''}
-        taskId={selectedTaskId}
-        isFloatingTask={true}
-      />
+      {/* Task Submission Dialog with Face Recognition */}
+      {selectedTask && (
+        <TaskSubmissionDialog
+          open={dialogOpen}
+          task={selectedTask}
+          onClose={() => {
+            setDialogOpen(false)
+            setSelectedTask(null)
+          }}
+          onSubmit={handleTaskSubmit}
+        />
+      )}
 
       {/* Success Snackbar */}
       <Snackbar

@@ -71,6 +71,34 @@ export function isOpeningPeriod(period: WorkflowPeriod | null | undefined): bool
 }
 
 /**
+ * 检查是否为午市收市时段
+ * 午市收市通常在14:00-15:30
+ */
+export function isLunchClosingPeriod(period: WorkflowPeriod | null | undefined): boolean {
+  if (!period) return false
+  
+  // 1. 检查名称
+  if ((period.name?.includes('餐后收市') || 
+       period.displayName?.includes('餐后收市')) &&
+      (period.name?.includes('午市') || 
+       period.displayName?.includes('午市'))) {
+    return true
+  }
+  
+  // 2. 检查时间是否从14:00开始
+  if (period.startTime === '14:00' || period.startTime === '14:00:00') {
+    return true
+  }
+  
+  // 3. 旧版兼容
+  if (period.id === 'lunch-closing') {
+    return true
+  }
+  
+  return false
+}
+
+/**
  * 检查是否为最后一个时段（通常是闭店时段）
  */
 export function isLastPeriod(period: WorkflowPeriod | null | undefined, allPeriods: WorkflowPeriod[]): boolean {

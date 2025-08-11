@@ -9,9 +9,13 @@ export default defineConfig({
   base: '/',
   server: {
     https: false,
+    port: 5173,
+    strictPort: false,
     hmr: {
-      port: 5173,
-      host: 'localhost'
+      overlay: true,
+      protocol: 'ws',
+      host: 'localhost',
+      port: 5173
     },
     // 开发服务器禁用缓存
     headers: {

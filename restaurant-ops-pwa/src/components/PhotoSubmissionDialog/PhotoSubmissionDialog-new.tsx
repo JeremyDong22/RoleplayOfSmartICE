@@ -479,8 +479,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     }
     
     cleanup()
-    // 关键修改：调用 onClose 来关闭对话框，而不是停留在 samples 视图
-    onClose()
+    // Don't automatically close - let parent handle it for face verification
+    // onClose()
   }
   
   const handleClose = () => {

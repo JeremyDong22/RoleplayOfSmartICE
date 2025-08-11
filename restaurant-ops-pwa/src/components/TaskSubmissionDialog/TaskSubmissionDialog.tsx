@@ -4,6 +4,7 @@
 // 1. Removed camera mode selection - now using unified PhotoSubmissionDialog
 // 2. All photo tasks use the new three-layer interface structure
 // 3. Added support for list/checklist tasks with ListSubmissionDialog
+// 4. Added face recognition verification for task accountability
 import React, { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -28,6 +29,9 @@ import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
 import ListSubmissionDialog from '../ListSubmissionDialog'
+import { FaceVerificationDialog } from '../FaceVerification'
+import { authService } from '../../services/authService'
+import { faceIOService } from '../../services/faceIOService'
 import type { TaskTemplate } from '../../utils/workflowParser'
 
 interface TaskSubmissionDialogProps {
@@ -50,21 +54,51 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [step, setStep] = useState(0)
   const [explanation, setExplanation] = useState('')
   const [showSubmissionDialog, setShowSubmissionDialog] = useState(false)
+  const [showFaceVerification, setShowFaceVerification] = useState(false)
+  const [pendingSubmissionData, setPendingSubmissionData] = useState<any>(null)
+  const [isUserEnrolled, setIsUserEnrolled] = useState(false)
   
-  // Early return if no task, before any logging
+  // Debug: Track component lifecycle
+  useEffect(() => {
+    console.log('📍 [TaskSubmissionDialog] Component mounted/updated')
+    return () => {
+      console.log('📍 [TaskSubmissionDialog] Component unmounting')
+    }
+  }, [])
+  
+  // Check face enrollment when dialog opens
+  useEffect(() => {
+    if (open && task) {
+      console.log('🔍 [FaceRecognition] TaskSubmissionDialog opened, checking enrollment...')
+      console.log('📋 [FaceRecognition] Task details:', {
+        id: task.id,
+        title: task.title,
+        uploadRequirement: task.uploadRequirement,
+        isFloating: task.isFloating
+      })
+      checkUserEnrollment()
+    }
+  }, [open, task?.id])
+  
+  // Early return if no task - MUST be after all hooks
   if (!task) return null
   
-  // Move console.log to useEffect to avoid logging on every render
-  useEffect(() => {
-    if (open) {
-      console.log('[TaskSubmissionDialog] Dialog opened:', {
-        taskId: task.id,
-        taskTitle: task.title,
-        uploadRequirement: task.uploadRequirement,
-        isLateSubmission
-      })
+  // Check if current user has enrolled their face
+  const checkUserEnrollment = async () => {
+    const user = authService.getCurrentUser()
+    console.log('👤 [FaceRecognition] Current user:', user)
+    if (user) {
+      try {
+        const enrolled = await faceIOService.hasUserEnrolled(user.id)
+        console.log(`✅ [FaceRecognition] User enrollment status: ${enrolled ? 'ENROLLED' : 'NOT ENROLLED'}`)
+        setIsUserEnrolled(enrolled)
+      } catch (error) {
+        console.error('❌ [FaceRecognition] Failed to check enrollment:', error)
+      }
+    } else {
+      console.warn('⚠️ [FaceRecognition] No user logged in!')
     }
-  }, [open, task.id])
+  }
   
   const steps = isLateSubmission ? ['补交说明', '提交任务'] : ['提交任务']
   
@@ -76,12 +110,25 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   }
   
   const handleTaskSubmit = (data: any) => {
-    // Include late submission explanation if applicable
+    console.log('🚀 [FaceRecognition] Task submitted, triggering face verification...')
+    // Store submission data and show face verification
     const submissionData = isLateSubmission 
       ? { ...data, lateExplanation: explanation }
       : data
-      
-    onSubmit(task.id, submissionData)
+    
+    setPendingSubmissionData(submissionData)
+    setShowFaceVerification(true)
+    console.log('📸 [FaceRecognition] Face verification dialog should open now!')
+    console.log('📸 [FaceRecognition] Current state - showFaceVerification:', true)
+    console.log('📸 [FaceRecognition] Current state - open:', open)
+  }
+  
+  // Handle face verification result
+  const handleFaceVerified = (verificationData: any) => {
+    console.log('✅ [FaceRecognition] Face verified successfully!', verificationData)
+    // Face verification passed, submit the task with original data
+    // No need to add verification fields - user_id already indicates who submitted
+    onSubmit(task.id, pendingSubmissionData)
     handleClose()
   }
   
@@ -89,6 +136,8 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     setStep(0)
     setExplanation('')
     setShowSubmissionDialog(false)
+    setShowFaceVerification(false)
+    setPendingSubmissionData(null)
     onClose()
   }
   
@@ -161,23 +210,60 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   }
   
 
+  // Get current user for face verification
+  const currentUser = authService.getCurrentUser()
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 [FaceRecognition] State changed - showFaceVerification:', showFaceVerification)
+    if (showFaceVerification) {
+      console.log('🔍 [FaceRecognition] Debug - currentUser:', currentUser)
+      console.log('🔍 [FaceRecognition] Should render FaceVerificationDialog now!')
+      if (!currentUser) {
+        console.error('❌ [FaceRecognition] ERROR: currentUser is null - Face verification dialog will not show!')
+      }
+    }
+  }, [showFaceVerification])
+
   // Show appropriate submission dialog based on task requirements
   if (showSubmissionDialog || !isLateSubmission) {
     // For tasks requiring photo submission
     if (task.uploadRequirement === '拍照') {
       return (
-        <PhotoSubmissionDialog
-          open={open}
-          taskName={task.title}
-          taskId={task.id}
-          initialPhotoGroups={initialPhotoGroups} // 传递初始照片组
-          samples={task.samples}
-          onClose={handleClose}
-          onSubmit={(data) => {
-            // console.log('[TaskSubmissionDialog] PhotoSubmissionDialog returned:', data)
-            handleTaskSubmit({ ...data, type: 'photo' })
-          }}
-        />
+        <>
+          <PhotoSubmissionDialog
+            open={open && !showFaceVerification}
+            taskName={task.title}
+            taskId={task.id}
+            initialPhotoGroups={initialPhotoGroups} // 传递初始照片组
+            samples={task.samples}
+            onClose={() => {
+              if (!showFaceVerification) {
+                handleClose()
+              }
+            }}
+            onSubmit={(data) => {
+              handleTaskSubmit({ ...data, type: 'photo' })
+              // Don't let PhotoSubmissionDialog close itself - we'll handle it
+              return false
+            }}
+          />
+          {/* Real Face Verification Dialog */}
+          <FaceVerificationDialog
+            open={showFaceVerification}
+            userId={currentUser?.id || 'unknown-user'}
+            userName={currentUser?.name || currentUser?.display_name || 'Unknown User'}
+            taskTitle={task.title}
+            mode={isUserEnrolled ? 'verification' : 'enrollment'}
+            onVerified={handleFaceVerified}
+            onClose={() => {
+              console.log('❌ [FaceRecognition] Face verification cancelled')
+              setShowFaceVerification(false)
+              setPendingSubmissionData(null)
+              handleClose() // Close everything when face verification is cancelled
+            }}
+          />
+        </>
       )
     }
     
@@ -189,84 +275,162 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
       //   samples: task.samples
       // })
       return (
-        <AudioRecordingDialog
-          open={open}
-          taskName={task.title}
-          taskId={task.id}
-          samples={task.samples}
-          onClose={handleClose}
-          onSubmit={(transcription, audioBlob) => 
-            handleTaskSubmit({ transcription, audioBlob, type: 'audio' })
-          }
-        />
+        <>
+          <AudioRecordingDialog
+            open={open && !showFaceVerification}
+            taskName={task.title}
+            taskId={task.id}
+            samples={task.samples}
+            onClose={() => {
+              if (!showFaceVerification) {
+                handleClose()
+              }
+            }}
+            onSubmit={(transcription, audioBlob) => 
+              handleTaskSubmit({ transcription, audioBlob, type: 'audio' })
+            }
+          />
+          {/* Face Verification Dialog */}
+          <FaceVerificationDialog
+            open={showFaceVerification}
+            userId={currentUser?.id || 'unknown-user'}
+            userName={currentUser?.name || currentUser?.display_name || 'Unknown User'}
+            taskTitle={task.title}
+            mode={isUserEnrolled ? 'verification' : 'enrollment'}
+            onVerified={handleFaceVerified}
+            onClose={() => {
+              console.log('❌ [FaceRecognition] Face verification cancelled')
+              setShowFaceVerification(false)
+              setPendingSubmissionData(null)
+              handleClose() // Close everything when face verification is cancelled
+            }}
+          />
+        </>
       )
     }
     
     // For tasks requiring text submission
     if (task.uploadRequirement === '记录') {
       return (
-        <TextInputDialog
-          open={open}
-          taskName={task.title}
-          taskId={task.id}
-          samples={task.samples}
-          onClose={handleClose}
-          onSubmit={(textInput) => handleTaskSubmit({ textInput, type: 'text' })}
-        />
+        <>
+          <TextInputDialog
+            open={open && !showFaceVerification}
+            taskName={task.title}
+            taskId={task.id}
+            samples={task.samples}
+            onClose={() => {
+              if (!showFaceVerification) {
+                handleClose()
+              }
+            }}
+            onSubmit={(textInput) => handleTaskSubmit({ textInput, type: 'text' })}
+          />
+          {/* Face Verification Dialog */}
+          <FaceVerificationDialog
+            open={showFaceVerification}
+            userId={currentUser?.id || 'unknown-user'}
+            userName={currentUser?.name || currentUser?.display_name || 'Unknown User'}
+            taskTitle={task.title}
+            mode={isUserEnrolled ? 'verification' : 'enrollment'}
+            onVerified={handleFaceVerified}
+            onClose={() => {
+              console.log('❌ [FaceRecognition] Face verification cancelled')
+              setShowFaceVerification(false)
+              setPendingSubmissionData(null)
+              handleClose() // Close everything when face verification is cancelled
+            }}
+          />
+        </>
       )
     }
     
     // For tasks requiring list/checklist submission
     if (task.uploadRequirement === '列表') {
       return (
-        <ListSubmissionDialog
-          open={open}
-          taskName={task.title}
-          sampleDir={getSampleDir(task)}
-          samples={task.samples}
-          onClose={handleClose}
-          onSubmit={(data) => handleTaskSubmit({ items: data.items, type: 'list' })}
-        />
+        <>
+          <ListSubmissionDialog
+            open={open && !showFaceVerification}
+            taskName={task.title}
+            sampleDir={getSampleDir(task)}
+            samples={task.samples}
+            onClose={() => {
+              if (!showFaceVerification) {
+                handleClose()
+              }
+            }}
+            onSubmit={(data) => handleTaskSubmit({ items: data.items, type: 'list' })}
+          />
+          {/* Face Verification Dialog */}
+          <FaceVerificationDialog
+            open={showFaceVerification}
+            userId={currentUser?.id || 'unknown-user'}
+            userName={currentUser?.name || currentUser?.display_name || 'Unknown User'}
+            taskTitle={task.title}
+            mode={isUserEnrolled ? 'verification' : 'enrollment'}
+            onVerified={handleFaceVerified}
+            onClose={() => {
+              console.log('❌ [FaceRecognition] Face verification cancelled')
+              setShowFaceVerification(false)
+              setPendingSubmissionData(null)
+              handleClose() // Close everything when face verification is cancelled
+            }}
+          />
+        </>
       )
     }
     
     // For tasks with no specific requirements
     return (
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <CheckCircle color="success" />
-            确认完成任务
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="h6" gutterBottom>
-            {task.title}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {task.description}
-          </Typography>
-          {isLateSubmission && (
-            <Box mt={2} p={2} bgcolor="warning.light" borderRadius={1}>
-              <Typography variant="caption" color="text.secondary">
-                补交说明：{explanation}
-              </Typography>
+      <>
+        <Dialog open={open && !showFaceVerification} onClose={handleClose} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            <Box display="flex" alignItems="center" gap={1}>
+              <CheckCircle color="success" />
+              确认完成任务
             </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} color="inherit">
-            取消
-          </Button>
-          <Button 
-            onClick={() => handleTaskSubmit({ type: 'confirmation' })} 
-            color="primary" 
-            variant="contained"
-          >
-            确认完成
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="h6" gutterBottom>
+              {task.title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {task.description}
+            </Typography>
+            {isLateSubmission && (
+              <Box mt={2} p={2} bgcolor="warning.light" borderRadius={1}>
+                <Typography variant="caption" color="text.secondary">
+                  补交说明：{explanation}
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleClose} color="inherit">
+              取消
+            </Button>
+            <Button 
+              onClick={() => handleTaskSubmit({ type: 'confirmation' })} 
+              color="primary" 
+              variant="contained"
+            >
+              确认完成
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {/* Face Verification Dialog */}
+        <FaceVerificationDialog
+          open={showFaceVerification}
+          userId={currentUser?.id || 'unknown-user'}
+          userName={currentUser?.name || 'Unknown User'}
+          taskTitle={task.title}
+          mode={isUserEnrolled ? 'verification' : 'enrollment'}
+          onVerified={handleFaceVerified}
+          onClose={() => {
+            setShowFaceVerification(false)
+            setPendingSubmissionData(null)
+          }}
+        />
+      </>
     )
   }
   

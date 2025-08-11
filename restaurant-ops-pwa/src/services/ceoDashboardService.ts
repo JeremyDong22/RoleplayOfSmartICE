@@ -359,13 +359,26 @@ class CEODashboardService {
         const period = periods.find(p => p.id === task.period_id);
         if (!period) return;
 
-        // 计算任务的计划时间
-        const [hours, minutes] = period.start_time.split(':');
-        const scheduledTime = new Date(businessStartTime);
-        scheduledTime.setHours(parseInt(hours), parseInt(minutes), 0);
+        // 计算任务的计划时间（时段结束时间）
+        const [startHours, startMinutes] = period.start_time.split(':');
+        const [endHours, endMinutes] = period.end_time.split(':');
+        
+        const periodStartTime = new Date(businessStartTime);
+        periodStartTime.setHours(parseInt(startHours), parseInt(startMinutes), 0);
+        
+        const periodEndTime = new Date(businessStartTime);
+        periodEndTime.setHours(parseInt(endHours), parseInt(endMinutes), 0);
+        
+        // 如果结束时间小于开始时间，说明跨天了
+        if (periodEndTime < periodStartTime) {
+          periodEndTime.setDate(periodEndTime.getDate() + 1);
+        }
 
         // 判断任务状态
-        const isPastDue = currentTime > scheduledTime.getTime();
+        // 如果当前时间还在时段内，任务是待完成状态
+        // 只有当前时间超过了时段结束时间，任务才是缺失状态
+        const isInPeriod = currentTime >= periodStartTime.getTime() && currentTime <= periodEndTime.getTime();
+        const isPastDue = currentTime > periodEndTime.getTime();
         const status = isPastDue ? 'missing' : 'pending';
         
         if (status === 'missing') {
@@ -383,7 +396,7 @@ class CEODashboardService {
           created_at: '',
           is_late: false,
           has_errors: false,
-          scheduled_time: scheduledTime.toISOString(),
+          scheduled_time: periodEndTime.toISOString(),  // 使用时段结束时间作为计划时间
           period_id: task.period_id,
           period_name: period.display_name,
           status: status
@@ -730,6 +743,89 @@ class CEODashboardService {
         allAlerts: [],
         periods: []
       };
+    }
+  }
+
+  // 获取浮动任务的所有提交记录
+  async getFloatingTaskSubmissions(taskId: string, restaurantId: string, department?: '前厅' | '后厨'): Promise<CEOTaskDetail[]> {
+    try {
+      const businessStartTime = this.getBusinessCycleStartTime();
+      const businessEndTime = new Date(businessStartTime);
+      businessEndTime.setDate(businessEndTime.getDate() + 1);
+      businessEndTime.setHours(10, 0, 0, 0);
+
+      // 获取该浮动任务的所有提交记录
+      let query = supabase
+        .from('roleplay_task_records')
+        .select(`
+          *,
+          roleplay_tasks!inner(
+            id,
+            title,
+            role_code,
+            submission_type,
+            is_floating
+          ),
+          roleplay_users!user_id(
+            id,
+            full_name,
+            roleplay_roles(
+              role_name_zh
+            )
+          )
+        `)
+        .eq('task_id', taskId)
+        .eq('restaurant_id', restaurantId)
+        .gte('created_at', businessStartTime.toISOString())
+        .lt('created_at', businessEndTime.toISOString())
+        .order('created_at', { ascending: false });
+
+      const { data: records, error } = await query;
+
+      if (error) {
+        console.error('[CEODashboardService] Error fetching floating task submissions:', error);
+        return [];
+      }
+
+      const submissions: CEOTaskDetail[] = [];
+      
+      records?.forEach(record => {
+        // 根据部门过滤
+        if (department) {
+          const taskRoleCode = record.roleplay_tasks.role_code;
+          const taskDepartment = this.getDepartmentByRole(taskRoleCode);
+          if (taskDepartment !== department) return;
+        }
+
+        const submission: CEOTaskDetail = {
+          id: record.id,
+          task_id: record.task_id,
+          task_title: record.roleplay_tasks.title,
+          user_id: record.user_id,
+          user_name: record.roleplay_users.full_name,
+          role_name: record.roleplay_users.roleplay_roles?.role_name_zh || '',
+          submission_type: record.submission_type || record.roleplay_tasks.submission_type,
+          text_content: record.text_content,
+          photo_urls: record.photo_urls,
+          submission_metadata: record.submission_metadata,
+          created_at: record.created_at_beijing || record.created_at,
+          is_late: record.is_late || false,
+          makeup_reason: record.makeup_reason,
+          has_errors: this.checkTaskErrors(record),
+          scheduled_time: record.scheduled_start,
+          actual_time: record.actual_complete,
+          period_id: '',
+          period_name: '浮动任务',
+          status: 'completed'
+        };
+
+        submissions.push(submission);
+      });
+
+      return submissions;
+    } catch (error) {
+      console.error('[CEODashboardService] Error fetching floating task submissions:', error);
+      return [];
     }
   }
 

@@ -13,6 +13,7 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@faceio/fiojs": "^1.1.0",
     "@mui/icons-material": "^7.2.0",
     "@mui/material": "^7.2.0",
     "@react-spring/web": "^10.0.1",
@@ -23,6 +24,7 @@
     "@use-gesture/react": "^10.3.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "face-api.js": "^0.22.2",
     "framer-motion": "^12.23.12",
     "js-cookie": "^3.0.5",
     "react": "^19.1.0",

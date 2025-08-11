@@ -50,13 +50,14 @@ import {
   CheckBox as CheckBoxIcon,
   CameraAlt as CameraIcon,
   Description as DescriptionIcon,
-  Refresh as RefreshIcon,
   Storefront as StorefrontIcon,
-  Kitchen as KitchenIcon
+  Kitchen as KitchenIcon,
+  ArrowBack as ArrowBackIcon
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 import { ceoDashboardService } from '../../services/ceoDashboardService';
 import type { 
   CEORestaurantData, 
@@ -130,7 +131,6 @@ export const CEODashboardDB: React.FC = () => {
   const [alerts, setAlerts] = useState<CEOAlert[]>([]);
   const [periods, setPeriods] = useState<CEOPeriod[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [currentPeriodId, setCurrentPeriodId] = useState('');
   const [expandedPeriods, setExpandedPeriods] = useState<Record<string, boolean>>({});
   const [expandedFloatingTasks, setExpandedFloatingTasks] = useState(false);
@@ -138,6 +138,10 @@ export const CEODashboardDB: React.FC = () => {
   // 任务交互状态
   const [selectedTask, setSelectedTask] = useState<CEOTaskDetail | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [floatingTaskSubmissions, setFloatingTaskSubmissions] = useState<CEOTaskDetail[]>([]);
+  const [showFloatingTaskDialog, setShowFloatingTaskDialog] = useState(false);
+  const [selectedFloatingTask, setSelectedFloatingTask] = useState<FloatingTaskInfo | null>(null);
+  const [loadingFloatingSubmissions, setLoadingFloatingSubmissions] = useState(false);
 
   // 更新时段统计
   const updatePeriodStatistics = (restaurant: CEORestaurantData | undefined, basePeriods?: CEOPeriod[]) => {
@@ -162,11 +166,10 @@ export const CEODashboardDB: React.FC = () => {
   };
 
   // 加载数据
-  const loadData = async (showRefreshIndicator = false) => {
+  const navigate = useNavigate();
+
+  const loadData = async () => {
     try {
-      if (showRefreshIndicator) {
-        setRefreshing(true);
-      }
 
       const data = await ceoDashboardService.getAllRestaurantsData();
       
@@ -210,11 +213,9 @@ export const CEODashboardDB: React.FC = () => {
       updatePeriodStatistics(currentRestaurant, data.periods);
       
       setLoading(false);
-      setRefreshing(false);
     } catch (error) {
       console.error('Error loading CEO dashboard data:', error);
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -284,9 +285,9 @@ export const CEODashboardDB: React.FC = () => {
     }));
   };
 
-  // 手动刷新
-  const handleRefresh = () => {
-    loadData(true);
+  // 退出到角色选择
+  const handleLogout = () => {
+    navigate('/role-selection');
   };
 
   // 处理部门切换
@@ -609,9 +610,20 @@ export const CEODashboardDB: React.FC = () => {
                   <ListItem
                     key={taskInfo.task_id}
                     component="div"
-                    onClick={() => {
-                      // TODO: 显示该浮动任务的所有提交记录
-                      console.log('View submissions for', taskInfo.task_id);
+                    onClick={async () => {
+                      // 显示该浮动任务的所有提交记录
+                      setSelectedFloatingTask(taskInfo);
+                      setLoadingFloatingSubmissions(true);
+                      setShowFloatingTaskDialog(true);
+                      
+                      const submissions = await ceoDashboardService.getFloatingTaskSubmissions(
+                        taskInfo.task_id,
+                        selectedRestaurantId,
+                        selectedDepartment
+                      );
+                      
+                      setFloatingTaskSubmissions(submissions);
+                      setLoadingFloatingSubmissions(false);
                     }}
                     sx={{
                       cursor: 'pointer',
@@ -883,36 +895,34 @@ export const CEODashboardDB: React.FC = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa' }}>
-      {/* 刷新指示器 */}
-      <Backdrop open={refreshing} sx={{ zIndex: 9999 }}>
-        <CircularProgress color="inherit" />
-      </Backdrop>
 
-      {/* 简化的Header */}
+      {/* 简化的Header - 与Manager面板保持一致 */}
       <Box sx={{ 
         background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
         color: 'white',
-        py: isMobile ? 2 : 3,
-        px: isMobile ? 2 : 3,
+        py: 2,
+        px: 2,
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <Box>
-          <Typography variant={isMobile ? "h5" : "h4"} sx={{ fontWeight: 'bold' }}>
-            餐厅运营总览
-          </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
-            实时数据监控 · {format(new Date(), 'yyyy-MM-dd HH:mm')}
-          </Typography>
-        </Box>
         <IconButton 
           color="inherit" 
-          onClick={handleRefresh}
-          disabled={refreshing}
+          onClick={handleLogout}
+          sx={{ mr: 2 }}
         >
-          <RefreshIcon />
+          <ArrowBackIcon />
         </IconButton>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          餐厅运营总览
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', mr: 2 }}>
+          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+            {format(new Date(), 'HH:mm:ss')}
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+            {format(new Date(), 'MM月dd日')}
+          </Typography>
+        </Box>
       </Box>
 
       {/* 警告区域 - 优先级最高 */}
@@ -1151,6 +1161,208 @@ export const CEODashboardDB: React.FC = () => {
       <AnimatePresence>
         {showDetailDialog && <TaskDetailDialog />}
       </AnimatePresence>
+
+      {/* 浮动任务提交记录对话框 */}
+      <Dialog
+        open={showFloatingTaskDialog}
+        onClose={() => {
+          setShowFloatingTaskDialog(false);
+          setFloatingTaskSubmissions([]);
+          setSelectedFloatingTask(null);
+        }}
+        maxWidth="md"
+        fullWidth={!isMobile}
+        fullScreen={isMobile}
+        PaperProps={{
+          sx: {
+            height: isMobile ? '100%' : '90vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+      >
+        {/* 固定的标题栏 */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          p: 2,
+          borderBottom: '1px solid #e0e0e0'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Avatar sx={{ bgcolor: selectedFloatingTask ? TASK_TYPE_COLORS[selectedFloatingTask.submission_type] : '#9E9E9E' }}>
+              {selectedFloatingTask ? TASK_TYPE_ICONS[selectedFloatingTask.submission_type] : <TimeIcon />}
+            </Avatar>
+            <Box>
+              <Typography variant="h6">{selectedFloatingTask?.task_title}</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                浮动任务 · 今日提交 {selectedFloatingTask?.submission_count || 0} 次
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton onClick={() => {
+            setShowFloatingTaskDialog(false);
+            setFloatingTaskSubmissions([]);
+            setSelectedFloatingTask(null);
+          }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        
+        {/* 可滚动的内容区域 */}
+        <DialogContent sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+          {/* 加载状态 */}
+          {loadingFloatingSubmissions ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : floatingTaskSubmissions.length === 0 ? (
+            <Alert severity="info">
+              暂无提交记录
+            </Alert>
+          ) : (
+            /* 提交记录列表 */
+            <Box>
+              {floatingTaskSubmissions.map((submission, index) => (
+                <Box 
+                  key={submission.id} 
+                  sx={{ 
+                    mb: 3, 
+                    pb: 3, 
+                    borderBottom: index < floatingTaskSubmissions.length - 1 ? '1px solid #e0e0e0' : 'none' 
+                  }}
+                >
+                  {/* 提交信息头部 */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        第 {floatingTaskSubmissions.length - index} 次提交
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        {submission.user_name} ({submission.role_name}) · {format(new Date(submission.created_at), 'HH:mm:ss', { locale: zhCN })}
+                      </Typography>
+                    </Box>
+                    {submission.is_late && (
+                      <Chip label="延迟" size="small" color="warning" />
+                    )}
+                  </Box>
+
+                  {/* 根据提交类型显示内容 */}
+                  {submission.submission_type === 'text' && submission.text_content && (
+                    <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                      <Typography>{submission.text_content}</Typography>
+                    </Paper>
+                  )}
+
+                  {submission.submission_type === 'photo' && (
+                    <>
+                      {/* 如果有photoGroups metadata，按组显示 */}
+                      {submission.submission_metadata?.photoGroups ? (
+                        <Box>
+                          {submission.submission_metadata.photoGroups.map((group: any, groupIndex: number) => (
+                            <Box key={group.id || groupIndex} sx={{ mb: 2 }}>
+                              {/* 组标题和参考信息 */}
+                              {(group.sampleRef || group.comment) && (
+                                <Box sx={{ mb: 1, p: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                                  {group.sampleRef && (
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                                      {group.sampleRef}
+                                    </Typography>
+                                  )}
+                                  {group.comment && (
+                                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                                      备注：{group.comment}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              )}
+                              
+                              {/* 该组的照片 */}
+                              <ImageList cols={isMobile ? 1 : 3} gap={8}>
+                                {group.photos.map((url: string, photoIndex: number) => (
+                                  <ImageListItem key={photoIndex}>
+                                    <img
+                                      src={url}
+                                      alt={`图片${photoIndex + 1}`}
+                                      loading="lazy"
+                                      style={{ borderRadius: 8, maxHeight: 200, objectFit: 'cover' }}
+                                    />
+                                  </ImageListItem>
+                                ))}
+                              </ImageList>
+                            </Box>
+                          ))}
+                        </Box>
+                      ) : (
+                        /* 兼容旧格式，直接显示photo_urls */
+                        submission.photo_urls && submission.photo_urls.length > 0 && (
+                          <ImageList cols={isMobile ? 1 : 3} gap={8}>
+                            {submission.photo_urls.map((url, photoIndex) => (
+                              <ImageListItem key={photoIndex}>
+                                <img
+                                  src={url}
+                                  alt={`图片 ${photoIndex + 1}`}
+                                  loading="lazy"
+                                  style={{ borderRadius: 8, maxHeight: 200, objectFit: 'cover' }}
+                                />
+                              </ImageListItem>
+                            ))}
+                          </ImageList>
+                        )
+                      )}
+                    </>
+                  )}
+
+                  {/* List类型任务 */}
+                  {submission.submission_type === 'list' && (submission.submission_metadata?.checklist || submission.submission_metadata?.items) && (
+                    <Box>
+                      {(submission.submission_metadata.checklist || submission.submission_metadata.items || []).map((item: any, itemIndex: number) => {
+                        const isCompleted = item.status === 'pass' || item.status === 'checked';
+                        const displayText = item.title || item.text || '未知项';
+                        
+                        return (
+                          <Box
+                            key={itemIndex}
+                            sx={{
+                              p: 1,
+                              mb: 0.5,
+                              bgcolor: isCompleted ? '#e8f5e9' : '#ffebee',
+                              borderRadius: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1
+                            }}
+                          >
+                            {isCompleted ? (
+                              <CheckCircleIcon sx={{ color: '#4CAF50', fontSize: 20 }} />
+                            ) : (
+                              <WarningIcon sx={{ color: '#f44336', fontSize: 20 }} />
+                            )}
+                            <Typography variant="body2">
+                              {displayText}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        
+        {/* 底部操作栏 - 只在非移动端显示 */}
+        {!isMobile && (
+          <DialogActions sx={{ borderTop: '1px solid #e0e0e0', px: 2, py: 1 }}>
+            <Button onClick={() => {
+              setShowFloatingTaskDialog(false);
+              setFloatingTaskSubmissions([]);
+              setSelectedFloatingTask(null);
+            }}>关闭</Button>
+          </DialogActions>
+        )}
+      </Dialog>
     </Box>
   );
 };

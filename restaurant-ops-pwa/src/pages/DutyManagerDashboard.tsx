@@ -26,7 +26,7 @@ import { uploadPhoto } from '../services/storageService'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
 import { restaurantConfigService } from '../services/restaurantConfigService'
-import { isClosingPeriod } from '../utils/periodHelpers'
+import { isClosingPeriod, isLunchClosingPeriod } from '../utils/periodHelpers'
 import { getTodayTaskStatuses, type TaskStatusDetail } from '../services/taskRecordService'
 
 interface NoticeComment {
@@ -235,27 +235,27 @@ const DutyManagerDashboard: React.FC = () => {
     // 只在初始化完成后执行
     if (!isInitialized) return
     
-    // 如果是闭店时段，总是尝试加载任务（不管是否已有任务）
-    if (isClosingPeriod(currentPeriod)) {
+    // 如果是闭店时段或午市收市时段，加载值班经理任务
+    if (isClosingPeriod(currentPeriod) || isLunchClosingPeriod(currentPeriod)) {
       
-      // 获取闭店时段的值班经理任务
+      // 获取当前时段的值班经理任务
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
       
       
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
-      const closingTasks = dutyTasks.filter((task: any) => {
+      const periodTasks = dutyTasks.filter((task: any) => {
         return task.role === 'DutyManager' && task.uploadRequirement !== '审核'
       })
       
       
-      if (closingTasks.length > 0) {
+      if (periodTasks.length > 0) {
         setState(prev => ({
           ...prev,
-          activeTasks: closingTasks,
+          activeTasks: periodTasks,
           isWaitingForTrigger: false,
-          currentTrigger: 'last-customer-left-dinner',
+          currentTrigger: isLunchClosingPeriod(currentPeriod) ? 'last-customer-left-lunch' : 'last-customer-left-dinner',
           targetPeriod: currentPeriod,
-          isInClosingPeriod: true,
+          isInClosingPeriod: isClosingPeriod(currentPeriod),
         }))
       } else if (dutyTasks.length > 0) {
         // 如果有任务但都被过滤掉了，也要设置状态以显示界面
@@ -263,9 +263,9 @@ const DutyManagerDashboard: React.FC = () => {
           ...prev,
           activeTasks: dutyTasks,
           isWaitingForTrigger: false,
-          currentTrigger: 'last-customer-left-dinner',
+          currentTrigger: isLunchClosingPeriod(currentPeriod) ? 'last-customer-left-lunch' : 'last-customer-left-dinner',
           targetPeriod: currentPeriod,
-          isInClosingPeriod: true,
+          isInClosingPeriod: isClosingPeriod(currentPeriod),
         }))
       }
     }
