@@ -45,6 +45,7 @@ export const CacheManagerUI = () => {
             left: 20,
             backgroundColor: 'background.paper',
             boxShadow: 2,
+            zIndex: 9999, // 最高层级，不会被任何元素覆盖
             '&:hover': {
               backgroundColor: 'action.hover'
             }
