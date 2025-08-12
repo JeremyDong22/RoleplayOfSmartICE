@@ -258,7 +258,7 @@ export const LoginPageEnhanced = () => {
           return true
         }
         
-        console.log('❌ No matches found with threshold 0.3')
+        console.log('❌ No matches found with threshold 0.35')
         return false
       } catch (err) {
         console.error('Detection attempt failed:', err)
@@ -427,7 +427,7 @@ export const LoginPageEnhanced = () => {
       }
       
       if (matches.length === 0) {
-        throw new Error('未识别到已注册的人脸 (阈值: 0.3)')
+        throw new Error('未识别到已注册的人脸 (阈值: 0.35)')
       }
       
       // Select the best match (lowest distance)

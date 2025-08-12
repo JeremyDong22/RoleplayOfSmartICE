@@ -172,8 +172,8 @@ class FaceRecognitionService {
       }
       
       // Threshold for face matching (lower = stricter)
-      // Changed from 0.6 to 0.3 for maximum security (98.5% similarity required)
-      const MATCH_THRESHOLD = 0.3
+      // Changed from 0.6 to 0.35 for high security (96.5% similarity required)
+      const MATCH_THRESHOLD = 0.35
       
       // Calculate similarity percentage (0-100%)
       const similarity = Math.max(0, (1 - minDistance / 2) * 100)

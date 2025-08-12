@@ -159,24 +159,27 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   }
   
   const handleTaskSubmit = (data: any) => {
-    console.log('🚀 Task submitted, initiating face verification...')
-    // Store submission data and trigger face verification
+    console.log('🚀 Task submitted, face verification temporarily disabled')
+    // Store submission data
     const submissionData = isLateSubmission 
       ? { ...data, lateExplanation: explanation }
       : data
     
-    // Check if user has enrolled face
-    if (isUserEnrolled) {
-      // User has face enrolled, require verification
-      setPendingSubmissionData(submissionData)
-      setShowFaceVerification(true)
-      console.log('👤 [FaceRecognition] Showing face verification dialog...')
-    } else {
-      // User hasn't enrolled face yet, prompt for enrollment
-      console.warn('⚠️ [FaceRecognition] User not enrolled, prompting for enrollment...')
-      setPendingSubmissionData(submissionData)
-      setShowFaceVerification(true)
-    }
+    // TEMPORARILY DISABLED: Face verification
+    // Directly submit without face verification
+    onSubmit(task.id, submissionData)
+    handleClose()
+    
+    // Original face verification code (disabled)
+    // if (isUserEnrolled) {
+    //   setPendingSubmissionData(submissionData)
+    //   setShowFaceVerification(true)
+    //   console.log('👤 [FaceRecognition] Showing face verification dialog...')
+    // } else {
+    //   console.warn('⚠️ [FaceRecognition] User not enrolled, prompting for enrollment...')
+    //   setPendingSubmissionData(submissionData)
+    //   setShowFaceVerification(true)
+    // }
   }
   
   // Face verification handler - enabled for production
