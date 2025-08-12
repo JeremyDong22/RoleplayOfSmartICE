@@ -1,0 +1,26 @@
+name: Cleanup Orphaned Photos
+
+on:
+  schedule:
+    # 每天北京时间凌晨3点运行（UTC时间19:00）
+    - cron: '0 19 * * *'
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Call Cleanup Edge Function
+      run: |
+        curl -X POST https://wdpeoyugsxqnpwwtkqsl.supabase.co/functions/v1/cleanup-orphaned-photos \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"source": "github-action", "scheduled": true}' \
+          --fail \
+          --show-error
+      
+    - name: Log Result
+      if: always()
+      run: |
+        echo "Cleanup job completed at $(date)"

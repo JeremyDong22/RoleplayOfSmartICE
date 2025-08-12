@@ -2,6 +2,7 @@
 // Created: 2025-08-04 - Added button to clear all browser cache and storage
 // Updated: Hide on login and role selection pages
 // Updated: 2025-08-08 - Removed useLocation dependency to work outside Router
+// Updated: 2025-08-12 - Moved to top-right corner, added better refresh functionality
 import { useState } from 'react'
 import { IconButton, Tooltip, CircularProgress, Snackbar, Alert } from '@mui/material'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
@@ -63,8 +64,9 @@ export const ClearCacheButton = () => {
       
       setShowSuccess(true)
       
-      // Reload page after 1.5 seconds
+      // Navigate to home and reload after 1.5 seconds
       setTimeout(() => {
+        window.location.href = '/'
         window.location.reload()
       }, 1500)
       
@@ -77,21 +79,21 @@ export const ClearCacheButton = () => {
   
   return (
     <>
-      <Tooltip title="强制清除浏览器缓存" placement="right">
+      <Tooltip title="强制清除浏览器缓存" placement="left">
         <IconButton
           onClick={handleClearCache}
           disabled={isClearing}
           sx={{
             position: 'fixed',
-            bottom: 16,
-            left: 16,
+            top: 80, // Below navigation bar
+            right: 16,
             backgroundColor: 'background.paper',
             boxShadow: 2,
             '&:hover': {
               backgroundColor: 'error.light',
               color: 'error.contrastText',
             },
-            zIndex: 9999,
+            zIndex: 1200, // Below dialogs but above content
           }}
         >
           {isClearing ? (

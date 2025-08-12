@@ -915,7 +915,7 @@ export const CEODashboardDB: React.FC = () => {
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
           餐厅运营总览
         </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', mr: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <Typography variant="body2" sx={{ opacity: 0.9 }}>
             {format(new Date(), 'HH:mm:ss')}
           </Typography>

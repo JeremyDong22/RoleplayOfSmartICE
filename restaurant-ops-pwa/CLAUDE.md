@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 待完成的自动化任务
+- **Storage照片自动清理**: 已部署Edge Function `cleanup-orphaned-photos`，需要在GitHub添加Secret `SUPABASE_ANON_KEY`来启用每日自动清理，或手动运行 `./scripts/manual-cleanup.sh`
+
 ## Commands
 
 ### Development

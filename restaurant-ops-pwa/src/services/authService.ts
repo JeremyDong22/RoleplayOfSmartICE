@@ -164,6 +164,28 @@ class AuthService {
     
     // Note: face_descriptor is not stored in cookies, only in memory/database
   }
+
+  // Set current user for face recognition auto-login
+  setCurrentUser(userData: {
+    id: string
+    email: string
+    displayName: string
+    role: string
+    roleCode: string
+    restaurantId: string
+  }): void {
+    // Generate auth token for face login
+    const authToken = `face_${userData.id}_${Date.now()}`
+    
+    // Set all auth cookies
+    Cookies.set('authToken', authToken, { expires: 7 })
+    Cookies.set('userId', userData.id, { expires: 7 })
+    Cookies.set('userEmail', userData.email, { expires: 7 })
+    Cookies.set('userName', userData.displayName, { expires: 7 })
+    Cookies.set('userRole', userData.role, { expires: 7 })
+    Cookies.set('userRoleCode', userData.roleCode, { expires: 7 })
+    Cookies.set('restaurantId', userData.restaurantId, { expires: 7 })
+  }
 }
 
 export const authService = new AuthService()

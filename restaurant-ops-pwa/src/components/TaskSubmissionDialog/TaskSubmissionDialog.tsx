@@ -31,10 +31,10 @@ import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
 import ListSubmissionDialog from '../ListSubmissionDialog'
 import StructuredInputDialog from '../StructuredInputDialog'
-// Face verification imports - kept for future use when testing phase is complete
-// import { FaceVerificationDialogFree } from '../FaceVerification/FaceVerificationDialogFree'
+// Face verification imports - enabled for production
+import { FaceVerificationDialogFree } from '../FaceVerification/FaceVerificationDialogFree'
 import { authService } from '../../services/authService'
-// import { faceRecognitionService } from '../../services/faceRecognitionService'
+import { faceRecognitionService } from '../../services/faceRecognitionService'
 import { inventoryService } from '../../services/inventoryService'
 import type { TaskTemplate } from '../../types/task.types'
 
@@ -60,10 +60,10 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [showSubmissionDialog, setShowSubmissionDialog] = useState(false)
   const [dynamicStructuredFields, setDynamicStructuredFields] = useState<any>(null)
   const [isLoadingFields, setIsLoadingFields] = useState(false)
-  // Face verification states - disabled during testing phase
-  // const [showFaceVerification, setShowFaceVerification] = useState(false)
-  // const [pendingSubmissionData, setPendingSubmissionData] = useState<any>(null)
-  // const [isUserEnrolled, setIsUserEnrolled] = useState(false)
+  // Face verification states - enabled for production
+  const [showFaceVerification, setShowFaceVerification] = useState(false)
+  const [pendingSubmissionData, setPendingSubmissionData] = useState<any>(null)
+  const [isUserEnrolled, setIsUserEnrolled] = useState(false)
   
   // Debug: Track component lifecycle
   useEffect(() => {
@@ -112,39 +112,42 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     loadDynamicFields()
   }, [open, task?.id, task?.title, task?.structuredFields])
   
-  // Face enrollment check - disabled during testing phase
-  // useEffect(() => {
-  //   if (open && task) {
-  //     console.log('🔍 [FaceRecognition] TaskSubmissionDialog opened, checking enrollment...')
-  //     console.log('📋 [FaceRecognition] Task details:', {
-  //       id: task.id,
-  //       title: task.title,
-  //       uploadRequirement: task.uploadRequirement,
-  //       isFloating: task.isFloating
-  //     })
-  //     checkUserEnrollment()
-  //   }
-  // }, [open, task?.id])
+  // Face enrollment check - enabled for production
+  useEffect(() => {
+    if (open && task) {
+      console.log('🔍 [FaceRecognition] TaskSubmissionDialog opened, checking enrollment...')
+      console.log('📋 [FaceRecognition] Task details:', {
+        id: task.id,
+        title: task.title,
+        uploadRequirement: task.uploadRequirement,
+        isFloating: task.isFloating
+      })
+      checkUserEnrollment()
+    }
+  }, [open, task?.id])
   
   // Early return if no task - MUST be after all hooks
   if (!task) return null
   
-  // Face enrollment check function - disabled during testing phase
-  // const checkUserEnrollment = async () => {
-  //   const user = authService.getCurrentUser()
-  //   console.log('👤 [FaceRecognition] Current user:', user)
-  //   if (user) {
-  //     try {
-  //       const enrolled = await faceRecognitionService.hasUserEnrolled(user.id)
-  //       console.log(`✅ [FaceRecognition] User enrollment status: ${enrolled ? 'ENROLLED' : 'NOT ENROLLED'}`)
-  //       setIsUserEnrolled(enrolled)
-  //     } catch (error) {
-  //       console.error('❌ [FaceRecognition] Failed to check enrollment:', error)
-  //     }
-  //   } else {
-  //     console.warn('⚠️ [FaceRecognition] No user logged in!')
-  //   }
-  // }
+  // Get current user for face verification
+  const currentUser = authService.getCurrentUser()
+  
+  // Face enrollment check function - enabled for production
+  const checkUserEnrollment = async () => {
+    const user = authService.getCurrentUser()
+    console.log('👤 [FaceRecognition] Current user:', user)
+    if (user) {
+      try {
+        const enrolled = await faceRecognitionService.hasUserEnrolled(user.id)
+        console.log(`✅ [FaceRecognition] User enrollment status: ${enrolled ? 'ENROLLED' : 'NOT ENROLLED'}`)
+        setIsUserEnrolled(enrolled)
+      } catch (error) {
+        console.error('❌ [FaceRecognition] Failed to check enrollment:', error)
+      }
+    } else {
+      console.warn('⚠️ [FaceRecognition] No user logged in!')
+    }
+  }
   
   const steps = isLateSubmission ? ['补交说明', '提交任务'] : ['提交任务']
   
@@ -156,32 +159,41 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   }
   
   const handleTaskSubmit = (data: any) => {
-    console.log('🚀 Task submitted, bypassing face verification during testing phase...')
-    // Skip face verification during testing phase - directly submit the task
+    console.log('🚀 Task submitted, initiating face verification...')
+    // Store submission data and trigger face verification
     const submissionData = isLateSubmission 
       ? { ...data, lateExplanation: explanation }
       : data
     
-    // Directly submit without face verification
-    onSubmit(task.id, submissionData)
-    handleClose()
+    // Check if user has enrolled face
+    if (isUserEnrolled) {
+      // User has face enrolled, require verification
+      setPendingSubmissionData(submissionData)
+      setShowFaceVerification(true)
+      console.log('👤 [FaceRecognition] Showing face verification dialog...')
+    } else {
+      // User hasn't enrolled face yet, prompt for enrollment
+      console.warn('⚠️ [FaceRecognition] User not enrolled, prompting for enrollment...')
+      setPendingSubmissionData(submissionData)
+      setShowFaceVerification(true)
+    }
   }
   
-  // Face verification handler - disabled during testing phase
-  // const handleFaceVerified = (verificationData: any) => {
-  //   console.log('✅ [FaceRecognition] Face verified successfully!', verificationData)
-  //   // Face verification passed, submit the task with original data
-  //   // No need to add verification fields - user_id already indicates who submitted
-  //   onSubmit(task.id, pendingSubmissionData)
-  //   handleClose()
-  // }
+  // Face verification handler - enabled for production
+  const handleFaceVerified = (verificationData: any) => {
+    console.log('✅ [FaceRecognition] Face verified successfully!', verificationData)
+    // Face verification passed, submit the task with original data
+    // No need to add verification fields - user_id already indicates who submitted
+    onSubmit(task.id, pendingSubmissionData)
+    handleClose()
+  }
   
   const handleClose = () => {
     setStep(0)
     setExplanation('')
     setShowSubmissionDialog(false)
-    // setShowFaceVerification(false)
-    // setPendingSubmissionData(null)
+    setShowFaceVerification(false)
+    setPendingSubmissionData(null)
     onClose()
   }
   
@@ -274,7 +286,7 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
       return (
         <>
           <StructuredInputDialog
-            open={open}
+            open={open && !showFaceVerification}
             taskName={task.title}
             taskId={task.id}
             structuredFields={task.structuredFields}
@@ -285,6 +297,20 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
               handleTaskSubmit(data)
             }}
           />
+          {showFaceVerification && currentUser && (
+            <FaceVerificationDialogFree
+              open={showFaceVerification}
+              userId={currentUser.id}
+              userName={currentUser.name || currentUser.email}
+              taskTitle={task?.title || ''}
+              onVerified={handleFaceVerified}
+              onClose={() => {
+                setShowFaceVerification(false)
+                setPendingSubmissionData(null)
+              }}
+              mode={isUserEnrolled ? 'verification' : 'enrollment'}
+            />
+          )}
         </>
       )
     }
@@ -428,5 +454,23 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     )
   }
   
-  return null
+  // Face Verification Dialog (fallback for cases where dialog isn't shown in other returns)
+  return (
+    <>
+      {showFaceVerification && currentUser && (
+        <FaceVerificationDialogFree
+          open={showFaceVerification}
+          userId={currentUser.id}
+          userName={currentUser.name || currentUser.email}
+          taskTitle={task?.title || ''}
+          onVerified={handleFaceVerified}
+          onClose={() => {
+            setShowFaceVerification(false)
+            setPendingSubmissionData(null)
+          }}
+          mode={isUserEnrolled ? 'verification' : 'enrollment'}
+        />
+      )}
+    </>
+  )
 }

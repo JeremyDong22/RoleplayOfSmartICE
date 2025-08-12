@@ -76,17 +76,17 @@ const SmartFaceEnrollmentDialog: React.FC<{
   
   const REQUIRED_PHOTOS = 9 // 9 different angles
   
-  // Define the 9 angles with instructions
+  // Define the 9 angles with instructions - center first, then clockwise from top-left
   const FACE_ANGLES = [
-    { id: 'center', name: '正面', instruction: '请正对摄像头', icon: '⭕' },
-    { id: 'up', name: '上方', instruction: '请稍微抬头', icon: '⬆️' },
-    { id: 'down', name: '下方', instruction: '请稍微低头', icon: '⬇️' },
-    { id: 'left', name: '左侧', instruction: '请稍微向左转头', icon: '⬅️' },
-    { id: 'right', name: '右侧', instruction: '请稍微向右转头', icon: '➡️' },
-    { id: 'up-left', name: '左上', instruction: '请向左上方看', icon: '↖️' },
-    { id: 'up-right', name: '右上', instruction: '请向右上方看', icon: '↗️' },
-    { id: 'down-left', name: '左下', instruction: '请向左下方看', icon: '↙️' },
-    { id: 'down-right', name: '右下', instruction: '请向右下方看', icon: '↘️' },
+    { id: 'center', name: '正面', instruction: '请正对摄像头', icon: '⭕', gridPosition: 4 }, // Center position (index 4 in 3x3 grid)
+    { id: 'up-left', name: '左上', instruction: '请向左上方看', icon: '↖️', gridPosition: 0 },
+    { id: 'up', name: '上方', instruction: '请稍微抬头', icon: '⬆️', gridPosition: 1 },
+    { id: 'up-right', name: '右上', instruction: '请向右上方看', icon: '↗️', gridPosition: 2 },
+    { id: 'right', name: '右侧', instruction: '请稍微向右转头', icon: '➡️', gridPosition: 5 },
+    { id: 'down-right', name: '右下', instruction: '请向右下方看', icon: '↘️', gridPosition: 8 },
+    { id: 'down', name: '下方', instruction: '请稍微低头', icon: '⬇️', gridPosition: 7 },
+    { id: 'down-left', name: '左下', instruction: '请向左下方看', icon: '↙️', gridPosition: 6 },
+    { id: 'left', name: '左侧', instruction: '请稍微向左转头', icon: '⬅️', gridPosition: 3 },
   ]
   
   useEffect(() => {
@@ -695,7 +695,7 @@ const SmartFaceEnrollmentDialog: React.FC<{
               }}
             >
               <Typography variant="caption" color="text.secondary" gutterBottom display="block" sx={{ mb: 1 }}>
-                请依次拍摘以下9个角度
+                请依次拍摄以下9个角度（从正面开始，顺时针方向）
               </Typography>
               <Box 
                 sx={{ 
@@ -704,53 +704,72 @@ const SmartFaceEnrollmentDialog: React.FC<{
                   gap: 1
                 }}
               >
-                {FACE_ANGLES.map((angle, index) => (
-                  <Box
-                    key={angle.id}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      p: 1,
-                      borderRadius: 1,
-                      border: currentAngleIndex === index ? '2px solid' : '1px solid',
-                      borderColor: 
-                        capturedPhotos[index] ? 'success.main' :
-                        currentAngleIndex === index ? 'primary.main' :
-                        'grey.300',
-                      backgroundColor: 
-                        capturedPhotos[index] ? 'success.light' :
-                        currentAngleIndex === index ? 'primary.light' :
-                        'background.paper',
-                      transition: 'all 0.3s',
-                      minHeight: 70,
-                      position: 'relative'
-                    }}
-                  >
-                    <Typography variant="h5">{angle.icon}</Typography>
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        mt: 0.5,
-                        fontWeight: currentAngleIndex === index ? 'bold' : 'normal'
+                {/* Create a 3x3 grid with angles positioned according to their gridPosition */}
+                {Array.from({ length: 9 }, (_, gridIndex) => {
+                  const angle = FACE_ANGLES.find(a => a.gridPosition === gridIndex)
+                  const angleIndex = angle ? FACE_ANGLES.indexOf(angle) : -1
+                  
+                  if (!angle) {
+                    // Empty cell for non-angle positions
+                    return <Box key={gridIndex} />
+                  }
+                  
+                  return (
+                    <Box
+                      key={angle.id}
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        p: 1,
+                        borderRadius: 1,
+                        border: currentAngleIndex === angleIndex ? '2px solid' : '1px solid',
+                        borderColor: 
+                          capturedPhotos[angleIndex] ? 'success.main' :
+                          currentAngleIndex === angleIndex ? 'primary.main' :
+                          'grey.300',
+                        backgroundColor: 
+                          capturedPhotos[angleIndex] ? 'success.light' :
+                          currentAngleIndex === angleIndex ? 'primary.light' :
+                          'background.paper',
+                        transition: 'all 0.3s',
+                        minHeight: 70,
+                        position: 'relative',
+                        // Highlight center position
+                        ...(angle.id === 'center' && {
+                          border: currentAngleIndex === angleIndex ? '3px solid' : '2px solid',
+                          borderColor: 
+                            capturedPhotos[angleIndex] ? 'success.main' :
+                            currentAngleIndex === angleIndex ? 'primary.main' :
+                            'primary.light',
+                        })
                       }}
                     >
-                      {angle.name}
-                    </Typography>
-                    {capturedPhotos[index] && (
-                      <CheckCircle 
+                      <Typography variant="h5">{angle.icon}</Typography>
+                      <Typography 
+                        variant="caption" 
                         sx={{ 
-                          fontSize: 20, 
-                          position: 'absolute',
-                          top: 4,
-                          right: 4,
-                          color: 'success.main'
-                        }} 
-                      />
-                    )}
-                  </Box>
-                ))}
+                          mt: 0.5,
+                          fontWeight: currentAngleIndex === angleIndex ? 'bold' : 'normal'
+                        }}
+                      >
+                        {angle.name}
+                      </Typography>
+                      {capturedPhotos[angleIndex] && (
+                        <CheckCircle 
+                          sx={{ 
+                            fontSize: 20, 
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            color: 'success.main'
+                          }} 
+                        />
+                      )}
+                    </Box>
+                  )
+                })}
               </Box>
             </Paper>
             

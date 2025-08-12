@@ -20,8 +20,7 @@ class FaceRecognitionService {
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
         faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
       ])
 
       this.modelsLoaded = true
@@ -147,14 +146,30 @@ class FaceRecognitionService {
         throw new Error('未检测到人脸，请确保面部清晰可见')
       }
 
-      // Compare descriptors
-      const storedDescriptor = new Float32Array(data.face_descriptor)
-      const distance = faceapi.euclideanDistance(storedDescriptor, detection.descriptor)
+      // Compare descriptors - handle both single and multiple descriptors
+      let minDistance = Infinity
+      
+      // Check if stored descriptor is an array of arrays (multiple angles)
+      if (Array.isArray(data.face_descriptor[0])) {
+        // Multiple descriptors stored (from multi-angle capture)
+        console.log('[FaceRecognition] Comparing against multiple stored descriptors')
+        for (const descriptor of data.face_descriptor) {
+          const storedDescriptor = new Float32Array(descriptor)
+          const distance = faceapi.euclideanDistance(storedDescriptor, detection.descriptor)
+          minDistance = Math.min(minDistance, distance)
+        }
+      } else {
+        // Single descriptor stored
+        console.log('[FaceRecognition] Comparing against single stored descriptor')
+        const storedDescriptor = new Float32Array(data.face_descriptor)
+        minDistance = faceapi.euclideanDistance(storedDescriptor, detection.descriptor)
+      }
       
       // Threshold for face matching (lower = stricter)
       const MATCH_THRESHOLD = 0.6
+      console.log(`[FaceRecognition] Min distance: ${minDistance}, threshold: ${MATCH_THRESHOLD}`)
       
-      return distance < MATCH_THRESHOLD
+      return minDistance < MATCH_THRESHOLD
     } catch (error) {
       console.error('[FaceRecognition] Verification failed:', error)
       throw error

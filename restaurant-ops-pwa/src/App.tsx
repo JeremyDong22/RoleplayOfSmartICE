@@ -2,12 +2,12 @@
 // Updated: 2025-07-31 - Added restaurant initialization
 // Updated: 2025-08-03 - Added automatic cache management
 // Updated: 2025-08-04 - Added force clear cache button
-// Updated: 2025-08-11 - Added FaceIO login integration
-// Updated: 2025-08-11 - Added catch-all routes to fix navigation issues
+// Updated: 2025-08-11 - Added face-api.js face recognition
+// Updated: 2025-08-12 - Removed FaceIO, implemented auto face detection
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-import { LoginPage } from './pages/Login/LoginPage'
+import { LoginPageEnhanced } from './pages/Login/LoginPageEnhanced'
 import { RoleSelection } from './pages/RoleSelection'
 import { ManagerDashboard } from './pages/ManagerDashboard-new'
 import { ChefDashboard } from './pages/ChefDashboard-new'
@@ -52,7 +52,7 @@ const theme = createTheme({
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <LoginPage />,
+    element: <LoginPageEnhanced />,
   },
   {
     path: '/role-selection',

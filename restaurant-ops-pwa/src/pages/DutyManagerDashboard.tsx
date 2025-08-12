@@ -549,7 +549,7 @@ const DutyManagerDashboard: React.FC = () => {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <AppBar position="static">
-          <Toolbar>
+          <Toolbar sx={{ py: 1 }}>
             <IconButton
               edge="start"
               color="inherit"
@@ -608,7 +608,7 @@ const DutyManagerDashboard: React.FC = () => {
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="static">
-        <Toolbar>
+        <Toolbar sx={{ py: 1 }}>
           <IconButton
             edge="start"
             color="inherit"

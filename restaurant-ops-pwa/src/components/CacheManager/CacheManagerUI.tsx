@@ -1,6 +1,7 @@
 /**
  * 缓存管理器UI组件
  * Created: 2025-08-03
+ * Updated: 2025-08-12 - Removed DEV badge, kept development mode only functionality
  * 仅在开发模式下显示，提供手动清理缓存的功能
  */
 
@@ -49,9 +50,7 @@ export const CacheManagerUI = () => {
             }
           }}
         >
-          <Badge badgeContent="DEV" color="warning">
-            <CachedIcon />
-          </Badge>
+          <CachedIcon />
         </IconButton>
       </Tooltip>
       

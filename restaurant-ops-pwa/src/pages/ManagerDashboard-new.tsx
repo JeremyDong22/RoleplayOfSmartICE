@@ -1197,7 +1197,7 @@ export const ManagerDashboard: React.FC = () => {
     <>
       {/* App Bar */}
       <AppBar position="static" color="primary">
-        <Toolbar>
+        <Toolbar sx={{ py: 1 }}>
           <IconButton
             edge="start"
             color="inherit"
@@ -1213,8 +1213,14 @@ export const ManagerDashboard: React.FC = () => {
         </Toolbar>
       </AppBar>
       
-      <Container maxWidth="xl" sx={{ mt: 2, pb: 12, minHeight: 'calc(100vh - 64px)' }}>
-        <Grid container spacing={2} sx={{ height: '100%' }}>
+      <Container maxWidth="xl" sx={{ 
+        mt: 3, 
+        pb: 12, 
+        minHeight: 'calc(100vh - 64px)',
+        display: 'flex',
+        alignItems: 'center'
+      }}>
+        <Grid container spacing={2} sx={{ width: '100%' }}>
           {/* Task Countdown - Main focus */}
           <Grid size={{ xs: 12, lg: (currentPeriod && !isWaitingForNextDay) ? 7 : 12 }}>
             {currentPeriod && !isWaitingForNextDay ? (
