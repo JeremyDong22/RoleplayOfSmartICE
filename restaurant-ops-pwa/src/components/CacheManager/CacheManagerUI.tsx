@@ -23,10 +23,15 @@ export const CacheManagerUI = () => {
   const handleClearCache = async () => {
     setClearing(true)
     try {
+      // 保存当前路径，以便刷新后能正确导航
+      const currentPath = window.location.pathname
+      
       await clearAllCaches()
+      
       // 延迟一下让用户看到清理完成的状态
       setTimeout(() => {
-        window.location.reload()
+        // 使用 href 直接导航到当前路径，避免 404
+        window.location.href = currentPath
       }, 500)
     } catch (error) {
       console.error('Failed to clear cache:', error)

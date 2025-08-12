@@ -29,6 +29,16 @@ export const RoleSelection = () => {
     }
     
     const requiredRole = roleCodeMap[role]
+    
+    // Administrator can access all roles
+    if (currentUser?.roleCode === 'administrator') {
+      // Store both the selected role and that it's an admin viewing this role
+      localStorage.setItem('selectedRole', role)
+      localStorage.setItem('isAdministratorMode', 'true')
+      navigate(`/${role}`)
+      return
+    }
+    
     // Special handling for CEO role - also check if role name is "总经理"
     if (role === 'ceo') {
       if (currentUser?.roleCode !== 'ceo' && currentUser?.role !== '总经理') {
@@ -42,6 +52,7 @@ export const RoleSelection = () => {
     
     // Store role in localStorage for persistence
     localStorage.setItem('selectedRole', role)
+    localStorage.setItem('isAdministratorMode', 'false')
     
     // Navigate to the selected role page
     navigate(`/${role}`)
@@ -122,6 +133,16 @@ export const RoleSelection = () => {
         >
           欢迎，{currentUser?.name} ({currentUser?.role})
         </Typography>
+        
+        {/* Special message for administrator */}
+        {currentUser?.roleCode === 'administrator' && (
+          <Alert 
+            severity="info" 
+            sx={{ mb: 2, width: '100%', maxWidth: 600 }}
+          >
+            作为系统管理员，您可以访问所有角色的功能
+          </Alert>
+        )}
         
         <Typography 
           variant="h6" 

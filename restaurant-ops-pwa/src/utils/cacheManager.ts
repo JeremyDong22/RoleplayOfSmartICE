@@ -23,8 +23,13 @@ const LAST_CLEANUP_KEY = 'last_cache_cleanup'
 export async function clearAllCaches(): Promise<void> {
   // Starting cache cleanup...
   
-  // 1. 清理 localStorage
-  const keysToPreserve = ['supabase.auth.token'] // 保留认证信息
+  // 1. 清理 localStorage - 保留关键信息
+  const keysToPreserve = [
+    'supabase.auth.token',  // 保留认证信息
+    'sb-',                  // 保留所有 Supabase 相关的键
+    'user_',                // 保留用户信息
+    'role_'                 // 保留角色信息
+  ]
   const allKeys = Object.keys(localStorage)
   allKeys.forEach(key => {
     if (!keysToPreserve.some(preserve => key.includes(preserve))) {
@@ -32,8 +37,14 @@ export async function clearAllCaches(): Promise<void> {
     }
   })
   
-  // 2. 清理 sessionStorage
-  sessionStorage.clear()
+  // 2. 清理 sessionStorage - 但保留路由相关信息
+  const sessionKeysToPreserve = ['router', 'navigation', 'history']
+  const sessionKeys = Object.keys(sessionStorage)
+  sessionKeys.forEach(key => {
+    if (!sessionKeysToPreserve.some(preserve => key.includes(preserve))) {
+      sessionStorage.removeItem(key)
+    }
+  })
   
   // 3. 清理 Service Worker 缓存
   if ('caches' in window) {

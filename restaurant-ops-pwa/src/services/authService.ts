@@ -133,6 +133,11 @@ class AuthService {
     const user = this.getCurrentUser()
     if (!user) return false
 
+    // Administrator can access all routes
+    if (user.roleCode === 'administrator') {
+      return true
+    }
+
     // Map routes to allowed roles
     const routePermissions: Record<string, string[]> = {
       '/manager': ['manager'],

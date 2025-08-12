@@ -120,6 +120,12 @@ class FaceRecognitionService {
 
   // Verify user's face against stored descriptor
   async verifyUser(userId: string, videoElement: HTMLVideoElement): Promise<boolean> {
+    const result = await this.calculateMatchDistance(userId, videoElement)
+    return result.isMatch
+  }
+
+  // Calculate match distance and return detailed info
+  async calculateMatchDistance(userId: string, videoElement: HTMLVideoElement): Promise<{distance: number, isMatch: boolean, similarity: number}> {
     if (!this.modelsLoaded) {
       await this.initialize()
     }
@@ -166,10 +172,19 @@ class FaceRecognitionService {
       }
       
       // Threshold for face matching (lower = stricter)
-      const MATCH_THRESHOLD = 0.6
-      console.log(`[FaceRecognition] Min distance: ${minDistance}, threshold: ${MATCH_THRESHOLD}`)
+      // Changed from 0.6 to 0.4 for higher security (95% similarity required)
+      const MATCH_THRESHOLD = 0.4
       
-      return minDistance < MATCH_THRESHOLD
+      // Calculate similarity percentage (0-100%)
+      const similarity = Math.max(0, (1 - minDistance / 2) * 100)
+      
+      console.log(`[FaceRecognition] Distance: ${minDistance.toFixed(3)}, Threshold: ${MATCH_THRESHOLD}, Similarity: ${similarity.toFixed(1)}%`)
+      
+      return {
+        distance: minDistance,
+        isMatch: minDistance < MATCH_THRESHOLD,
+        similarity: similarity
+      }
     } catch (error) {
       console.error('[FaceRecognition] Verification failed:', error)
       throw error

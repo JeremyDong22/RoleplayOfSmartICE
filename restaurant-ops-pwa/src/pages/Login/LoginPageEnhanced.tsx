@@ -173,7 +173,7 @@ export const LoginPageEnhanced = () => {
         return false
       }
       
-      console.log('🔍 Attempting face detection...')
+      console.log('🔍 Attempting face detection with BEST MATCH strategy...')
       
       try {
         // Get all users with face descriptors
@@ -189,23 +189,26 @@ export const LoginPageEnhanced = () => {
           return false
         }
         
-        // Try to match face with each user
+        // Collect all matches with their distances
+        const matches: Array<{user: any, distance: number, similarity: number}> = []
+        
+        console.log('📊 Calculating distances for all users...')
         for (const userData of users) {
           try {
-            const isMatch = await faceRecognitionService.verifyUser(userData.id, videoRef.current!)
-            if (isMatch) {
-              const displayName = userData.full_name || userData.username || '用户'
-              console.log('✅ Face matched:', displayName)
-              setDetectedUser(userData)
-              setFaceDetectionState('success')
-              setSuccess(`识别成功！欢迎回来，${displayName}`)
-              
-              // Auto-login after 1 second
-              setTimeout(() => {
-                handleAutoLogin(userData)
-              }, 1000)
-              
-              return true
+            const result = await (faceRecognitionService as any).calculateMatchDistance(
+              userData.id, 
+              videoRef.current!
+            )
+            
+            const displayName = userData.full_name || userData.username || userData.id.substring(0, 8)
+            console.log(`   User: ${displayName} - Distance: ${result.distance.toFixed(3)}, Similarity: ${result.similarity.toFixed(1)}%`)
+            
+            if (result.isMatch) {
+              matches.push({
+                user: userData,
+                distance: result.distance,
+                similarity: result.similarity
+              })
             }
           } catch (err) {
             // Continue to next user
@@ -213,6 +216,49 @@ export const LoginPageEnhanced = () => {
           }
         }
         
+        // If we have matches, select the best one (lowest distance)
+        if (matches.length > 0) {
+          // Sort by distance (ascending - best match first)
+          matches.sort((a, b) => a.distance - b.distance)
+          const bestMatch = matches[0]
+          
+          console.log('🏆 Best match selection:')
+          console.log(`   Winner: ${bestMatch.user.full_name || bestMatch.user.username}`)
+          console.log(`   Distance: ${bestMatch.distance.toFixed(3)}`)
+          console.log(`   Similarity: ${bestMatch.similarity.toFixed(1)}%`)
+          console.log(`   Total candidates: ${matches.length}`)
+          
+          // Log all candidates for comparison
+          if (matches.length > 1) {
+            console.log('   Other candidates:')
+            for (let i = 1; i < matches.length; i++) {
+              const match = matches[i]
+              console.log(`     ${i+1}. ${match.user.full_name || match.user.username} - Distance: ${match.distance.toFixed(3)} (gap: ${(match.distance - bestMatch.distance).toFixed(3)})`)
+            }
+            
+            // Warn if second best is too close
+            const secondBest = matches[1]
+            const gap = secondBest.distance - bestMatch.distance
+            if (gap < 0.1) {
+              console.warn('⚠️ Warning: Multiple similar matches detected. Gap:', gap.toFixed(3))
+            }
+          }
+          
+          const displayName = bestMatch.user.full_name || bestMatch.user.username || '用户'
+          console.log('✅ Face matched with BEST candidate:', displayName)
+          setDetectedUser(bestMatch.user)
+          setFaceDetectionState('success')
+          setSuccess(`识别成功！欢迎回来，${displayName} (相似度: ${bestMatch.similarity.toFixed(0)}%)`)
+          
+          // Auto-login after 1 second
+          setTimeout(() => {
+            handleAutoLogin(bestMatch.user)
+          }, 1000)
+          
+          return true
+        }
+        
+        console.log('❌ No matches found with threshold 0.4')
         return false
       } catch (err) {
         console.error('Detection attempt failed:', err)
@@ -355,26 +401,43 @@ export const LoginPageEnhanced = () => {
         throw new Error('没有已注册的用户，请先使用密码登录')
       }
       
-      // Try to match face with each user
-      let matchedUser = null
+      console.log('🔍 Manual face login with BEST MATCH strategy...')
+      
+      // Collect all matches with their distances
+      const matches: Array<{user: any, distance: number, similarity: number}> = []
+      
       for (const userData of users) {
         try {
-          const isMatch = await faceRecognitionService.verifyUser(userData.id, videoRef.current)
-          if (isMatch) {
-            matchedUser = userData
-            break
+          const result = await (faceRecognitionService as any).calculateMatchDistance(
+            userData.id, 
+            videoRef.current
+          )
+          
+          if (result.isMatch) {
+            matches.push({
+              user: userData,
+              distance: result.distance,
+              similarity: result.similarity
+            })
+            console.log(`Match found: ${userData.full_name || userData.username} - Distance: ${result.distance.toFixed(3)}`)
           }
         } catch (err) {
           continue
         }
       }
       
-      if (!matchedUser) {
-        throw new Error('未识别到已注册的人脸')
+      if (matches.length === 0) {
+        throw new Error('未识别到已注册的人脸 (阈值: 0.4)')
       }
       
-      setSuccess(`识别成功！欢迎回来，${matchedUser.full_name || matchedUser.username || '用户'}`)
-      handleAutoLogin(matchedUser)
+      // Select the best match (lowest distance)
+      matches.sort((a, b) => a.distance - b.distance)
+      const bestMatch = matches[0]
+      
+      console.log(`✅ Best match: ${bestMatch.user.full_name || bestMatch.user.username} (Similarity: ${bestMatch.similarity.toFixed(1)}%)`)
+      
+      setSuccess(`识别成功！欢迎回来，${bestMatch.user.full_name || bestMatch.user.username || '用户'} (相似度: ${bestMatch.similarity.toFixed(0)}%)`)
+      handleAutoLogin(bestMatch.user)
     } catch (err: any) {
       setError(err.message || '人脸识别失败')
     } finally {
