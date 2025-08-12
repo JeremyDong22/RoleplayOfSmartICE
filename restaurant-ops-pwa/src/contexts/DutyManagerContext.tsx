@@ -1,7 +1,7 @@
 // 值班经理任务触发上下文 - 用于管理前厅和值班经理之间的通信
 // 更新：集成数据库持久化，支持离线查看任务提交
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
-import type { TaskTemplate } from '../utils/workflowParser'
+import type { TaskTemplate } from '../types/task.types'
 import { realtimeDutyService } from '../services/realtimeDutyService'
 import { supabase } from '../services/supabase'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'

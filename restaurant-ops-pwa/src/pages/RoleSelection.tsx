@@ -17,12 +17,8 @@ export const RoleSelection = () => {
   const currentUser = authService.getCurrentUser()
   
   // Debug: Log current user info
-  console.log('Current User:', currentUser)
-  console.log('Role Code:', currentUser?.roleCode)
-  console.log('Role:', currentUser?.role)
 
   const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager' | 'ceo') => {
-    console.log(`[Navigation] Attempting to navigate to: /${role}`)
     
     // Check if user has permission to access this role
     const roleCodeMap: Record<string, string> = {
@@ -49,8 +45,6 @@ export const RoleSelection = () => {
     
     // Navigate to the selected role page
     navigate(`/${role}`)
-    
-    console.log(`[Navigation] Navigation called for: /${role}`)
   }
 
   const handleLogout = () => {

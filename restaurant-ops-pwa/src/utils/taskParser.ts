@@ -1,6 +1,6 @@
 // Import TaskTemplate from workflowParser
-import type { TaskTemplate } from './workflowParser'
-export type { TaskTemplate } from './workflowParser'
+import type { TaskTemplate } from '../types/task.types'
+export type { TaskTemplate } from '../types/task.types'
 
 export interface Task extends TaskTemplate {
   scheduledDate: Date
@@ -10,7 +10,7 @@ export interface Task extends TaskTemplate {
 }
 
 // Import workflow data - DEPRECATED: Now using database
-// import { workflowPeriods } from './workflowParser'
+// import { workflowPeriods } from '../types/task.types'
 
 // Get all task templates from workflow periods - DEPRECATED: Now using database
 // export const taskTemplates: TaskTemplate[] = workflowPeriods.flatMap(period => [

@@ -33,7 +33,7 @@ import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 import { FloatingCameraView } from '../FloatingCameraView'
 import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
-import type { TaskTemplate } from '../../utils/workflowParser'
+import type { TaskTemplate } from '../../types/task.types'
 
 interface TaskSubmissionDialogProps {
   open: boolean

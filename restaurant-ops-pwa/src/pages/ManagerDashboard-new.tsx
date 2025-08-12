@@ -15,7 +15,8 @@ import {
   CircularProgress,
   Alert,
   Button,
-  Paper
+  Paper,
+  Box
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -26,8 +27,9 @@ import { EditableTime } from '../components/TimeControl/EditableTime'
 import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
 import { FloatingTaskCard } from '../components/FloatingTaskCard'
 import { NoticeContainer } from '../components/NoticeContainer/NoticeContainer'
-import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../utils/workflowParser'
-import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
+import { NavigationBar } from '../components/Navigation/NavigationBar'
+import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../services/businessCycleService'
+import type { WorkflowPeriod, TaskTemplate } from '../types/task.types'
 import { useTaskData } from '../contexts/TaskDataContext'
 import { getManualClosingTask } from '../services/taskService'
 import { useDutyManager, type DutyManagerSubmission } from '../contexts/DutyManagerContext'
@@ -191,6 +193,7 @@ export const ManagerDashboard: React.FC = () => {
   const floatingTasks = allFloatingTasks.filter(task => 
     task.role === 'Manager'
   )
+  
   
   // 获取手动闭店任务（特殊任务，只作为按钮显示）
   const manualClosingTask = getManualClosingTask('manager')
@@ -1210,7 +1213,7 @@ export const ManagerDashboard: React.FC = () => {
         </Toolbar>
       </AppBar>
       
-      <Container maxWidth="xl" sx={{ mt: 2, pb: 4, height: 'calc(100vh - 64px)' }}>
+      <Container maxWidth="xl" sx={{ mt: 2, pb: 12, minHeight: 'calc(100vh - 64px)' }}>
         <Grid container spacing={2} sx={{ height: '100%' }}>
           {/* Task Countdown - Main focus */}
           <Grid size={{ xs: 12, lg: (currentPeriod && !isWaitingForNextDay) ? 7 : 12 }}>
@@ -1300,6 +1303,9 @@ export const ManagerDashboard: React.FC = () => {
           )}
         </Grid>
       </Container>
+      
+      {/* Navigation Bar */}
+      <NavigationBar role="manager" />
     </>
   )
 }

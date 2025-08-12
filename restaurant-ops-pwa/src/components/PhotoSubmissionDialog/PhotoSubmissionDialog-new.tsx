@@ -19,7 +19,7 @@ import {
   TextField,
   IconButton,
   Paper,
-  // Chip,
+  Chip,
   Alert,
   Snackbar,
   Modal,
@@ -28,6 +28,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Divider,
+  InputAdornment
   // Badge
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
@@ -43,7 +45,9 @@ import {
   // Image as ImageIcon,
   Comment as CommentIcon,
   FlashOn,
-  FlashOff
+  FlashOff,
+  Inventory as InventoryIcon,
+  AttachMoney as MoneyIcon
 } from '@mui/icons-material'
 
 // 视图类型
@@ -63,6 +67,15 @@ interface PhotoGroup {
   sampleRef?: string  // 参考的sample名称
   sampleIndex?: number
   comment?: string
+  structuredData?: {
+    item_name?: string
+    quantity?: number
+    unit?: string
+    unit_price?: number
+    total_price?: number
+    quality_check?: string
+    [key: string]: any
+  }  // 结构化数据
   createdAt: number
 }
 
@@ -85,6 +98,7 @@ interface PhotoSubmissionDialogProps {
       images: string[]
     }>
   } | null  // 新的samples数据结构
+  structuredFields?: any  // 结构化字段配置
   onClose: () => void
   onSubmit: (evidence: Array<{
     photo: string
@@ -100,6 +114,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   // isFloatingTask = false,
   initialPhotoGroups,
   samples,
+  structuredFields,
   onClose,
   onSubmit
 }) => {
@@ -127,6 +142,16 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   const [showSuccess, setShowSuccess] = useState(false)
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  
+  // 结构化数据状态
+  const [structuredData, setStructuredData] = useState<Record<string, any>>({})
+  const [selectedItemName, setSelectedItemName] = useState('')
+  
+  // 价格相关状态
+  const [unitPrice, setUnitPrice] = useState<number | null>(null)
+  const [totalPrice, setTotalPrice] = useState<number | null>(null)
+  const [priceCalculationTimer, setPriceCalculationTimer] = useState<NodeJS.Timeout | null>(null)
+  const [priceInputMode, setPriceInputMode] = useState<'none' | 'unit' | 'total'>('none')
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -415,22 +440,61 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   // 保存当前拍摄会话
   const savePhotoGroup = () => {
     if (currentSessionPhotos.length > 0) {
+      // 验证结构化数据（如果启用）
+      if (structuredFields?.enabled) {
+        const requiredFields = structuredFields.fields.filter((f: any) => f.required && f.type !== 'auto')
+        for (const field of requiredFields) {
+          if (!structuredData[field.key]) {
+            alert(`请填写${field.label}`)
+            return
+          }
+        }
+      }
+      
+      // 确保价格信息被包含在结构化数据中
+      const finalStructuredData = { ...structuredData }
+      if (unitPrice !== null) {
+        finalStructuredData.unit_price = unitPrice
+      }
+      if (totalPrice !== null) {
+        finalStructuredData.total_price = totalPrice
+      }
+      
       const newGroup: PhotoGroup = {
         id: Date.now().toString(),
         photos: currentSessionPhotos,
         sampleRef: sampleList[selectedSampleIndex]?.text,
         sampleIndex: selectedSampleIndex,
         comment: currentComment,
+        structuredData: structuredFields?.enabled ? finalStructuredData : undefined,
         createdAt: Date.now()
       }
       
       setPhotoGroups([...photoGroups, newGroup])
       setCurrentSessionPhotos([])
       setCurrentComment('')
+      setStructuredData({})
+      setUnitPrice(null)
+      setTotalPrice(null)
+      setPriceInputMode('none')
+      if (priceCalculationTimer) {
+        clearTimeout(priceCalculationTimer)
+        setPriceCalculationTimer(null)
+      }
       setSaveDialogOpen(false)
       setCurrentView('photos')
       stopCamera()
     }
+  }
+  
+  // 打开保存对话框时
+  const openSaveDialog = () => {
+    // 如果有结构化字段，不自动填充sample text
+    // 只在非结构化任务时才自动填充
+    if (!currentComment && sampleList[selectedSampleIndex]?.text && !structuredFields?.enabled) {
+      setCurrentComment(sampleList[selectedSampleIndex].text)
+    }
+    setSaveDialogOpen(true)
   }
   
   // 删除功能
@@ -453,8 +517,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       }))
     )
     
-    // 同时传递photoGroups数据
-    onSubmit({
+    // 准备提交数据
+    const submitData: any = {
       evidence, // 兼容旧格式
       photoGroups: photoGroups.map(group => ({
         id: group.id,
@@ -463,7 +527,18 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         sampleIndex: group.sampleIndex,
         comment: group.comment
       }))
-    } as any)
+    }
+    
+    // 如果有结构化数据，添加到提交数据中
+    if (structuredFields?.enabled && photoGroups.length > 0) {
+      // 获取最后一个照片组的结构化数据（通常只有一个）
+      const lastGroup = photoGroups[photoGroups.length - 1]
+      if (lastGroup.structuredData) {
+        submitData.structured_data = lastGroup.structuredData
+      }
+    }
+    
+    onSubmit(submitData)
     
     // 提交后直接清理并关闭，不要返回到samples视图
     const cleanup = () => {
@@ -475,6 +550,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       
       setPhotoGroups([])
       setCurrentSessionPhotos([])
+      setStructuredData({})
       setCurrentView('samples')
     }
     
@@ -483,11 +559,98 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     // onClose()
   }
   
+  // 处理单价输入
+  const handleUnitPriceChange = (value: string) => {
+    console.log('[PhotoSubmissionDialog] 单价输入:', value)
+    const price = parseFloat(value) || 0
+    
+    // 如果输入为空，重置状态
+    if (!value || price <= 0) {
+      setUnitPrice(null)
+      setTotalPrice(null)
+      setPriceInputMode('none')
+      if (priceCalculationTimer) {
+        clearTimeout(priceCalculationTimer)
+        setPriceCalculationTimer(null)
+      }
+      return
+    }
+    
+    // 设置单价输入模式
+    setPriceInputMode('unit')
+    setUnitPrice(price)
+    
+    // 清除之前的定时器
+    if (priceCalculationTimer) {
+      clearTimeout(priceCalculationTimer)
+    }
+    
+    // 延迟2秒计算总价
+    const currentQuantity = structuredData.quantity || 0
+    console.log('[PhotoSubmissionDialog] 准备计算，数量:', currentQuantity)
+    
+    if (currentQuantity > 0) {
+      const timer = setTimeout(() => {
+        const total = price * currentQuantity
+        console.log(`[PhotoSubmissionDialog] 计算总价: ${price} × ${currentQuantity} = ${total}`)
+        setTotalPrice(Number(total.toFixed(2)))
+      }, 2000)
+      setPriceCalculationTimer(timer)
+    }
+  }
+  
+  // 处理总价输入
+  const handleTotalPriceChange = (value: string) => {
+    console.log('[PhotoSubmissionDialog] 总价输入:', value)
+    const total = parseFloat(value) || 0
+    
+    // 如果输入为空，重置状态
+    if (!value || total <= 0) {
+      setUnitPrice(null)
+      setTotalPrice(null)
+      setPriceInputMode('none')
+      if (priceCalculationTimer) {
+        clearTimeout(priceCalculationTimer)
+        setPriceCalculationTimer(null)
+      }
+      return
+    }
+    
+    // 设置总价输入模式
+    setPriceInputMode('total')
+    setTotalPrice(total)
+    
+    // 清除之前的定时器
+    if (priceCalculationTimer) {
+      clearTimeout(priceCalculationTimer)
+    }
+    
+    // 延迟2秒计算单价
+    const currentQuantity = structuredData.quantity || 0
+    console.log('[PhotoSubmissionDialog] 准备计算，数量:', currentQuantity)
+    
+    if (currentQuantity > 0) {
+      const timer = setTimeout(() => {
+        const unit = total / currentQuantity
+        console.log(`[PhotoSubmissionDialog] 计算单价: ${total} ÷ ${currentQuantity} = ${unit}`)
+        setUnitPrice(Number(unit.toFixed(2)))
+      }, 2000)
+      setPriceCalculationTimer(timer)
+    }
+  }
+  
   const handleClose = () => {
     stopCamera()
     setSampleList([])
     setCurrentView('samples')
     setFlashEnabled(false)
+    setUnitPrice(null)
+    setTotalPrice(null)
+    setPriceInputMode('none')
+    if (priceCalculationTimer) {
+      clearTimeout(priceCalculationTimer)
+      setPriceCalculationTimer(null)
+    }
     onClose()
   }
   
@@ -562,10 +725,6 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                               target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120"%3E%3Crect width="120" height="120" fill="%23f0f0f0"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3E图片加载失败%3C/text%3E%3C/svg%3E'
                             }
                           }}
-                          onLoad={(e) => {
-                            // Log successful loads for debugging
-                            console.log('[PhotoSubmission] Image loaded successfully:', img)
-                          }}
                           sx={{
                             height: 120,
                             width: 120,
@@ -587,7 +746,11 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                   )}
                   
                   {/* 示例描述 */}
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ whiteSpace: 'pre-line' }}
+                  >
                     {sample.text}
                   </Typography>
                 </Paper>
@@ -639,7 +802,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             startIcon={<ArrowBack />}
             onClick={() => {
               if (currentSessionPhotos.length > 0) {
-                setSaveDialogOpen(true)
+                openSaveDialog()
               } else {
                 setCurrentView('samples')
               }
@@ -723,22 +886,27 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         )}
       </Box>
       
-      {/* 底部控制区 - 自动高度 */}
+      {/* 底部控制区 - 固定高度，防止遮挡 */}
       <Box sx={{ 
-        display: 'flex',
-        flexDirection: 'column',
         p: 1.5, 
         borderTop: 1, 
         borderColor: 'divider',
-        overflow: 'auto',
-        maxHeight: '40%'  // 最多占用40%高度
+        flexShrink: 0,
+        maxHeight: '35%',  // 减少最大高度
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column'
       }}>
         {/* Sample选择器 */}
-        <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
+        <FormControl size="small" fullWidth sx={{ mb: 1 }}>
           <InputLabel>选择参考示例</InputLabel>
           <Select
             value={selectedSampleIndex}
-            onChange={(e) => setSelectedSampleIndex(Number(e.target.value))}
+            onChange={(e) => {
+              setSelectedSampleIndex(Number(e.target.value))
+              // 切换样例时清空之前的备注
+              setCurrentComment('')
+            }}
             label="选择参考示例"
           >
             {sampleList.map((sample, index) => (
@@ -749,32 +917,31 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           </Select>
         </FormControl>
         
-        {/* 当前sample预览 - 紧凑布局 */}
+        {/* 当前sample预览 - 更紧凑布局 */}
         {sampleList[selectedSampleIndex] && sampleList[selectedSampleIndex].images.length > 0 && (
-          <Box sx={{ mb: 1.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              参考图片 (点击放大)
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+              参考图片
             </Typography>
             <Box 
               sx={{ 
                 display: 'flex', 
                 gap: 0.5, 
-                mt: 0.5,
+                mt: 0.3,
                 overflowX: 'auto',
                 overflowY: 'hidden',
-                pb: 0.5,
-                '&::-webkit-scrollbar': { height: '6px' },
+                '&::-webkit-scrollbar': { height: '4px' },
                 '&::-webkit-scrollbar-track': { 
-                  backgroundColor: 'rgba(0,0,0,0.1)',
-                  borderRadius: '3px'
+                  backgroundColor: 'rgba(0,0,0,0.05)',
+                  borderRadius: '2px'
                 },
                 '&::-webkit-scrollbar-thumb': { 
-                  backgroundColor: 'rgba(0,0,0,0.3)',
-                  borderRadius: '3px'
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  borderRadius: '2px'
                 }
               }}
             >
-              {sampleList[selectedSampleIndex].images.slice(0, 4).map((img, idx) => (
+              {sampleList[selectedSampleIndex].images.slice(0, 3).map((img, idx) => (
                 <Box
                   key={idx}
                   component="img"
@@ -782,8 +949,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                   alt={`Ref ${idx + 1}`}
                   onClick={() => setEnlargedImage(img)}
                   sx={{
-                    height: 50,
-                    minWidth: 50,
+                    height: 40,
+                    minWidth: 40,
                     objectFit: 'cover',
                     borderRadius: 0.5,
                     cursor: 'pointer',
@@ -798,10 +965,10 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         )}
         
         {/* 拍照按钮 - 保持在中间 */}
-        <Box display="flex" gap={1.5} justifyContent="center" sx={{ mb: 1.5 }}>
+        <Box display="flex" gap={1} justifyContent="center" sx={{ mb: 1 }}>
           <Button
             variant="contained"
-            size="medium"
+            size="small"
             onClick={capturePhoto}
             startIcon={<CameraAlt />}
             disabled={cameraError}
@@ -812,46 +979,51 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
           {currentSessionPhotos.length > 0 && (
             <Button
               variant="outlined"
-              size="medium"
-              onClick={() => setSaveDialogOpen(true)}
+              size="small"
+              onClick={() => openSaveDialog()}
             >
               保存 ({currentSessionPhotos.length})
             </Button>
           )}
         </Box>
         
-        {/* 已拍照片预览 - 自动填充剩余空间 */}
+        {/* 已拍照片预览 - 固定高度，使用横向滚动 */}
         {currentSessionPhotos.length > 0 && (
           <Box sx={{ 
-            flex: 1,
-            minHeight: 0,
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            minHeight: 0,
+            flex: 1
           }}>
-            <Typography variant="caption" color="text.secondary">
-              本次拍摄
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 0.3 }}>
+              本次拍摄 ({currentSessionPhotos.length} 张)
             </Typography>
             <Box sx={{ 
               display: 'flex', 
-              gap: 0.5, 
-              mt: 0.5, 
-              flexWrap: 'wrap',
-              alignContent: 'flex-start',
-              overflow: 'auto',
-              flex: 1,
-              minHeight: 0,
-              pb: 1
+              gap: 0.5,
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              pb: 0.5,
+              '&::-webkit-scrollbar': { height: '4px' },
+              '&::-webkit-scrollbar-track': { 
+                backgroundColor: 'rgba(0,0,0,0.05)',
+                borderRadius: '2px'
+              },
+              '&::-webkit-scrollbar-thumb': { 
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                borderRadius: '2px'
+              }
             }}>
               {currentSessionPhotos.map((photo) => (
-                <Box key={photo.id} sx={{ position: 'relative' }}>
+                <Box key={photo.id} sx={{ position: 'relative', flexShrink: 0 }}>
                   <Box
                     component="img"
                     src={photo.image}
                     alt="Captured"
                     onClick={() => setEnlargedImage(photo.image)}
                     sx={{
-                      width: 50,
-                      height: 50,
+                      width: 45,
+                      height: 45,
                       objectFit: 'cover',
                       borderRadius: 0.5,
                       cursor: 'pointer',
@@ -863,21 +1035,22 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                     size="small"
                     sx={{
                       position: 'absolute',
-                      top: -6,
-                      right: -6,
+                      top: -8,
+                      right: -8,
                       bgcolor: 'background.paper',
-                      width: 20,
-                      height: 20,
+                      width: 18,
+                      height: 18,
                       border: '1px solid',
                       borderColor: 'divider',
-                      '&:hover': { bgcolor: 'error.light' }
+                      '&:hover': { bgcolor: 'error.light' },
+                      '& .MuiSvgIcon-root': { fontSize: 10 }
                     }}
                     onClick={(e) => {
                       e.stopPropagation()
                       deleteSessionPhoto(photo.id)
                     }}
                   >
-                    <Delete sx={{ fontSize: 12 }} />
+                    <Delete />
                   </IconButton>
                 </Box>
               ))}
@@ -915,7 +1088,10 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                 <Paper sx={{ p: 2 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="start" mb={1}>
                     <Box>
-                      <Typography variant="subtitle2">
+                      <Typography 
+                        variant="subtitle2"
+                        sx={{ whiteSpace: 'pre-line' }}
+                      >
                         组 {index + 1}: {group.sampleRef || '未选择参考'}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -951,11 +1127,41 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                     ))}
                   </Box>
                   
+                  {/* 结构化数据显示 */}
+                  {group.structuredData && (
+                    <Box sx={{ mb: 1, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
+                      <Typography variant="caption" color="primary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                        收货信息
+                      </Typography>
+                      <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+                        {group.structuredData.item_name && (
+                          <>物品名称: {group.structuredData.item_name}<br /></>
+                        )}
+                        {group.structuredData.quantity && (
+                          <>数量: {group.structuredData.quantity} {group.structuredData.unit || ''}<br /></>
+                        )}
+                        {group.structuredData.unit_price && (
+                          <>单价: ¥{group.structuredData.unit_price}<br /></>
+                        )}
+                        {group.structuredData.total_price && (
+                          <>总价: ¥{group.structuredData.total_price}<br /></>
+                        )}
+                        {group.structuredData.quality_check && (
+                          <>质量检查: {group.structuredData.quality_check}</>
+                        )}
+                      </Typography>
+                    </Box>
+                  )}
+                  
                   {/* 评论 */}
                   {group.comment && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <CommentIcon fontSize="small" color="action" />
-                      <Typography variant="body2" color="text.secondary">
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                      <CommentIcon fontSize="small" color="action" sx={{ mt: 0.5 }} />
+                      <Typography 
+                        variant="body2" 
+                        color="text.secondary"
+                        sx={{ whiteSpace: 'pre-line' }}
+                      >
                         {group.comment}
                       </Typography>
                     </Box>
@@ -1024,28 +1230,244 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>保存这组照片</DialogTitle>
+        <DialogTitle>
+          {structuredFields?.enabled ? (
+            <Box display="flex" alignItems="center" gap={1}>
+              <InventoryIcon color="primary" />
+              <Typography variant="h6">填写收货信息</Typography>
+            </Box>
+          ) : (
+            '保存这组照片'
+          )}
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              共 {currentSessionPhotos.length} 张照片，参考: {sampleList[selectedSampleIndex]?.text || '无'}
+              共 {currentSessionPhotos.length} 张照片
             </Typography>
+            {sampleList[selectedSampleIndex]?.text && !structuredFields?.enabled && (
+              <Typography 
+                variant="caption" 
+                color="text.secondary"
+                sx={{ whiteSpace: 'pre-line', display: 'block' }}
+              >
+                检查项: {sampleList[selectedSampleIndex].text}
+              </Typography>
+            )}
           </Box>
+          
+          {/* 结构化输入区域 */}
+          {structuredFields?.enabled && structuredFields?.fields ? (
+            <Box sx={{ mb: 2 }}>
+              <Divider sx={{ mb: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  库存信息
+                </Typography>
+              </Divider>
+              
+              {structuredFields.fields.map((field: any) => {
+                // 跳过价格字段，稍后单独渲染
+                if (field.key === 'unit_price' || field.key === 'total_price') {
+                  return null
+                }
+                
+                if (field.type === 'select') {
+                  return (
+                    <FormControl fullWidth sx={{ mb: 2 }} key={field.key}>
+                      <InputLabel required={field.required}>
+                        {field.label}
+                      </InputLabel>
+                      <Select
+                        value={structuredData[field.key] || ''}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setStructuredData({
+                            ...structuredData,
+                            [field.key]: value
+                          })
+                          // 如果选择了物品，自动填充单位
+                          if (field.key === 'item_name') {
+                            const unitField = structuredFields.fields.find(
+                              (f: any) => f.key === 'unit'
+                            )
+                            if (unitField?.mapping && unitField.mapping[value]) {
+                              setStructuredData({
+                                ...structuredData,
+                                [field.key]: value,
+                                unit: unitField.mapping[value]
+                              })
+                            }
+                          }
+                        }}
+                        label={field.label}
+                      >
+                        {field.options?.map((option: string) => (
+                          <MenuItem key={option} value={option}>
+                            {option}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )
+                } else if (field.type === 'number') {
+                  return (
+                    <TextField
+                      key={field.key}
+                      fullWidth
+                      type="number"
+                      label={field.label}
+                      required={field.required}
+                      value={structuredData[field.key] || ''}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setStructuredData({
+                          ...structuredData,
+                          [field.key]: value
+                        })
+                        
+                        // 如果修改了数量，重新计算价格
+                        if (field.key === 'quantity') {
+                          const quantity = parseFloat(value) || 0
+                          if (unitPrice !== null && quantity > 0) {
+                            const newTotal = unitPrice * quantity
+                            setTotalPrice(Number(newTotal.toFixed(2)))
+                            console.log(`[PhotoSubmissionDialog] 数量变化，重新计算总价: ${unitPrice} × ${quantity} = ${newTotal.toFixed(2)}`)
+                          } else if (totalPrice !== null && quantity > 0) {
+                            const newUnit = totalPrice / quantity
+                            setUnitPrice(Number(newUnit.toFixed(2)))
+                            console.log(`[PhotoSubmissionDialog] 数量变化，重新计算单价: ${totalPrice} ÷ ${quantity} = ${newUnit.toFixed(2)}`)
+                          }
+                        }
+                      }}
+                      inputProps={{
+                        min: field.min || 0,
+                        step: field.decimal ? 0.01 : 1
+                      }}
+                      sx={{ mb: 2 }}
+                    />
+                  )
+                } else if (field.type === 'auto') {
+                  return (
+                    <TextField
+                      key={field.key}
+                      fullWidth
+                      label={field.label}
+                      value={structuredData[field.key] || ''}
+                      disabled
+                      sx={{ mb: 2 }}
+                    />
+                  )
+                }
+                return null
+              })}
+              
+              {/* 价格输入区域 */}
+              {(taskName.includes('收货') || taskName.includes('验货')) && (
+                <>
+                  <Divider sx={{ my: 2 }}>
+                    <Chip 
+                      icon={<MoneyIcon />} 
+                      label="价格信息" 
+                      size="small"
+                      color="primary"
+                    />
+                  </Divider>
+                  
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="单价"
+                      value={unitPrice !== null ? unitPrice : ''}
+                      onChange={(e) => {
+                        console.log('[PhotoSubmissionDialog] 单价onChange触发, value:', e.target.value)
+                        handleUnitPriceChange(e.target.value)
+                      }}
+                      disabled={priceInputMode === 'total'}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">¥</InputAdornment>,
+                        endAdornment: structuredData.unit && (
+                          <InputAdornment position="end">/{structuredData.unit}</InputAdornment>
+                        )
+                      }}
+                      inputProps={{
+                        min: 0,
+                        step: 0.01
+                      }}
+                      helperText={
+                        priceInputMode === 'total' ? '根据总价自动计算' :
+                        priceInputMode === 'unit' ? '正在输入单价...' :
+                        '输入后2秒自动计算总价'
+                      }
+                    />
+                    
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="总价"
+                      value={totalPrice !== null ? totalPrice : ''}
+                      onChange={(e) => {
+                        console.log('[PhotoSubmissionDialog] 总价onChange触发, value:', e.target.value)
+                        handleTotalPriceChange(e.target.value)
+                      }}
+                      disabled={priceInputMode === 'unit'}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">¥</InputAdornment>
+                      }}
+                      inputProps={{
+                        min: 0,
+                        step: 0.01
+                      }}
+                      helperText={
+                        priceInputMode === 'unit' ? '根据单价自动计算' :
+                        priceInputMode === 'total' ? '正在输入总价...' :
+                        '输入后2秒自动计算单价'
+                      }
+                    />
+                  </Box>
+                  
+                  {(unitPrice !== null || totalPrice !== null) && structuredData.quantity && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      {unitPrice && totalPrice && (
+                        <>价格信息：¥{unitPrice}/{structuredData.unit || '单位'} × {structuredData.quantity} = ¥{totalPrice}</>
+                      )}
+                    </Alert>
+                  )}
+                </>
+              )}
+              
+              <Divider sx={{ my: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  备注信息
+                </Typography>
+              </Divider>
+            </Box>
+          ) : null}
+          
           <TextField
             fullWidth
             multiline
-            rows={3}
-            label="添加备注（可选）"
+            rows={structuredFields?.enabled ? 2 : 4}
+            label={structuredFields?.enabled ? "备注（可选）" : "照片说明"}
             value={currentComment}
             onChange={(e) => setCurrentComment(e.target.value)}
-            placeholder="输入这组照片的说明或备注..."
+            placeholder={structuredFields?.enabled 
+              ? "请输入其他需要说明的信息..." 
+              : "请描述这组照片的情况..."}
+            helperText={!structuredFields?.enabled 
+              ? "检查项文本已预填充，您可以编辑或添加更多说明" 
+              : null}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaveDialogOpen(false)}>
             返回
           </Button>
-          <Button variant="contained" onClick={savePhotoGroup}>
+          <Button 
+            variant="contained" 
+            onClick={savePhotoGroup}
+            disabled={structuredFields?.enabled && (!structuredData.item_name || !structuredData.quantity)}
+          >
             保存
           </Button>
         </DialogActions>

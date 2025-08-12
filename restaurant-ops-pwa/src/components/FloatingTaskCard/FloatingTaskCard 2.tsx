@@ -18,7 +18,7 @@ import {
   PhotoCamera,
   Warning
 } from '@mui/icons-material'
-import type { TaskTemplate } from '../../utils/workflowParser'
+import type { TaskTemplate } from '../../types/task.types'
 import PhotoSubmissionDialog from '../PhotoSubmissionDialog'
 
 interface FloatingTaskCardProps {

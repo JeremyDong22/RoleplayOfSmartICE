@@ -61,7 +61,7 @@ class RealtimeDutyService {
         
         // 创建或加入频道 - 使用固定的频道名称，所有用户共享
         const channelName = 'duty-manager-broadcast'
-        console.log('[RealtimeDutyService] 创建频道:', channelName, 'userId:', userId)
+        // 创建频道
         this.channel = supabase.channel(channelName, {
           config: {
             broadcast: {
@@ -78,13 +78,13 @@ class RealtimeDutyService {
         await new Promise<void>((resolve, reject) => {
           // Add a timeout in case subscription doesn't respond
           const timeout = setTimeout(() => {
-            console.error('[RealtimeDutyService] Subscription timeout, attempt', i + 1)
+            // Subscription timeout
             reject(new Error('Supabase realtime subscription timeout'))
           }, 10000) // 10 second timeout
           
           this.channel!
             .on('broadcast', { event: 'duty-message' }, (payload) => {
-              console.log('[RealtimeDutyService] 收到广播消息:', payload)
+              // 收到广播消息
               this.handleMessage(payload.payload as DutyManagerMessage)
             })
             .on('system', {}, (payload) => {
@@ -94,13 +94,13 @@ class RealtimeDutyService {
               if (status === 'SUBSCRIBED') {
                 clearTimeout(timeout)
                 this.isInitialized = true
-                console.log('[RealtimeDutyService] ✓ Connected to Realtime')
+                // Connected to Realtime
                 resolve()
               } else if (status === 'CLOSED') {
                 clearTimeout(timeout)
                 // Check if this is a normal close or an error
                 if (err) {
-                  console.error('[RealtimeDutyService] Connection closed with error:', err)
+                  // Connection closed with error
                   reject(new Error(`Connection closed with error: ${err}`))
                 } else {
                   // Normal close, no need to log
@@ -112,19 +112,19 @@ class RealtimeDutyService {
                 // Check if this is a database connection error
                 const errorMessage = err?.message || err?.toString() || 'Unknown error'
                 if (errorMessage.includes('unable to connect to the project database')) {
-                  console.warn('[RealtimeDutyService] 数据库 Realtime 功能未启用，将在下次重试')
+                  // 数据库 Realtime 功能未启用，将在下次重试
                   // Don't reject immediately for database connection issues
                   // Will retry on next attempt
                 } else {
-                  console.error('[RealtimeDutyService] 频道错误:', status, err)
+                  // 频道错误
                   reject(new Error(`Channel error: ${errorMessage}`))
                 }
               } else if (status === 'TIMED_OUT') {
                 clearTimeout(timeout)
-                console.error('[RealtimeDutyService] 订阅超时:', status, err)
+                // 订阅超时
                 reject(new Error(`Connection timeout: ${err || 'Unknown error'}`))
               } else {
-                console.log('[RealtimeDutyService] 订阅中间状态:', status)
+                // 订阅中间状态
               }
             })
         })
@@ -132,10 +132,10 @@ class RealtimeDutyService {
         // If we reach here, connection was successful
         return
       } catch (error) {
-        console.error(`[RealtimeDutyService] Initialize attempt ${i + 1} failed:`, error)
+        // Initialize attempt failed
         if (i === retries - 1) {
           // No fallback - throw error if Realtime is unavailable
-          console.error('[RealtimeDutyService] ❌ Supabase Realtime connection failed after all retries')
+          // Supabase Realtime connection failed after all retries
           throw new Error('Supabase Realtime connection failed')
         }
         // Wait before retry

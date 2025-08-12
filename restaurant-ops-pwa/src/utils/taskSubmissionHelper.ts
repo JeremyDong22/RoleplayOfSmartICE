@@ -2,6 +2,7 @@
 // Created: 2025-07-29
 // 处理任务数据的上传，包括照片、音频等媒体文件
 // Updated: 2025-08-05 - Added retry mechanism and progress tracking for better reliability
+// Updated: 2025-08-11 - Added inventory update support for structured fields
 
 import { submitTaskRecord } from '../services/taskRecordService'
 import { uploadPhoto, uploadAudio } from '../services/storageService'
@@ -218,6 +219,58 @@ export async function submitTaskWithMedia({
       if (evidenceArray.length > 0 && evidenceArray[0]?.description) {
         submissionData.text_content = evidenceArray[0].description
       }
+      
+      // 处理结构化数据（收货验货）
+      if (data.structured_data) {
+        submissionData.submission_metadata = {
+          ...submissionData.submission_metadata,
+          structured_data: data.structured_data
+        }
+        
+        // 生成可读文本格式供CEO dashboard显示
+        const structuredText = []
+        if (data.structured_data.item_name) {
+          structuredText.push(`物品名称: ${data.structured_data.item_name}`)
+        }
+        if (data.structured_data.quantity && data.structured_data.unit) {
+          structuredText.push(`数量: ${data.structured_data.quantity} ${data.structured_data.unit}`)
+        } else if (data.structured_data.quantity) {
+          structuredText.push(`数量: ${data.structured_data.quantity}`)
+        }
+        
+        // 添加价格信息
+        if (data.structured_data.unit_price && data.structured_data.total_price) {
+          structuredText.push(`单价: ¥${data.structured_data.unit_price}`)
+          structuredText.push(`总价: ¥${data.structured_data.total_price}`)
+        } else if (data.structured_data.unit_price) {
+          structuredText.push(`单价: ¥${data.structured_data.unit_price}`)
+        } else if (data.structured_data.total_price) {
+          structuredText.push(`总价: ¥${data.structured_data.total_price}`)
+        }
+        
+        if (data.structured_data.quality_check) {
+          structuredText.push(`质量检查: ${data.structured_data.quality_check}`)
+        }
+        
+        // 将结构化文本与备注合并
+        const finalText = structuredText.join(', ')
+        const existingDescription = evidenceArray.length > 0 && evidenceArray[0]?.description 
+          ? evidenceArray[0].description 
+          : ''
+        
+        // 如果有备注，添加到结构化文本后面
+        if (existingDescription) {
+          submissionData.text_content = `${finalText}\n备注: ${existingDescription}`
+        } else {
+          submissionData.text_content = finalText
+        }
+        
+        // 库存更新将由后端触发器处理，前端只负责格式化文本
+        console.log('[TaskSubmissionHelper] Structured data formatted as text, inventory will be updated by backend trigger')
+      } else if (evidenceArray.length > 0 && evidenceArray[0]?.description) {
+        // 如果没有结构化数据但有描述文本，直接使用描述文本
+        submissionData.text_content = evidenceArray[0].description
+      }
     } else if (uploadRequirement === '录音' && data?.audioBlob) {
       submissionData.submission_type = 'audio'
       
@@ -232,6 +285,53 @@ export async function submitTaskWithMedia({
     } else if (uploadRequirement === '记录' && data?.textInput) {
       submissionData.submission_type = 'text'
       submissionData.text_content = data.textInput
+    } else if (data?.type === 'structured_text' && data?.structured_data) {
+      // 处理结构化文本输入（如损耗盘点）
+      submissionData.submission_type = 'text'
+      
+      // 生成可读文本格式供CEO dashboard显示
+      const structuredText = []
+      if (data.structured_data.item_name) {
+        structuredText.push(`物品名称: ${data.structured_data.item_name}`)
+      }
+      if (data.structured_data.quantity && data.structured_data.unit) {
+        structuredText.push(`数量: ${data.structured_data.quantity} ${data.structured_data.unit}`)
+      } else if (data.structured_data.quantity) {
+        structuredText.push(`数量: ${data.structured_data.quantity}`)
+      }
+      
+      // 添加价格信息（损耗盘点会有FIFO计算的价格）
+      if (data.structured_data.unit_price && data.structured_data.total_price) {
+        structuredText.push(`单价: ¥${data.structured_data.unit_price}`)
+        structuredText.push(`损耗价值: ¥${data.structured_data.total_price}`)
+      } else if (data.structured_data.total_price) {
+        structuredText.push(`损耗价值: ¥${data.structured_data.total_price}`)
+      }
+      
+      // 添加损耗原因
+      if (data.structured_data.reason) {
+        structuredText.push(`损耗原因: ${data.structured_data.reason}`)
+      }
+      
+      if (data.structured_data.quality_check) {
+        structuredText.push(`质量检查: ${data.structured_data.quality_check}`)
+      }
+      
+      // 将结构化文本与备注合并
+      const finalText = structuredText.join(', ')
+      if (data.note) {
+        submissionData.text_content = `${finalText}\n备注: ${data.note}`
+      } else {
+        submissionData.text_content = finalText
+      }
+      
+      submissionData.submission_metadata = {
+        ...submissionData.submission_metadata,
+        structured_data: data.structured_data
+      }
+      
+      // 库存更新将由后端触发器处理，前端只负责格式化文本
+      console.log('[TaskSubmissionHelper] Structured text formatted, inventory will be updated by backend trigger')
     } else if (uploadRequirement === '列表' && data) {
       submissionData.submission_type = 'list'
       submissionData.text_content = JSON.stringify(data)

@@ -15,7 +15,7 @@ import {
 import Grid from '@mui/material/Grid'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { useNavigate } from 'react-router-dom'
-import type { TaskTemplate, WorkflowPeriod } from '../utils/workflowParser'
+import type { TaskTemplate, WorkflowPeriod } from '../types/task.types'
 import { EditableTime } from '../components/TimeControl/EditableTime'
 import { TaskSummary } from '../components/TaskSummary'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
@@ -624,7 +624,7 @@ const DutyManagerDashboard: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, overflow: 'auto', pb: 10 }}>
         <Grid container>
           <Grid size={{ xs: 12, md: 8 }}>
             <Box sx={{ p: 2 }}>

@@ -24,8 +24,8 @@ import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPer
 
 // 关键改动：使用 TaskDataContext 替代 workflowParser
 import { useTaskData } from '../contexts/TaskDataContext'
-import { getCurrentPeriod, getNextPeriod } from '../utils/workflowParser' // 保留工具函数
-import type { TaskTemplate } from '../utils/workflowParser' // 保留类型定义
+import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../services/businessCycleService' // 保留工具函数
+import type { TaskTemplate } from '../types/task.types' // 保留类型定义
 
 import { saveState, loadState, clearState } from '../utils/persistenceManager'
 import { useDutyManager, type DutyManagerSubmission } from '../contexts/DutyManagerContext'

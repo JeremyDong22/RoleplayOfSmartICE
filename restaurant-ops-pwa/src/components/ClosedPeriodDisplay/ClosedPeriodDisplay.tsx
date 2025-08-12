@@ -2,7 +2,7 @@
 // Created to ensure consistent styling between Manager and Chef dashboards
 import React, { useState, useEffect } from 'react'
 import { Box, Typography } from '@mui/material'
-import type { WorkflowPeriod } from '../../utils/workflowParser'
+import type { WorkflowPeriod } from '../../types/task.types'
 
 interface ClosedPeriodDisplayProps {
   nextPeriod: WorkflowPeriod | null

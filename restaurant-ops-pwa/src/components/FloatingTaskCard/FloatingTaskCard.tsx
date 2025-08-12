@@ -1,6 +1,7 @@
 // 浮动任务卡片组件 - 用于展示独立于时间段的特殊任务（如收货验货）
 // 更新：移除完成状态追踪，支持无限次提交
-import React, { useState } from 'react'
+// 2025-08-11: 添加动态库存加载和结构化字段生成
+import React, { useState, useEffect } from 'react'
 import {
   Paper,
   Typography,
@@ -10,18 +11,23 @@ import {
   IconButton,
   Collapse,
   Alert,
-  Snackbar
+  Snackbar,
+  Tooltip
 } from '@mui/material'
 import {
   LocalShipping,
   ExpandMore,
   ExpandLess,
   PhotoCamera,
-  Loop
+  Loop,
+  History
 } from '@mui/icons-material'
-import type { TaskTemplate } from '../../utils/workflowParser'
+import type { TaskTemplate } from '../../types/task.types'
 import { TaskSubmissionDialog } from '../TaskSubmissionDialog'
+import { TodayRecordsDialog } from '../TodayRecordsDialog/TodayRecordsDialog'
 import { specialTaskTheme } from '../../theme/specialTaskTheme'
+import { inventoryService } from '../../services/inventoryService'
+import { authService } from '../../services/authService'
 
 interface FloatingTaskCardProps {
   tasks: TaskTemplate[]
@@ -39,11 +45,126 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<TaskTemplate | null>(null)
   const [successMessage, setSuccessMessage] = useState<string>('')
+  const [dynamicStructuredFields, setDynamicStructuredFields] = useState<any>(null)
+  const [isLoadingFields, setIsLoadingFields] = useState(false)
+  const [recordsDialogOpen, setRecordsDialogOpen] = useState(false)
 
-  const handleTaskClick = (taskId: string) => {
+  // 加载动态结构化字段
+  const loadDynamicFields = async (task: TaskTemplate) => {
+    // 如果不是收货验货任务，直接使用原有配置
+    if (!task.title.includes('收货验货')) {
+      return task.structuredFields
+    }
+
+    setIsLoadingFields(true)
+    try {
+      // 获取用户部门
+      const user = authService.getCurrentUser()
+      const department = user?.role === 'chef' ? '后厨' : '前厅'
+      
+      // 生成动态结构化字段
+      const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨')
+      console.log('[FloatingTaskCard] Generated dynamic fields:', fields)
+      
+      // 总是返回 enabled: true，即使没有物品也显示结构
+      if (fields && fields.fields && fields.fields.length > 0) {
+        setDynamicStructuredFields(fields)
+        return {
+          ...fields,
+          enabled: true  // 确保总是启用
+        }
+      } else {
+        // 即使没有物品，也返回基本结构
+        console.warn('[FloatingTaskCard] No inventory items found for department:', department)
+        return {
+          enabled: true,  // 仍然启用，显示空的下拉框
+          fields: [
+            {
+              key: 'item_name',
+              type: 'select',
+              label: '物品名称',
+              options: [],  // 空选项
+              required: true
+            },
+            {
+              key: 'quantity',
+              type: 'number',
+              label: '数量',
+              decimal: true,
+              min: 0,
+              required: true
+            },
+            {
+              key: 'unit',
+              type: 'text',
+              label: '单位',
+              required: false
+            },
+            {
+              key: 'quality_check',
+              type: 'select',
+              label: '质量检查',
+              options: ['合格', '不合格'],
+              required: true
+            }
+          ],
+          error: `没有找到${department}的库存物品，请先添加库存物品`
+        }
+      }
+    } catch (error) {
+      console.error('[FloatingTaskCard] Failed to load dynamic fields:', error)
+      // 即使失败也显示基本结构
+      return {
+        enabled: true,  // 仍然启用
+        fields: [
+          {
+            key: 'item_name',
+            type: 'text',  // 降级为文本输入
+            label: '物品名称',
+            required: true
+          },
+          {
+            key: 'quantity',
+            type: 'number',
+            label: '数量',
+            decimal: true,
+            min: 0,
+            required: true
+          },
+          {
+            key: 'unit',
+            type: 'text',
+            label: '单位',
+            required: false
+          },
+          {
+            key: 'quality_check',
+            type: 'select',
+            label: '质量检查',
+            options: ['合格', '不合格'],
+            required: true
+          }
+        ],
+        error: '加载库存物品失败，请手动输入'
+      }
+    } finally {
+      setIsLoadingFields(false)
+    }
+  }
+
+  const handleTaskClick = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId)
     if (task) {
-      setSelectedTask(task)
+      // 加载动态字段
+      const fields = await loadDynamicFields(task)
+      
+      // 创建带有动态字段的任务副本
+      const taskWithDynamicFields = {
+        ...task,
+        structuredFields: fields || task.structuredFields
+      }
+      
+      setSelectedTask(taskWithDynamicFields)
       setDialogOpen(true)
     }
   }
@@ -103,6 +224,20 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
                 }
               }}
             />
+            <Tooltip title="查看今日上传记录">
+              <IconButton 
+                onClick={() => setRecordsDialogOpen(true)} 
+                size="small"
+                sx={{
+                  color: specialTaskTheme.primary,
+                  '&:hover': {
+                    backgroundColor: 'rgba(33, 150, 243, 0.08)'
+                  }
+                }}
+              >
+                <History />
+              </IconButton>
+            </Tooltip>
             <IconButton onClick={() => setExpanded(!expanded)} size="small">
               {expanded ? <ExpandLess /> : <ExpandMore />}
             </IconButton>
@@ -200,6 +335,13 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
           {successMessage}
         </Alert>
       </Snackbar>
+
+      {/* Today's Records Dialog */}
+      <TodayRecordsDialog
+        open={recordsDialogOpen}
+        taskIds={tasks.map(t => t.id)}
+        onClose={() => setRecordsDialogOpen(false)}
+      />
     </>
   )
 }

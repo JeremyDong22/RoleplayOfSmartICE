@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { taskService } from '../services/taskService'
-import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
+import type { WorkflowPeriod, TaskTemplate } from '../types/task.types'
 import { CircularProgress, Box } from '@mui/material'
 
 interface TaskDataContextType {

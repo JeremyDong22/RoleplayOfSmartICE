@@ -1,7 +1,7 @@
 // Period helper functions to handle dynamic period IDs
 // Created: 2025-08-08 - Replace hardcoded period ID checks with flexible logic
 
-import type { WorkflowPeriod } from './workflowParser'
+import type { WorkflowPeriod } from '../types/task.types'
 
 /**
  * 检查是否为闭店时段

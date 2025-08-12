@@ -2,11 +2,13 @@
 // Created: 2025-07-31
 // 负责处理从开店到闭店的完整营业周期内的任务完成情况查询
 // Updated: 2025-08-02 - Added test time support for date queries
+// Updated: 2025-08-11 - Added period calculation functions from deprecated workflowParser
 
 import { supabase } from './supabase'
 import { restaurantConfigService } from './restaurantConfigService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { getLocalDateString } from '../utils/dateFormat'
+import type { WorkflowPeriod } from '../types/task.types'
 
 // 营业时间将从数据库动态获取
 interface BusinessHours {
@@ -316,4 +318,94 @@ export const SQL_QUERIES = {
       AND t.role_code IN ('manager', 'duty_manager')  -- 排除 chef
     ORDER BY tr.created_at
   `
+}
+
+/**
+ * Get current workflow period based on time using database periods
+ * Migrated from deprecated workflowParser.ts
+ */
+export function getCurrentPeriodFromDatabase(
+  periods: WorkflowPeriod[], 
+  testTime?: Date, 
+  excludeEventDriven: boolean = false
+): WorkflowPeriod | null {
+  const now = testTime || new Date()
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const currentTimeInMinutes = currentHour * 60 + currentMinute
+  
+  for (const period of periods) {
+    // Skip event-driven periods if requested
+    if (excludeEventDriven && period.isEventDriven) {
+      continue
+    }
+    
+    const [startHour, startMinute] = period.startTime.split(':').map(Number)
+    const [endHour, endMinute] = period.endTime.split(':').map(Number)
+    const startInMinutes = startHour * 60 + startMinute
+    const endInMinutes = endHour * 60 + endMinute
+    
+    // Handle periods that span midnight
+    if (endInMinutes < startInMinutes) {
+      // Period spans midnight
+      if (currentTimeInMinutes >= startInMinutes || currentTimeInMinutes < endInMinutes) {
+        return period
+      }
+    } else {
+      // Normal period within same day
+      if (currentTimeInMinutes >= startInMinutes && currentTimeInMinutes < endInMinutes) {
+        return period
+      }
+    }
+  }
+  // If no period matches, we're outside business hours
+  return null
+}
+
+/**
+ * Get the next upcoming period using database periods
+ * Migrated from deprecated workflowParser.ts
+ */
+export function getNextPeriodFromDatabase(
+  periods: WorkflowPeriod[], 
+  testTime?: Date
+): WorkflowPeriod | null {
+  const now = testTime || new Date()
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const currentTimeInMinutes = currentHour * 60 + currentMinute
+  
+  for (const period of periods) {
+    const [startHour, startMinute] = period.startTime.split(':').map(Number)
+    const startInMinutes = startHour * 60 + startMinute
+    
+    if (currentTimeInMinutes < startInMinutes) {
+      return period
+    }
+  }
+  
+  // If we're past all periods, return tomorrow's first period
+  return periods[0]
+}
+
+/**
+ * Get business status based on current time
+ * Migrated from deprecated workflowParser.ts
+ */
+export function getBusinessStatus(testTime?: Date): {
+  status: 'closed' | 'opening' | 'operating' | 'closing'
+  message: string
+} {
+  const now = testTime || new Date()
+  const currentHour = now.getHours()
+  
+  if (currentHour >= 10 && currentHour < 11) {
+    return { status: 'opening', message: '开店准备中' }
+  } else if (currentHour >= 11 && currentHour < 21) {
+    return { status: 'operating', message: '营业中' }
+  } else if (currentHour >= 21 && currentHour < 22) {
+    return { status: 'closing', message: '收市中' }
+  } else {
+    return { status: 'closed', message: '已闭店' }
+  }
 }

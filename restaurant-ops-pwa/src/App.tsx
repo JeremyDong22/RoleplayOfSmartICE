@@ -2,7 +2,9 @@
 // Updated: 2025-07-31 - Added restaurant initialization
 // Updated: 2025-08-03 - Added automatic cache management
 // Updated: 2025-08-04 - Added force clear cache button
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+// Updated: 2025-08-11 - Added FaceIO login integration
+// Updated: 2025-08-11 - Added catch-all routes to fix navigation issues
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { LoginPage } from './pages/Login/LoginPage'
@@ -10,6 +12,7 @@ import { RoleSelection } from './pages/RoleSelection'
 import { ManagerDashboard } from './pages/ManagerDashboard-new'
 import { ChefDashboard } from './pages/ChefDashboard-new'
 import DutyManagerDashboard from './pages/DutyManagerDashboard'
+import ProfilePageEnhanced from './pages/ProfilePage/ProfilePageEnhanced'
 import TestFloatingCamera from './pages/TestFloatingCamera'
 import { DutyManagerProvider } from './contexts/DutyManagerContext'
 import { TaskDataProvider } from './contexts/TaskDataContext'
@@ -32,6 +35,7 @@ import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton
 // CEO Dashboard imports
 import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
 import { DebugAuth } from './pages/DebugAuth'
+import { NotificationsPage } from './pages/NotificationsPage'
 
 const theme = createTheme({
   palette: {
@@ -67,6 +71,22 @@ const router = createBrowserRouter([
     ),
   },
   {
+    path: '/manager/profile',
+    element: (
+      <PrivateRoute path="/manager/profile">
+        <ProfilePageEnhanced />
+      </PrivateRoute>
+    ),
+  },
+  {
+    path: '/manager/notifications',
+    element: (
+      <PrivateRoute path="/manager/notifications">
+        <NotificationsPage role="manager" />
+      </PrivateRoute>
+    ),
+  },
+  {
     path: '/chef',
     element: (
       <PrivateRoute path="/chef">
@@ -75,10 +95,42 @@ const router = createBrowserRouter([
     ),
   },
   {
+    path: '/chef/profile',
+    element: (
+      <PrivateRoute path="/chef/profile">
+        <ProfilePageEnhanced />
+      </PrivateRoute>
+    ),
+  },
+  {
+    path: '/chef/notifications',
+    element: (
+      <PrivateRoute path="/chef/notifications">
+        <NotificationsPage role="chef" />
+      </PrivateRoute>
+    ),
+  },
+  {
     path: '/duty-manager',
     element: (
       <PrivateRoute path="/duty-manager">
         <DutyManagerDashboard />
+      </PrivateRoute>
+    ),
+  },
+  {
+    path: '/duty-manager/profile',
+    element: (
+      <PrivateRoute path="/duty-manager/profile">
+        <ProfilePageEnhanced />
+      </PrivateRoute>
+    ),
+  },
+  {
+    path: '/duty-manager/notifications',
+    element: (
+      <PrivateRoute path="/duty-manager/notifications">
+        <NotificationsPage role="duty-manager" />
       </PrivateRoute>
     ),
   },
@@ -118,6 +170,24 @@ const router = createBrowserRouter([
   {
     path: '/debug-auth',
     element: <DebugAuth />,
+  },
+  // Catch-all redirect for incorrect profile routes
+  {
+    path: '/manager/profile/:userId/notifications',
+    element: <Navigate to="/manager/notifications" replace />,
+  },
+  {
+    path: '/chef/profile/:userId/notifications',
+    element: <Navigate to="/chef/notifications" replace />,
+  },
+  {
+    path: '/duty-manager/profile/:userId/notifications',
+    element: <Navigate to="/duty-manager/notifications" replace />,
+  },
+  // Catch-all route for 404 errors
+  {
+    path: '*',
+    element: <Navigate to="/" replace />,
   },
 ])
 

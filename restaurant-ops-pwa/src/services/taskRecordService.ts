@@ -86,6 +86,26 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     throw error
   }
   
+  // 如果任务包含结构化数据（收货验货或损耗盘点），自动更新库存
+  if (data && taskData.submission_metadata?.structured_data?.item_name) {
+    try {
+      // 调用数据库函数更新库存
+      const { error: updateError } = await supabase
+        .rpc('update_inventory_for_task_record', {
+          p_task_record_id: data.id
+        })
+      
+      if (updateError) {
+        console.error('Failed to update inventory:', updateError)
+        // 不阻塞主流程，只记录错误
+      } else {
+        console.log('Inventory updated successfully for task record:', data.id)
+      }
+    } catch (err) {
+      console.error('Error calling inventory update function:', err)
+    }
+  }
+  
   return data
 }
 

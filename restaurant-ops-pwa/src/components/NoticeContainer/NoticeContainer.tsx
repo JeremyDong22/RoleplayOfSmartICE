@@ -14,7 +14,7 @@ import {
 import {
   Announcement
 } from '@mui/icons-material'
-import type { TaskTemplate } from '../../utils/workflowParser'
+import type { TaskTemplate } from '../../types/task.types'
 
 interface NoticeContainerProps {
   notices: TaskTemplate[]

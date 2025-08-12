@@ -23,8 +23,9 @@ import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPer
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { FloatingTaskCard } from '../components/FloatingTaskCard'
 import { NoticeContainer } from '../components/NoticeContainer/NoticeContainer'
-import type { WorkflowPeriod, TaskTemplate } from '../utils/workflowParser'
-import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../utils/workflowParser'
+import { NavigationBar } from '../components/Navigation/NavigationBar'
+import type { WorkflowPeriod, TaskTemplate } from '../types/task.types'
+import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../services/businessCycleService'
 import { useTaskData } from '../contexts/TaskDataContext'
 import { getManualClosingTask } from '../services/taskService'
 // import { broadcastService } from '../services/broadcastService' // Removed: Using only Supabase Realtime
@@ -944,7 +945,7 @@ export const ChefDashboard: React.FC = () => {
         </Toolbar>
       </AppBar>
       
-      <Container maxWidth="xl" sx={{ mt: 2, pb: 4, height: 'calc(100vh - 64px)' }}>
+      <Container maxWidth="xl" sx={{ mt: 2, pb: 12, minHeight: 'calc(100vh - 64px)' }}>
         <Grid container spacing={2} sx={{ height: '100%' }}>
           {/* Task Countdown - Main focus */}
           <Grid size={{ xs: 12, lg: (currentPeriod && !isWaitingForNextDay) ? 7 : 12 }}>
@@ -1035,6 +1036,9 @@ export const ChefDashboard: React.FC = () => {
           )}
         </Grid>
       </Container>
+      
+      {/* Navigation Bar */}
+      <NavigationBar role="chef" />
     </>
   )
   } catch (error) {

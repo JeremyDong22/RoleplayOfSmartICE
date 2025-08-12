@@ -5,7 +5,7 @@ import faceIO from '@faceio/fiojs'
 import { supabase } from './supabase'
 
 // FaceIO Public ID - Replace with your actual ID from https://faceio.net
-const FACEIO_PUBLIC_ID = 'fioaXXXX' // TODO: Replace with your actual FaceIO Public ID
+const FACEIO_PUBLIC_ID = 'fioaXXXX' // TODO: 请将 fioaXXXX 替换为你的实际 Public ID
 
 class FaceIOService {
   private faceio: any = null

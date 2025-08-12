@@ -20,7 +20,7 @@ import {
 } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import type { TaskTemplate } from '../../utils/workflowParser'
+import type { TaskTemplate } from '../../types/task.types'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
 
 interface DutyManagerSubmission {

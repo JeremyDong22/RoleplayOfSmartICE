@@ -42,14 +42,16 @@ import {
   Announcement,
   Checklist
 } from '@mui/icons-material'
-import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
+import type { TaskTemplate, WorkflowPeriod } from '../../types/task.types'
 
 import useEmblaCarousel from 'embla-carousel-react'
 import { TaskSubmissionDialog } from '../TaskSubmissionDialog'
 import { ReviewTaskDialog } from '../ReviewTaskDialog/ReviewTaskDialog'
+import { TodayRecordsDialog } from '../TodayRecordsDialog/TodayRecordsDialog'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
 import RateReviewIcon from '@mui/icons-material/RateReview'
 import PendingActionsIcon from '@mui/icons-material/PendingActions'
+import HistoryIcon from '@mui/icons-material/History'
 import { specialTaskTheme } from '../../theme/specialTaskTheme'
 
 // Removed SwipeableLastCustomerCard component - no longer needed as duty tasks are automatically assigned
@@ -107,7 +109,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const [textDialogOpen, setTextDialogOpen] = useState(false)
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
+  const [recordsDialogOpen, setRecordsDialogOpen] = useState(false)
   const [activeTask, setActiveTask] = useState<TaskTemplate | null>(null)
+  const [recordsTaskId, setRecordsTaskId] = useState<string | null>(null)
   
   // Track submitting tasks to show loading state
   const [submittingTaskIds, setSubmittingTaskIds] = useState<Set<string>>(new Set())
@@ -135,6 +139,7 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   // Separate tasks and notices
   const regularTasks = Array.isArray(tasks) ? tasks.filter(t => t && !t.isNotice) : []
   const notices = Array.isArray(tasks) ? tasks.filter(t => t && t.isNotice) : []
+  
   
   
   const allTasksCompleted = regularTasks.length > 0 && regularTasks.every(task => (completedTaskIds || []).includes(task.id))
@@ -566,9 +571,34 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                       }}>
                         <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                           <Box sx={{ flex: 1 }}>
-                            <Typography variant="h5" fontWeight="bold">
-                              {task.title}
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="h5" fontWeight="bold">
+                                {task.title}
+                              </Typography>
+                              {/* 历史记录按钮 - 只对浮动任务显示 */}
+                              {task.isFloating === true && (
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  startIcon={<HistoryIcon />}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setRecordsTaskId(task.id)
+                                    setRecordsDialogOpen(true)
+                                  }}
+                                  sx={{ 
+                                    minWidth: 'auto',
+                                    ml: 1,
+                                    color: specialTaskTheme.primary,
+                                    '&:hover': {
+                                      backgroundColor: alpha(specialTaskTheme.primary, 0.08)
+                                    }
+                                  }}
+                                >
+                                  记录
+                                </Button>
+                              )}
+                            </Box>
                             <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
                               {task.isFloating && (
                                 <Chip 
@@ -868,6 +898,18 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             }
             setReviewDialogOpen(false)
             setActiveTask(null)
+          }}
+        />
+      )}
+      
+      {/* Today's Records Dialog */}
+      {recordsTaskId && (
+        <TodayRecordsDialog
+          open={recordsDialogOpen}
+          taskIds={[recordsTaskId]}
+          onClose={() => {
+            setRecordsDialogOpen(false)
+            setRecordsTaskId(null)
           }}
         />
       )}

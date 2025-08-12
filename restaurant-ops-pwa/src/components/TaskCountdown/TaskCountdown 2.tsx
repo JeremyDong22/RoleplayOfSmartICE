@@ -42,7 +42,7 @@ import {
   Announcement,
   Checklist
 } from '@mui/icons-material'
-import type { TaskTemplate, WorkflowPeriod } from '../../utils/workflowParser'
+import type { TaskTemplate, WorkflowPeriod } from '../../types/task.types'
 
 interface NoticeComment {
   noticeId: string

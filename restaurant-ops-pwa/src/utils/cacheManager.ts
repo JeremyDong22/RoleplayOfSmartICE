@@ -21,7 +21,7 @@ const LAST_CLEANUP_KEY = 'last_cache_cleanup'
  * 清理所有缓存
  */
 export async function clearAllCaches(): Promise<void> {
-  console.log('[CacheManager] Starting cache cleanup...')
+  // Starting cache cleanup...
   
   // 1. 清理 localStorage
   const keysToPreserve = ['supabase.auth.token'] // 保留认证信息
@@ -42,9 +42,9 @@ export async function clearAllCaches(): Promise<void> {
       await Promise.all(
         cacheNames.map(cacheName => caches.delete(cacheName))
       )
-      console.log('[CacheManager] Service Worker caches cleared')
+      // Service Worker caches cleared
     } catch (error) {
-      console.error('[CacheManager] Error clearing caches:', error)
+      // Error clearing caches
     }
   }
   
@@ -55,17 +55,17 @@ export async function clearAllCaches(): Promise<void> {
       for (const registration of registrations) {
         await registration.unregister()
       }
-      console.log('[CacheManager] Service Workers unregistered')
+      // Service Workers unregistered
       
       // 重新注册会在页面刷新后自动进行
     } catch (error) {
-      console.error('[CacheManager] Error managing service workers:', error)
+      // Error managing service workers
     }
   }
   
   // 记录清理时间
   localStorage.setItem(LAST_CLEANUP_KEY, new Date().toISOString())
-  console.log('[CacheManager] Cache cleanup completed')
+  // Cache cleanup completed
 }
 
 /**
@@ -81,7 +81,7 @@ export async function checkAndClearCacheIfNeeded(): Promise<boolean> {
   const isDevelopment = import.meta.env.DEV
   
   if (needsCleanup) {
-    console.log(`[CacheManager] Cache cleanup needed. Version changed from ${storedVersion} to ${APP_VERSION}`)
+    // Cache cleanup needed. Version changed
     
     await clearAllCaches()
     
@@ -93,7 +93,7 @@ export async function checkAndClearCacheIfNeeded(): Promise<boolean> {
   
   // 开发模式下只清理缓存但不触发刷新
   if (isDevelopment) {
-    console.log('[CacheManager] Development mode: Clearing caches without refresh')
+    // Development mode: Clearing caches without refresh
     await clearAllCaches()
     // 更新版本号以防止下次加载时再次清理
     localStorage.setItem(VERSION_KEY, APP_VERSION)
@@ -153,7 +153,7 @@ export async function fetchWithoutCache(url: string, options?: RequestInit): Pro
  */
 export async function initializeCacheManager(): Promise<void> {
   // 暂时禁用自动缓存刷新逻辑，避免无限刷新问题
-  console.log('[CacheManager] Auto cache refresh disabled for debugging')
+  // Auto cache refresh disabled for debugging
   return
   
   // 初始化HTTP拦截器（仅在开发模式下）
@@ -165,7 +165,7 @@ export async function initializeCacheManager(): Promise<void> {
   const cleaned = await checkAndClearCacheIfNeeded()
   
   if (cleaned) {
-    console.log('[CacheManager] Page will refresh after cache cleanup...')
+    // Page will refresh after cache cleanup...
     // 给一点时间让清理操作完成
     setTimeout(() => {
       forceRefresh()
@@ -175,7 +175,7 @@ export async function initializeCacheManager(): Promise<void> {
   // 监听版本更新事件（可以通过 WebSocket 或轮询实现）
   // 这里提供一个简单的示例
   if (import.meta.env.DEV) {
-    console.log('[CacheManager] Development mode: Cache will be cleared on every page load')
+    // Development mode: Cache will be cleared on every page load
   }
 }
 
@@ -183,9 +183,9 @@ export async function initializeCacheManager(): Promise<void> {
 if (typeof window !== 'undefined') {
   (window as any).clearAppCache = async () => {
     await clearAllCaches()
-    console.log('Cache cleared! Refreshing page...')
+    // Cache cleared! Refreshing page...
     setTimeout(() => forceRefresh(), 100)
   }
   
-  console.log('[CacheManager] Debug function available: window.clearAppCache()')
+  // Debug function available: window.clearAppCache()
 }

@@ -26,7 +26,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import CommentIcon from '@mui/icons-material/Comment'
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
-import type { TaskTemplate } from '../../utils/workflowParser'
+import type { TaskTemplate } from '../../types/task.types'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
 
 interface DutyManagerSubmission {

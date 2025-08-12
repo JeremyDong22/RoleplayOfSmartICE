@@ -10,6 +10,9 @@ export interface AuthUser {
   role: string
   roleCode: string
   restaurantId: string
+  display_name?: string
+  role_name?: string
+  face_descriptor?: number[] | null
 }
 
 class AuthService {
@@ -24,11 +27,15 @@ class AuthService {
     if (!authToken) return null
 
     try {
+      const name = Cookies.get('userName') || ''
+      const role = Cookies.get('userRole') || ''
       return {
         id: Cookies.get('userId') || '',
         email: Cookies.get('userEmail') || '',
-        name: Cookies.get('userName') || '',
-        role: Cookies.get('userRole') || '',
+        name: name,
+        display_name: name, // Same as name for compatibility
+        role: role,
+        role_name: role, // Same as role for compatibility
         roleCode: Cookies.get('userRoleCode') || '',
         restaurantId: Cookies.get('restaurantId') || ''
       }
@@ -138,6 +145,24 @@ class AuthService {
     if (!allowedRoles) return true // Allow if no specific permission required
 
     return allowedRoles.includes(user.roleCode)
+  }
+
+  // Update user cache with new data
+  updateUserCache(userData: Partial<AuthUser>): void {
+    const currentUser = this.getCurrentUser()
+    if (!currentUser) return
+
+    const updatedUser = { ...currentUser, ...userData }
+    
+    // Update cookies with new data
+    if (userData.id) Cookies.set('userId', updatedUser.id, { expires: 7 })
+    if (userData.email) Cookies.set('userEmail', updatedUser.email, { expires: 7 })
+    if (userData.name) Cookies.set('userName', updatedUser.name, { expires: 7 })
+    if (userData.role) Cookies.set('userRole', updatedUser.role, { expires: 7 })
+    if (userData.roleCode) Cookies.set('userRoleCode', updatedUser.roleCode, { expires: 7 })
+    if (userData.restaurantId) Cookies.set('restaurantId', updatedUser.restaurantId, { expires: 7 })
+    
+    // Note: face_descriptor is not stored in cookies, only in memory/database
   }
 }
 

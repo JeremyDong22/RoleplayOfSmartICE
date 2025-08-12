@@ -3,7 +3,7 @@ import React from 'react'
 import { Box, Typography, Chip } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import type { WorkflowPeriod } from '../../utils/workflowParser'
+import type { WorkflowPeriod } from '../../types/task.types'
 
 interface StatusIslandProps {
   currentPeriod: WorkflowPeriod | null
