@@ -1,17 +1,18 @@
 // Face recognition service using face-api.js with Supabase storage
 // Stores face descriptors in Supabase database for centralized management
-// Simple logic: if no face -> enroll, if has face -> verify
+// Updated: 2025-08-13 - Removed mobile-specific logic, unified loading with detailed logging
 
 import * as faceapi from 'face-api.js'
 import { supabase } from './supabase'
 import { faceModelManager } from './faceModelManager'
 
 class FaceRecognitionService {
-  // Detect if running on iPad/iOS
-  private isIOSDevice(): boolean {
+  // Get device info for logging
+  private getDeviceInfo(): string {
     const ua = navigator.userAgent
-    return /iPad|iPhone|iPod/.test(ua) || 
-           (ua.includes('Macintosh') && 'ontouchend' in document)
+    const isMobile = /iPad|iPhone|iPod|Android/i.test(ua) || 
+                     (ua.includes('Macintosh') && 'ontouchend' in document)
+    return `Mobile: ${isMobile}, UA: ${ua.substring(0, 50)}...`
   }
 
   // Initialize the service and load face-api.js models
@@ -135,33 +136,40 @@ class FaceRecognitionService {
       const descriptors: Float32Array[] = []
       let attempts = 0
       const maxAttempts = sampleCount * 3 // Allow retries
+      const deviceInfo = this.getDeviceInfo()
+      
+      console.log(`[FaceRecognition] Starting enrollment capture - ${deviceInfo}`)
       
       // Collect multiple face samples
       while (descriptors.length < sampleCount && attempts < maxAttempts) {
         attempts++
+        const attemptStart = performance.now()
         
-        // Detect face and extract descriptor with iOS optimizations
-        const isIOS = this.isIOSDevice()
+        // Use unified detector options for all devices
         const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-          inputSize: isIOS ? 320 : 416, // Smaller input size for iOS
+          inputSize: 416, // Standard size for all devices
           scoreThreshold: 0.5
         })
+        
+        console.log(`[FaceRecognition] Detection attempt ${attempts}/${maxAttempts}, inputSize: ${detectorOptions.inputSize}`)
         
         const detection = await faceapi
           .detectSingleFace(videoElement, detectorOptions)
           .withFaceLandmarks()
           .withFaceDescriptor()
 
+        const detectTime = performance.now() - attemptStart
+        
         if (detection) {
           descriptors.push(detection.descriptor)
-          console.log(`[FaceRecognition] Captured sample ${descriptors.length}/${sampleCount}`)
+          console.log(`[FaceRecognition] ✅ Captured sample ${descriptors.length}/${sampleCount} in ${detectTime.toFixed(0)}ms`)
           
           // Wait a bit between captures for variety
           if (descriptors.length < sampleCount) {
             await new Promise(resolve => setTimeout(resolve, 500))
           }
         } else {
-          console.warn(`[FaceRecognition] No face detected in attempt ${attempts}`)
+          console.warn(`[FaceRecognition] ❌ No face detected in attempt ${attempts} after ${detectTime.toFixed(0)}ms`)
         }
       }
       
@@ -231,17 +239,25 @@ class FaceRecognitionService {
         throw new Error('用户未注册人脸')
       }
 
-      // Detect current face with iOS optimizations
-      const isIOS = this.isIOSDevice()
+      // Detect current face with unified settings
+      const deviceInfo = this.getDeviceInfo()
+      const detectStart = performance.now()
+      
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: isIOS ? 320 : 416, // Smaller input size for iOS to reduce memory usage
+        inputSize: 416, // Standard size for all devices
         scoreThreshold: 0.5
       })
+      
+      console.log(`[FaceRecognition] Starting verification detection - ${deviceInfo}`)
+      console.log(`[FaceRecognition] Detector options:`, detectorOptions)
       
       const detection = await faceapi
         .detectSingleFace(videoElement, detectorOptions)
         .withFaceLandmarks()
         .withFaceDescriptor()
+      
+      const detectTime = performance.now() - detectStart
+      console.log(`[FaceRecognition] Detection completed in ${detectTime.toFixed(0)}ms`)
 
       if (!detection) {
         throw new Error('未检测到人脸，请确保面部清晰可见')
@@ -316,25 +332,20 @@ class FaceRecognitionService {
     }
 
     try {
-      console.log('[FaceRecognition] Starting batch matching for', users.length, 'users')
+      const deviceInfo = this.getDeviceInfo()
+      console.log('[FaceRecognition] ==== BATCH MATCHING START ====')
+      console.log('[FaceRecognition] Device:', deviceInfo)
+      console.log('[FaceRecognition] Users to match:', users.length)
       const startTime = performance.now()
 
       // Step 1: Detect current face ONCE
-      console.log('[FaceRecognition] Detecting face...')
+      console.log('[FaceRecognition] Step 1: Detecting face...')
       const detectStart = performance.now()
       
-      const isIOS = this.isIOSDevice()
       const { fastMode = false } = options
       
-      // Adjust settings based on mode
-      let inputSize: number
-      if (fastMode) {
-        inputSize = 128  // Ultra fast mode
-      } else if (isIOS) {
-        inputSize = 160  // iOS optimized
-      } else {
-        inputSize = 320  // Desktop standard
-      }
+      // Unified settings for all devices
+      const inputSize = fastMode ? 128 : 320  // Fast mode or standard
       
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
         inputSize,
@@ -342,7 +353,7 @@ class FaceRecognitionService {
       })
       
       // Detect face, landmarks, and descriptor in ONE call
-      console.log(`[FaceRecognition] Using inputSize=${detectorOptions.inputSize}, threshold=${detectorOptions.scoreThreshold}`)
+      console.log(`[FaceRecognition] Detector config: inputSize=${detectorOptions.inputSize}, threshold=${detectorOptions.scoreThreshold}, fastMode=${fastMode}`)
       
       const detection = await faceapi
         .detectSingleFace(videoElement, detectorOptions)
@@ -354,10 +365,10 @@ class FaceRecognitionService {
       }
 
       const detectTime = performance.now() - detectStart
-      console.log(`[FaceRecognition] Total detection time: ${detectTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] ✅ Detection completed in ${detectTime.toFixed(0)}ms`)
 
       // Step 2: Compare with all users in memory (super fast)
-      console.log('[FaceRecognition] Comparing with all users...')
+      console.log('[FaceRecognition] Step 2: Comparing with all users...')
       const compareStart = performance.now()
       
       const matches: Array<{user: any, distance: number, similarity: number}> = []
@@ -398,10 +409,13 @@ class FaceRecognitionService {
       }
 
       const compareTime = performance.now() - compareStart
-      console.log(`[FaceRecognition] Comparison completed in ${compareTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] ✅ Comparison completed in ${compareTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] Processed ${matches.length} users with face descriptors`)
 
       // Step 3: Find best match
+      console.log('[FaceRecognition] Step 3: Finding best match...')
       if (matches.length === 0) {
+        console.log('[FaceRecognition] No users with face descriptors found')
         return {
           user: null,
           distance: Infinity,
@@ -419,8 +433,11 @@ class FaceRecognitionService {
       const isMatch = bestMatch.distance < MATCH_THRESHOLD
 
       const totalTime = performance.now() - startTime
-      console.log(`[FaceRecognition] Total batch matching time: ${totalTime.toFixed(0)}ms`)
-      console.log(`[FaceRecognition] Best match: ${bestMatch.user.full_name || bestMatch.user.username}, distance=${bestMatch.distance.toFixed(3)}, match=${isMatch}`)
+      console.log('[FaceRecognition] ==== BATCH MATCHING END ====')
+      console.log(`[FaceRecognition] Total time: ${totalTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] Breakdown: Detection=${detectTime.toFixed(0)}ms, Comparison=${compareTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] Best match: ${bestMatch.user.full_name || bestMatch.user.username}`)
+      console.log(`[FaceRecognition] Distance: ${bestMatch.distance.toFixed(3)}, Threshold: ${MATCH_THRESHOLD}, Match: ${isMatch}`)
 
       return {
         user: isMatch ? bestMatch.user : null,
@@ -430,7 +447,11 @@ class FaceRecognitionService {
       }
 
     } catch (error) {
-      console.error('[FaceRecognition] Batch matching failed:', error)
+      const totalTime = performance.now() - startTime
+      console.error('[FaceRecognition] ==== BATCH MATCHING FAILED ====')
+      console.error('[FaceRecognition] Error:', error)
+      console.error('[FaceRecognition] Failed after:', `${totalTime.toFixed(0)}ms`)
+      console.error('[FaceRecognition] Device:', this.getDeviceInfo())
       throw error
     }
   }
