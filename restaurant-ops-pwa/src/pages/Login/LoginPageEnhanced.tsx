@@ -201,7 +201,8 @@ export const LoginPageEnhanced = () => {
   }
 
   const performAutoDetection = async () => {
-    console.log('🔍 Starting performAutoDetection, cameraReady:', cameraReady)
+    // Don't check cameraReady here - it's called after camera is ready
+    console.log('🔍 Starting performAutoDetection')
     if (!videoRef.current) {
       console.error('❌ No video element')
       return
@@ -229,11 +230,18 @@ export const LoginPageEnhanced = () => {
       console.log('🔍 Attempting face detection with BEST MATCH strategy...')
       
       try {
-        // Get all users with face descriptors
-        const { data: users, error: dbError } = await supabase
+        // Get all users with face descriptors with timeout
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Supabase query timeout')), 5000)
+        })
+        
+        const queryPromise = supabase
           .from('roleplay_users')
           .select('*')
           .not('face_descriptor', 'is', null)
+        
+        const result = await Promise.race([queryPromise, timeoutPromise])
+        const { data: users, error: dbError } = result as any
         
         console.log('👥 Found users with face data:', users?.length || 0)
         
