@@ -208,70 +208,29 @@ export const LoginPageEnhanced = () => {
           return false
         }
         
-        // Collect all matches with their distances
-        const matches: Array<{user: any, distance: number, similarity: number}> = []
+        // Use the new optimized batch matching function
+        console.log('📊 Starting optimized batch matching...')
+        const matchResult = await faceRecognitionService.findBestMatch(
+          videoRef.current!,
+          users
+        )
         
-        console.log('📊 Calculating distances for all users...')
-        for (const userData of users) {
-          try {
-            const result = await (faceRecognitionService as any).calculateMatchDistance(
-              userData.id, 
-              videoRef.current!
-            )
-            
-            const displayName = userData.full_name || userData.username || userData.id.substring(0, 8)
-            console.log(`   User: ${displayName} - Distance: ${result.distance.toFixed(3)}, Similarity: ${result.similarity.toFixed(1)}%`)
-            
-            if (result.isMatch) {
-              matches.push({
-                user: userData,
-                distance: result.distance,
-                similarity: result.similarity
-              })
-            }
-          } catch (err) {
-            // Continue to next user
-            continue
-          }
-        }
-        
-        // If we have matches, select the best one (lowest distance)
-        if (matches.length > 0) {
-          // Sort by distance (ascending - best match first)
-          matches.sort((a, b) => a.distance - b.distance)
-          const bestMatch = matches[0]
+        // Check if we found a match
+        if (matchResult.isMatch && matchResult.user) {
+          const displayName = matchResult.user.full_name || matchResult.user.username || '用户'
           
-          console.log('🏆 Best match selection:')
-          console.log(`   Winner: ${bestMatch.user.full_name || bestMatch.user.username}`)
-          console.log(`   Distance: ${bestMatch.distance.toFixed(3)}`)
-          console.log(`   Similarity: ${bestMatch.similarity.toFixed(1)}%`)
-          console.log(`   Total candidates: ${matches.length}`)
+          console.log('🏆 Match found:')
+          console.log(`   User: ${displayName}`)
+          console.log(`   Distance: ${matchResult.distance.toFixed(3)}`)
+          console.log(`   Similarity: ${matchResult.similarity.toFixed(1)}%`)
           
-          // Log all candidates for comparison
-          if (matches.length > 1) {
-            console.log('   Other candidates:')
-            for (let i = 1; i < matches.length; i++) {
-              const match = matches[i]
-              console.log(`     ${i+1}. ${match.user.full_name || match.user.username} - Distance: ${match.distance.toFixed(3)} (gap: ${(match.distance - bestMatch.distance).toFixed(3)})`)
-            }
-            
-            // Warn if second best is too close
-            const secondBest = matches[1]
-            const gap = secondBest.distance - bestMatch.distance
-            if (gap < 0.1) {
-              console.warn('⚠️ Warning: Multiple similar matches detected. Gap:', gap.toFixed(3))
-            }
-          }
-          
-          const displayName = bestMatch.user.full_name || bestMatch.user.username || '用户'
-          console.log('✅ Face matched with BEST candidate:', displayName)
-          setDetectedUser(bestMatch.user)
+          setDetectedUser(matchResult.user)
           setFaceDetectionState('success')
-          setSuccess(`识别成功！欢迎回来，${displayName} (相似度: ${bestMatch.similarity.toFixed(0)}%)`)
+          setSuccess(`识别成功！欢迎回来，${displayName} (相似度: ${matchResult.similarity.toFixed(0)}%)`)
           
           // Auto-login after 1 second
           setTimeout(() => {
-            handleAutoLogin(bestMatch.user)
+            handleAutoLogin(matchResult.user)
           }, 1000)
           
           return true

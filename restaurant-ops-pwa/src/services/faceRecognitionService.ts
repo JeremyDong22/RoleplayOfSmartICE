@@ -297,6 +297,124 @@ class FaceRecognitionService {
       throw new Error('清除人脸数据失败')
     }
   }
+
+  // Batch match multiple users at once (optimized for login)
+  // Only detect face once and compare with all users in memory
+  async findBestMatch(videoElement: HTMLVideoElement, users: any[]): Promise<{
+    user: any | null,
+    distance: number,
+    similarity: number,
+    isMatch: boolean
+  }> {
+    // Ensure models are loaded
+    if (!faceModelManager.isReady()) {
+      await this.initialize()
+    }
+
+    try {
+      console.log('[FaceRecognition] Starting batch matching for', users.length, 'users')
+      const startTime = performance.now()
+
+      // Step 1: Detect current face ONCE
+      console.log('[FaceRecognition] Detecting face...')
+      const detectStart = performance.now()
+      
+      const isIOS = this.isIOSDevice()
+      const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+        inputSize: isIOS ? 320 : 416,
+        scoreThreshold: 0.5
+      })
+      
+      const detection = await faceapi
+        .detectSingleFace(videoElement, detectorOptions)
+        .withFaceLandmarks()
+        .withFaceDescriptor()
+
+      if (!detection) {
+        throw new Error('未检测到人脸，请确保面部清晰可见')
+      }
+
+      const detectTime = performance.now() - detectStart
+      console.log(`[FaceRecognition] Face detected in ${detectTime.toFixed(0)}ms`)
+
+      // Step 2: Compare with all users in memory (super fast)
+      console.log('[FaceRecognition] Comparing with all users...')
+      const compareStart = performance.now()
+      
+      const matches: Array<{user: any, distance: number, similarity: number}> = []
+      
+      for (const userData of users) {
+        if (!userData.face_descriptor) {
+          continue
+        }
+
+        // Calculate minimum distance for this user
+        let minDistance = Infinity
+        
+        // Handle both single and multiple descriptors
+        if (Array.isArray(userData.face_descriptor[0])) {
+          // Multiple descriptors (multi-angle)
+          for (const descriptor of userData.face_descriptor) {
+            const storedDescriptor = new Float32Array(descriptor)
+            const distance = faceapi.euclideanDistance(storedDescriptor, detection.descriptor)
+            minDistance = Math.min(minDistance, distance)
+          }
+        } else {
+          // Single descriptor
+          const storedDescriptor = new Float32Array(userData.face_descriptor)
+          minDistance = faceapi.euclideanDistance(storedDescriptor, detection.descriptor)
+        }
+
+        const similarity = Math.max(0, (1 - minDistance / 2) * 100)
+        
+        matches.push({
+          user: userData,
+          distance: minDistance,
+          similarity: similarity
+        })
+
+        // Log each user's result
+        const displayName = userData.full_name || userData.username || userData.id.substring(0, 8)
+        console.log(`  ${displayName}: distance=${minDistance.toFixed(3)}, similarity=${similarity.toFixed(1)}%`)
+      }
+
+      const compareTime = performance.now() - compareStart
+      console.log(`[FaceRecognition] Comparison completed in ${compareTime.toFixed(0)}ms`)
+
+      // Step 3: Find best match
+      if (matches.length === 0) {
+        return {
+          user: null,
+          distance: Infinity,
+          similarity: 0,
+          isMatch: false
+        }
+      }
+
+      // Sort by distance (best match first)
+      matches.sort((a, b) => a.distance - b.distance)
+      const bestMatch = matches[0]
+      
+      // Check threshold
+      const MATCH_THRESHOLD = 0.35
+      const isMatch = bestMatch.distance < MATCH_THRESHOLD
+
+      const totalTime = performance.now() - startTime
+      console.log(`[FaceRecognition] Total batch matching time: ${totalTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] Best match: ${bestMatch.user.full_name || bestMatch.user.username}, distance=${bestMatch.distance.toFixed(3)}, match=${isMatch}`)
+
+      return {
+        user: isMatch ? bestMatch.user : null,
+        distance: bestMatch.distance,
+        similarity: bestMatch.similarity,
+        isMatch: isMatch
+      }
+
+    } catch (error) {
+      console.error('[FaceRecognition] Batch matching failed:', error)
+      throw error
+    }
+  }
 }
 
 // Export singleton instance
