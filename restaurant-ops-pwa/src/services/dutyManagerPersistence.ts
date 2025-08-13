@@ -77,6 +77,12 @@ export class DutyManagerPersistenceService {
   // 获取值班经理当天的所有任务状态（用于恢复UI状态）
   async getDutyManagerTaskStatuses(userId: string, restaurantId: string, date?: string) {
     try {
+      // Validate restaurant ID to prevent UUID errors
+      if (!restaurantId || restaurantId.trim() === '') {
+        console.log('[DutyManagerPersistence] No restaurant ID provided, skipping task statuses fetch')
+        return { taskStatuses: {}, submissions: [] }
+      }
+      
       const targetDate = date || (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
       // 首先获取所有duty_manager角色的任务ID
@@ -154,6 +160,12 @@ export class DutyManagerPersistenceService {
   // 获取待审核和被驳回的值班经理任务
   async getPendingSubmissions(restaurantId: string, date?: string): Promise<DutyManagerSubmission[]> {
     try {
+      // Validate restaurant ID to prevent UUID errors
+      if (!restaurantId || restaurantId.trim() === '') {
+        console.log('[DutyManagerPersistence] No restaurant ID provided, skipping submissions fetch')
+        return []
+      }
+      
       // 首先获取所有duty_manager角色的任务ID
       const { data: dutyManagerTasks, error: tasksError } = await supabase
         .from('roleplay_tasks')
@@ -211,6 +223,12 @@ export class DutyManagerPersistenceService {
   // 获取当前的触发状态
   async getCurrentTrigger(restaurantId: string): Promise<DutyManagerTrigger | null> {
     try {
+      // Validate restaurant ID to prevent UUID errors
+      if (!restaurantId || restaurantId.trim() === '') {
+        console.log('[DutyManagerPersistence] No restaurant ID provided, skipping trigger fetch')
+        return null
+      }
+      
       const today = (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
       const { data, error } = await supabase

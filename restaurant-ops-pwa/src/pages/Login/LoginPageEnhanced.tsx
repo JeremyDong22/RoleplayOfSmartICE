@@ -356,6 +356,28 @@ export const LoginPageEnhanced = () => {
     setCameraReady(false)
   }
 
+  // Clean up camera and detection on unmount to prevent hanging
+  useEffect(() => {
+    return () => {
+      console.log('[LoginPage] Cleaning up camera and detection...')
+      // Clear any running detection timeouts
+      if (detectionTimeoutRef.current) {
+        clearTimeout(detectionTimeoutRef.current)
+        detectionTimeoutRef.current = null
+      }
+      if (detectionIntervalRef.current) {
+        clearTimeout(detectionIntervalRef.current)
+        detectionIntervalRef.current = null
+      }
+      // Stop camera stream
+      stopCamera()
+      // Reset detection state
+      setFaceDetectionState('idle')
+      setCanRetry(false)
+      setAttemptCount(0)
+    }
+  }, [])
+
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')

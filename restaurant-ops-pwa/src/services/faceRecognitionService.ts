@@ -338,7 +338,27 @@ class FaceRecognitionService {
       console.log('[FaceRecognition] Users to match:', users.length)
       const startTime = performance.now()
 
-      // Step 1: Detect current face ONCE
+      // Verify video element is ready with timeout
+      if (!videoElement || videoElement.readyState < 2) {
+        console.log('[FaceRecognition] Waiting for video element to be ready...')
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Video element not ready after 5 seconds'))
+          }, 5000)
+          
+          if (videoElement.readyState >= 2) {
+            clearTimeout(timeout)
+            resolve(undefined)
+          } else {
+            videoElement.onloadeddata = () => {
+              clearTimeout(timeout)
+              resolve(undefined)
+            }
+          }
+        })
+      }
+
+      // Step 1: Detect current face ONCE with timeout
       console.log('[FaceRecognition] Step 1: Detecting face...')
       const detectStart = performance.now()
       
@@ -352,13 +372,20 @@ class FaceRecognitionService {
         scoreThreshold: fastMode ? 0.3 : 0.4
       })
       
-      // Detect face, landmarks, and descriptor in ONE call
+      // Detect face, landmarks, and descriptor in ONE call with timeout
       console.log(`[FaceRecognition] Detector config: inputSize=${detectorOptions.inputSize}, threshold=${detectorOptions.scoreThreshold}, fastMode=${fastMode}`)
       
-      const detection = await faceapi
+      // Add timeout for detection
+      const detectionPromise = faceapi
         .detectSingleFace(videoElement, detectorOptions)
         .withFaceLandmarks()
         .withFaceDescriptor()
+      
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('Face detection timeout after 10 seconds')), 10000)
+      })
+      
+      const detection = await Promise.race([detectionPromise, timeoutPromise])
       
       if (!detection) {
         throw new Error('特征提取失败，请重试')

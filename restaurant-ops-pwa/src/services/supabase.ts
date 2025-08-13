@@ -1,5 +1,6 @@
 // Supabase client configuration for restaurant operations management
-import { createClient } from '@supabase/supabase-js'
+// Updated: 2025-01-13 - Added singleton pattern to prevent multiple client instances
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -9,18 +10,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
-// Add logging to debug Realtime connection
-console.log('[Supabase] Initializing client with:', {
-  url: supabaseUrl,
-  hasAnonKey: !!supabaseAnonKey,
-  realtimeConfig: {
-    params: {
-      eventsPerSecond: 10
-    }
-  }
-})
+// Singleton instance to prevent multiple clients
+let supabaseInstance: SupabaseClient<Database> | null = null
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+// Function to create or get the Supabase client
+const getSupabaseClient = (): SupabaseClient<Database> => {
+  if (!supabaseInstance) {
+    // Add logging to debug Realtime connection
+    console.log('[Supabase] Creating new client instance:', {
+      url: supabaseUrl,
+      hasAnonKey: !!supabaseAnonKey,
+      realtimeConfig: {
+        params: {
+          eventsPerSecond: 10
+        }
+      }
+    })
+    
+    supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -34,23 +41,32 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     },
     log_level: 'debug' // Enable debug logging for Realtime
   },
-  global: {
-    fetch: (url, options = {}) => {
-      // Add timeout for all requests (30 seconds for mobile networks)
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      
-      // Make sure we don't override existing headers, especially the apikey
-      return fetch(url, {
-        ...options,
-        signal: controller.signal
-      }).finally(() => clearTimeout(timeout));
-    }
+      global: {
+        fetch: (url, options = {}) => {
+          // Add timeout for all requests (30 seconds for mobile networks)
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30000);
+          
+          // Make sure we don't override existing headers, especially the apikey
+          return fetch(url, {
+            ...options,
+            signal: controller.signal
+          }).finally(() => clearTimeout(timeout));
+        }
+      }
+    })
+    
+    // Log when Supabase client is created
+    console.log('[Supabase] Client created successfully')
+  } else {
+    console.log('[Supabase] Using existing client instance')
   }
-})
+  
+  return supabaseInstance
+}
 
-// Log when Supabase client is created
-console.log('[Supabase] Client created successfully')
+// Export the singleton instance
+export const supabase = getSupabaseClient()
 
 // Helper function to upload files to storage
 export const uploadFile = async (
