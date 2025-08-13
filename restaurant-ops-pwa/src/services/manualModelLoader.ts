@@ -1,69 +1,156 @@
 // Manual model loader for iOS Safari
 // Completely bypasses face-api.js's loader to avoid iOS issues
-// Created: 2025-08-13
+// Updated: 2025-08-13 - Improved timeout handling and retry logic for iPad network issues
 
 import * as faceapi from 'face-api.js'
 
 export class ManualModelLoader {
   private static modelCache = new Map<string, ArrayBuffer>()
+  private static loadingProgress = new Map<string, number>()
+  private static onProgressCallback: ((file: string, progress: number) => void) | null = null
   
-  // Pre-fetch all model files into memory
-  static async prefetchModels(basePath: string): Promise<void> {
+  // Set progress callback
+  static setProgressCallback(callback: (file: string, progress: number) => void) {
+    this.onProgressCallback = callback
+  }
+  
+  // Pre-fetch all model files into memory with retry logic
+  static async prefetchModels(basePath: string, maxRetries: number = 3): Promise<void> {
     console.log('[ManualModelLoader] Starting model pre-fetch...')
     
     const modelFiles = [
-      // TinyFaceDetector
-      'tiny_face_detector_model-weights_manifest.json',
-      'tiny_face_detector_model-shard1.bin',
-      // FaceLandmark68Net
-      'face_landmark_68_model-weights_manifest.json', 
-      'face_landmark_68_model-shard1.bin',
-      // FaceRecognitionNet
-      'face_recognition_model-weights_manifest.json',
-      'face_recognition_model-shard1.bin',
-      'face_recognition_model-shard2.bin'
+      // TinyFaceDetector (smallest, load first)
+      { name: 'tiny_face_detector_model-weights_manifest.json', size: 3000 },
+      { name: 'tiny_face_detector_model-shard1.bin', size: 330000 },
+      // FaceLandmark68Net (medium)
+      { name: 'face_landmark_68_model-weights_manifest.json', size: 8000 },
+      { name: 'face_landmark_68_model-shard1.bin', size: 360000 },
+      // FaceRecognitionNet (largest, load last)
+      { name: 'face_recognition_model-weights_manifest.json', size: 18000 },
+      { name: 'face_recognition_model-shard1.bin', size: 3200000 },
+      { name: 'face_recognition_model-shard2.bin', size: 3000000 }
     ]
     
-    const fetchPromises = modelFiles.map(async (file) => {
-      const url = `${basePath}/${file}`
-      try {
-        console.log(`[ManualModelLoader] Fetching ${file}...`)
-        
-        // Use XMLHttpRequest for better iOS compatibility
-        const buffer = await this.fetchWithXHR(url)
-        this.modelCache.set(file, buffer)
-        
-        console.log(`[ManualModelLoader] ✅ Cached ${file} (${buffer.byteLength} bytes)`)
-      } catch (error) {
-        console.error(`[ManualModelLoader] Failed to fetch ${file}:`, error)
+    // Load files sequentially for better reliability on slow connections
+    for (const fileInfo of modelFiles) {
+      const url = `${basePath}/${fileInfo.name}`
+      let lastError: Error | null = null
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`[ManualModelLoader] Fetching ${fileInfo.name} (attempt ${attempt}/${maxRetries})...`)
+          
+          // Use different timeout based on file size
+          const timeout = Math.max(30000, fileInfo.size / 10) // At least 30s, or size/10 ms
+          
+          const buffer = await this.fetchWithXHRAndProgress(url, fileInfo.name, timeout)
+          this.modelCache.set(fileInfo.name, buffer)
+          
+          console.log(`[ManualModelLoader] ✅ Cached ${fileInfo.name} (${buffer.byteLength} bytes)`)
+          break // Success, move to next file
+          
+        } catch (error) {
+          lastError = error as Error
+          console.error(`[ManualModelLoader] Attempt ${attempt} failed for ${fileInfo.name}:`, error)
+          
+          if (attempt < maxRetries) {
+            // Wait before retry with exponential backoff
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+            console.log(`[ManualModelLoader] Waiting ${delay}ms before retry...`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+          }
+        }
       }
-    })
+      
+      // If all retries failed for this file, log but continue with other files
+      if (lastError) {
+        console.error(`[ManualModelLoader] Failed to load ${fileInfo.name} after ${maxRetries} attempts`)
+      }
+    }
     
-    await Promise.all(fetchPromises)
     console.log('[ManualModelLoader] Pre-fetch complete')
   }
   
-  // Use XMLHttpRequest instead of fetch for iOS
-  private static fetchWithXHR(url: string): Promise<ArrayBuffer> {
+  // Use XMLHttpRequest with progress tracking and better error handling
+  private static fetchWithXHRAndProgress(url: string, fileName: string, timeout: number = 60000): Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('GET', url, true)
       xhr.responseType = 'arraybuffer'
       
+      // For iOS, disable cache to avoid stale responses
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+        xhr.setRequestHeader('Pragma', 'no-cache')
+      }
+      
+      let lastProgress = 0
+      let progressStallTimer: NodeJS.Timeout | null = null
+      
+      // Track progress with stall detection
+      xhr.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = (event.loaded / event.total) * 100
+          this.loadingProgress.set(fileName, progress)
+          if (this.onProgressCallback) {
+            this.onProgressCallback(fileName, progress)
+          }
+          
+          // Reset stall timer on progress
+          if (progressStallTimer) clearTimeout(progressStallTimer)
+          lastProgress = progress
+          
+          // Set new stall timer (15 seconds without progress = stalled)
+          if (progress < 100) {
+            progressStallTimer = setTimeout(() => {
+              xhr.abort()
+              reject(new Error(`Download stalled at ${Math.round(lastProgress)}%`))
+            }, 15000)
+          }
+        }
+      }
+      
       xhr.onload = () => {
+        if (progressStallTimer) clearTimeout(progressStallTimer)
+        
         if (xhr.status === 200) {
+          this.loadingProgress.set(fileName, 100)
+          if (this.onProgressCallback) {
+            this.onProgressCallback(fileName, 100)
+          }
           resolve(xhr.response)
+        } else if (xhr.status === 0) {
+          // Status 0 usually means network error or CORS issue
+          reject(new Error('Network connection lost or CORS error'))
         } else {
           reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`))
         }
       }
       
-      xhr.onerror = () => reject(new Error('Network error'))
-      xhr.ontimeout = () => reject(new Error('Request timeout'))
-      xhr.timeout = 30000 // 30 second timeout
+      xhr.onerror = () => {
+        if (progressStallTimer) clearTimeout(progressStallTimer)
+        reject(new Error('Network error - please check your connection'))
+      }
       
-      xhr.send()
+      xhr.ontimeout = () => {
+        if (progressStallTimer) clearTimeout(progressStallTimer)
+        reject(new Error(`Request timeout after ${timeout}ms`))
+      }
+      
+      xhr.timeout = timeout
+      
+      try {
+        xhr.send()
+      } catch (e) {
+        if (progressStallTimer) clearTimeout(progressStallTimer)
+        reject(new Error('Failed to send request: ' + (e as Error).message))
+      }
     })
+  }
+  
+  // Use XMLHttpRequest instead of fetch for iOS (backward compatibility)
+  private static fetchWithXHR(url: string): Promise<ArrayBuffer> {
+    return this.fetchWithXHRAndProgress(url, url.split('/').pop() || 'unknown', 30000)
   }
   
   // Load models from cache

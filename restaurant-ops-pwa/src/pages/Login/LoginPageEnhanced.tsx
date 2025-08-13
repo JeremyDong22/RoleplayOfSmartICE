@@ -138,6 +138,20 @@ export const LoginPageEnhanced = () => {
   }
 
   const startAutoDetection = async () => {
+    // First check if models are loaded
+    const status = faceModelManager.getModelStatus()
+    if (!status.allLoaded) {
+      // Initialize face service first
+      await initializeFaceService()
+      // Check again after initialization
+      const newStatus = faceModelManager.getModelStatus()
+      if (!newStatus.allLoaded) {
+        setError('人脸识别模型加载失败，请刷新页面重试')
+        setFaceDetectionState('idle')
+        return
+      }
+    }
+    
     setFaceDetectionState('detecting')
     setDetectionProgress(0)
     
@@ -599,6 +613,19 @@ export const LoginPageEnhanced = () => {
           {loginMethod === 'face' && (
             <Fade in>
               <Box textAlign="center">
+                {faceDetectionState === 'loading' && (
+                  <>
+                    <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 2 }}>
+                      {modelLoadingMessage || '正在加载人脸识别模型...'}
+                    </Alert>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={modelLoadingProgress} 
+                      sx={{ mb: 2 }}
+                    />
+                  </>
+                )}
+                
                 {faceDetectionState === 'detecting' && (
                   <>
                     <Alert severity="info" icon={<CameraAlt />} sx={{ mb: 2 }}>
@@ -644,7 +671,7 @@ export const LoginPageEnhanced = () => {
                     border: '3px solid',
                     borderColor: 
                       faceDetectionState === 'failed' ? 'error.main' : 
-                      faceDetectionState === 'detecting' ? 'primary.main' : 
+                      faceDetectionState === 'detecting' || faceDetectionState === 'loading' ? 'primary.main' : 
                       'grey.300',
                     backgroundColor: 'transparent',
                     display: 'flex',
@@ -653,7 +680,7 @@ export const LoginPageEnhanced = () => {
                     cursor: canRetry ? 'pointer' : 'default',
                     transition: 'all 0.3s ease',
                     animation: 
-                      faceDetectionState === 'detecting' ? 'pulse 2s infinite' : 
+                      faceDetectionState === 'detecting' || faceDetectionState === 'loading' ? 'pulse 2s infinite' : 
                       faceDetectionState === 'failed' ? 'shake 0.5s' : 'none',
                     '&:hover': canRetry ? {
                       transform: 'scale(1.05)',
@@ -676,7 +703,7 @@ export const LoginPageEnhanced = () => {
                       fontSize: 48, 
                       color: 
                         faceDetectionState === 'failed' ? 'error.main' :
-                        faceDetectionState === 'detecting' ? 'primary.main' : 
+                        faceDetectionState === 'detecting' || faceDetectionState === 'loading' ? 'primary.main' : 
                         'grey.500',
                       transition: 'color 0.3s ease'
                     }} 

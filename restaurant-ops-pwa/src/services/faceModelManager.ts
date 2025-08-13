@@ -1,7 +1,7 @@
 // Global face model manager to ensure models are loaded only once
 // Prevents multiple components from loading the same models simultaneously
 // Critical for iPad/iOS where network connections are easily interrupted
-// Created: 2025-08-13
+// Updated: 2025-08-13 - Added progress tracking and better error handling for iPad
 
 import * as faceapi from 'face-api.js'
 import { IOSModelLoader } from './iOSModelLoader'
@@ -14,6 +14,7 @@ class FaceModelManager {
   private loadAttempts = 0
   private readonly MODEL_URL = '/models'
   private readonly MODEL_URL_ABSOLUTE = window.location.origin + '/models'
+  private progressCallback: ((message: string, progress: number) => void) | null = null
   
   private constructor() {}
   
@@ -22,6 +23,15 @@ class FaceModelManager {
       FaceModelManager.instance = new FaceModelManager()
     }
     return FaceModelManager.instance
+  }
+  
+  // Set progress callback for UI updates
+  setProgressCallback(callback: (message: string, progress: number) => void) {
+    this.progressCallback = callback
+    // Also set for ManualModelLoader
+    ManualModelLoader.setProgressCallback((file, progress) => {
+      callback(`正在加载模型文件: ${file}`, progress)
+    })
   }
   
   // Detect if running on iPad/iOS (including Safari on macOS with touch)
@@ -191,12 +201,26 @@ class FaceModelManager {
       }
       
       if (isIOS) {
-        // iOS: Try manual loader first (most reliable)
+        // iOS: Try manual loader first with better retry logic
         try {
           console.log('[ModelManager] Using manual pre-fetch loader for iOS/Safari...')
+          if (this.progressCallback) {
+            this.progressCallback('正在为iPad优化加载人脸识别模型...', 0)
+          }
+          
+          // Try with more retries for iPad
           await ManualModelLoader.loadFromCache(this.MODEL_URL)
+          
+          if (this.progressCallback) {
+            this.progressCallback('模型加载完成', 100)
+          }
         } catch (manualError) {
           console.warn('[ModelManager] Manual loader failed, trying iOS-specific loader...', manualError)
+          
+          if (this.progressCallback) {
+            this.progressCallback('正在尝试备用加载方式...', 50)
+          }
+          
           try {
             await IOSModelLoader.loadAllModels(this.MODEL_URL)
           } catch (iosError) {

@@ -34,8 +34,7 @@ import {
   PhotoLibrary,
   Save as SaveIcon,
   CameraSwitch,
-  ZoomIn,
-  Settings
+  ZoomIn
 } from '@mui/icons-material'
 import { SampleSelector } from './SampleSelector'
 import { PhotoManagementDrawer } from './PhotoManagementDrawer'
@@ -44,7 +43,6 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   getCameraDevices,
   getOptimizedConstraints,
-  initializeCamera,
   applyZoom,
   isHuaweiDevice,
   isIPadDevice,
@@ -52,7 +50,6 @@ import {
   type CameraDevice
 } from '../../utils/cameraHelper'
 import {
-  compressImage,
   needsCompression,
   compressToSize,
   formatFileSize,

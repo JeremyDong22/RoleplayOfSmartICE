@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react'
-import { IconButton, Tooltip, Badge, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box } from '@mui/material'
+import { IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box } from '@mui/material'
 import CachedIcon from '@mui/icons-material/Cached'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { clearAllCaches, APP_VERSION } from '../../utils/cacheManager'

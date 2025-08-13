@@ -28,6 +28,7 @@ import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
 import { restaurantConfigService } from './services/restaurantConfigService'
+import { enableSupabaseDebug, testSupabaseQueries } from './utils/debugSupabase'
 import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
 import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
@@ -215,6 +216,15 @@ function App() {
   const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
+    // Enable Supabase debugging in development
+    if (import.meta.env.DEV) {
+      enableSupabaseDebug();
+      // Run test queries after a short delay to allow auth to initialize
+      setTimeout(() => {
+        testSupabaseQueries();
+      }, 2000);
+    }
+    
     // 初始化缓存管理器（必须最先执行）
     initializeCacheManager()
     

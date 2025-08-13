@@ -24,8 +24,6 @@ import {
   Close,
   CameraAlt,
   Refresh,
-  ArrowForward,
-  ArrowBack,
   LooksOne,
   LooksTwo,
   Looks3

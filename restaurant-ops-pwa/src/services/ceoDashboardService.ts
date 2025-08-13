@@ -159,7 +159,7 @@ class CEODashboardService {
   private getBusinessCycleStartTime(): Date {
     const now = new Date();
     const startHour = 10; // 从数据库第一个时段获取
-    let startDate = new Date(now);
+    const startDate = new Date(now);
     startDate.setHours(startHour, 0, 0, 0);
     
     // 如果当前时间早于开店时间，说明是昨天的营业周期
@@ -630,7 +630,7 @@ class CEODashboardService {
       const businessStartTime = this.getBusinessCycleStartTime();
       
       // 过滤部门相关的任务
-      let roleFilter = department === '前厅' 
+      const roleFilter = department === '前厅' 
         ? ['manager', 'duty_manager']
         : ['chef'];
       
@@ -1060,7 +1060,7 @@ class CEODashboardService {
       businessEndTime.setHours(10, 0, 0, 0);
 
       // 获取该浮动任务的所有提交记录
-      let query = supabase
+      const query = supabase
         .from('roleplay_task_records')
         .select(`
           *,
