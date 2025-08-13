@@ -35,7 +35,7 @@ import {
 } from '@mui/icons-material'
 import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
-import { supabase } from '../../services/supabase'
+import { supabase, resetSupabaseClient } from '../../services/supabase'
 import { faceModelManager } from '../../services/faceModelManager'
 import { faceDetectionCleanup } from '../../services/faceDetectionCleanup'
 
@@ -235,12 +235,31 @@ export const LoginPageEnhanced = () => {
           setTimeout(() => reject(new Error('Supabase query timeout')), 5000)
         })
         
-        const queryPromise = supabase
+        let queryPromise = supabase
           .from('roleplay_users')
           .select('*')
           .not('face_descriptor', 'is', null)
         
-        const result = await Promise.race([queryPromise, timeoutPromise])
+        let result
+        try {
+          result = await Promise.race([queryPromise, timeoutPromise])
+        } catch (timeoutErr: any) {
+          if (timeoutErr.message === 'Supabase query timeout') {
+            console.log('⚠️ Supabase timeout detected, resetting client...')
+            // Reset the Supabase client and retry once
+            const freshSupabase = resetSupabaseClient()
+            queryPromise = freshSupabase
+              .from('roleplay_users')
+              .select('*')
+              .not('face_descriptor', 'is', null)
+            
+            // Try again with fresh client (no timeout this time for faster fail)
+            result = await queryPromise
+          } else {
+            throw timeoutErr
+          }
+        }
+        
         const { data: users, error: dbError } = result as any
         
         console.log('👥 Found users with face data:', users?.length || 0)

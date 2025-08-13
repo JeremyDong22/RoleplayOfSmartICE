@@ -68,6 +68,18 @@ const getSupabaseClient = (): SupabaseClient<Database> => {
 // Export the singleton instance
 export const supabase = getSupabaseClient()
 
+// Reset function to create a fresh Supabase client
+export const resetSupabaseClient = (): SupabaseClient<Database> => {
+  console.log('[Supabase] Resetting client instance...')
+  if (supabaseInstance) {
+    // Clear the existing instance
+    supabaseInstance = null
+  }
+  // Create and return a fresh instance
+  supabaseInstance = getSupabaseClient()
+  return supabaseInstance
+}
+
 // Helper function to upload files to storage
 export const uploadFile = async (
   bucket: string,
