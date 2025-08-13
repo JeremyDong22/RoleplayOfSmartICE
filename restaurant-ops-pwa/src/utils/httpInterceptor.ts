@@ -16,12 +16,15 @@ window.fetch = async function(...args) {
   if (import.meta.env.DEV) {
     const url = typeof resource === 'string' ? resource : resource.url
     
+    // 检查是否是Supabase请求 - 如果是，保留原始headers并仅添加缓存控制
+    const isSupabaseRequest = url.includes('supabase.co')
+    
     // 为URL添加版本参数（处理相对和绝对URL）
     let modifiedUrl: string
     try {
       const urlObj = new URL(url, window.location.origin)
-      // 只为同源请求添加缓存破坏参数
-      if (urlObj.origin === window.location.origin || !urlObj.protocol.startsWith('http')) {
+      // 只为同源请求添加缓存破坏参数，Supabase请求不添加
+      if (!isSupabaseRequest && (urlObj.origin === window.location.origin || !urlObj.protocol.startsWith('http'))) {
         urlObj.searchParams.set('_v', APP_VERSION)
         urlObj.searchParams.set('_t', Date.now().toString())
       }
@@ -31,15 +34,36 @@ window.fetch = async function(...args) {
       modifiedUrl = url
     }
     
-    // 修改请求配置
+    // 修改请求配置 - 保留原有headers
+    const existingHeaders = config?.headers || {}
+    let headersInit: Headers
+    
+    if (existingHeaders instanceof Headers) {
+      headersInit = new Headers(existingHeaders)
+    } else if (Array.isArray(existingHeaders)) {
+      headersInit = new Headers(existingHeaders)
+    } else {
+      headersInit = new Headers()
+      // 手动添加所有headers
+      for (const [key, value] of Object.entries(existingHeaders)) {
+        if (value !== undefined && value !== null) {
+          headersInit.set(key, String(value))
+        }
+      }
+    }
+    
+    // 添加缓存控制headers，但不覆盖已存在的
+    if (!headersInit.has('Cache-Control')) {
+      headersInit.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+    }
+    if (!headersInit.has('Pragma')) {
+      headersInit.set('Pragma', 'no-cache')
+    }
+    
     const modifiedConfig: RequestInit = {
       ...config,
       cache: 'no-store',
-      headers: {
-        ...config?.headers,
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      }
+      headers: headersInit
     }
     
     // 使用修改后的URL和配置
