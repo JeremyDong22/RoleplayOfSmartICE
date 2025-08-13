@@ -3,6 +3,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { modelHeaders } from './vite-plugin-model-headers'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -17,15 +18,25 @@ export default defineConfig({
       host: 'localhost',
       port: 5173
     },
-    // 开发服务器禁用缓存
+    // 允许模型文件缓存，但其他文件禁用缓存
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0'
+    },
+    // 配置静态文件服务
+    fs: {
+      allow: ['..']
     }
+  },
+  // 为模型文件设置特殊的构建配置
+  publicDir: 'public',
+  build: {
+    assetsInlineLimit: 0 // 不内联任何资源
   },
   plugins: [
     react(),
+    modelHeaders(), // Add custom headers for model files
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['vite.svg', 'icon.svg', 'icon-192x192.svg'],

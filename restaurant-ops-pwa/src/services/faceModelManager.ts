@@ -4,6 +4,8 @@
 // Created: 2025-08-13
 
 import * as faceapi from 'face-api.js'
+import { IOSModelLoader } from './iOSModelLoader'
+import { ManualModelLoader } from './manualModelLoader'
 
 class FaceModelManager {
   private static instance: FaceModelManager
@@ -11,6 +13,7 @@ class FaceModelManager {
   private loadingPromise: Promise<void> | null = null
   private loadAttempts = 0
   private readonly MODEL_URL = '/models'
+  private readonly MODEL_URL_ABSOLUTE = window.location.origin + '/models'
   
   private constructor() {}
   
@@ -21,11 +24,22 @@ class FaceModelManager {
     return FaceModelManager.instance
   }
   
-  // Detect if running on iPad/iOS
+  // Detect if running on iPad/iOS (including Safari on macOS with touch)
   private isIOSDevice(): boolean {
     const ua = navigator.userAgent
-    return /iPad|iPhone|iPod/.test(ua) || 
-           (ua.includes('Macintosh') && 'ontouchend' in document)
+    // Check for iOS devices
+    const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream
+    // Check for iPad on iOS 13+ (reports as Mac)
+    const isIPadOS = ua.includes('Macintosh') && 'ontouchend' in document
+    // Check for Safari browser (which has specific loading issues)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua)
+    
+    // Log detection for debugging
+    if (isIOS || isIPadOS || isSafari) {
+      console.log('[ModelManager] Detected iOS/Safari environment:', { isIOS, isIPadOS, isSafari, ua })
+    }
+    
+    return isIOS || isIPadOS || isSafari
   }
   
   // Get current model loading status
@@ -177,8 +191,24 @@ class FaceModelManager {
       }
       
       if (isIOS) {
-        // iOS: Sequential loading with delays
-        await this.loadModelsSequentially()
+        // iOS: Try manual loader first (most reliable)
+        try {
+          console.log('[ModelManager] Using manual pre-fetch loader for iOS/Safari...')
+          await ManualModelLoader.loadFromCache(this.MODEL_URL)
+        } catch (manualError) {
+          console.warn('[ModelManager] Manual loader failed, trying iOS-specific loader...', manualError)
+          try {
+            await IOSModelLoader.loadAllModels(this.MODEL_URL)
+          } catch (iosError) {
+            console.warn('[ModelManager] iOS-specific loader failed, trying standard sequential loading...', iosError)
+            try {
+              await this.loadModelsSequentially()
+            } catch (error) {
+              console.warn('[ModelManager] Sequential loading failed, trying alternative approach...')
+              await this.loadModelsWithAlternativeApproach()
+            }
+          }
+        }
       } else {
         // Non-iOS: Parallel loading
         await this.loadModelsInParallel()
@@ -216,19 +246,21 @@ class FaceModelManager {
       console.log('[ModelManager] Loading TinyFaceDetector...')
       await this.loadModelWithRetry(
         () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
-        'TinyFaceDetector'
+        'TinyFaceDetector',
+        5 // Increase retries for iOS
       )
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Longer delay
     }
     
-    // Load FaceLandmark68Net
+    // Load FaceLandmark68Net  
     if (!faceapi.nets.faceLandmark68Net.isLoaded) {
       console.log('[ModelManager] Loading FaceLandmark68Net...')
       await this.loadModelWithRetry(
         () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
-        'FaceLandmark68Net'
+        'FaceLandmark68Net',
+        7 // More retries for problematic model
       )
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Longer delay
     }
     
     // Load FaceRecognitionNet (largest, most problematic)
@@ -237,7 +269,7 @@ class FaceModelManager {
       await this.loadModelWithRetry(
         () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
         'FaceRecognitionNet',
-        5 // More retries for the large model
+        7 // More retries for the large model
       )
     }
   }
@@ -299,6 +331,18 @@ class FaceModelManager {
           await new Promise(resolve => setTimeout(resolve, 500))
         }
         
+        // Try different URL strategies for iOS
+        if (isIOS && attempt > 2) {
+          // After 2 failed attempts, try absolute URL
+          const originalLoadFn = loadFn
+          loadFn = async () => {
+            const net = modelName === 'TinyFaceDetector' ? faceapi.nets.tinyFaceDetector :
+                       modelName === 'FaceLandmark68Net' ? faceapi.nets.faceLandmark68Net :
+                       faceapi.nets.faceRecognitionNet
+            await net.loadFromUri(this.MODEL_URL_ABSOLUTE)
+          }
+        }
+        
         await loadFn()
         console.log(`[ModelManager] ✅ ${modelName} loaded successfully`)
         return
@@ -307,11 +351,17 @@ class FaceModelManager {
         console.error(`[ModelManager] Failed to load ${modelName} (attempt ${attempt}):`, error)
         
         // iOS Safari specific error handling
-        if (isIOS && error?.message?.includes('Load failed')) {
+        if (isIOS && (error?.message?.includes('Load failed') || error?.message?.includes('TypeError'))) {
           console.warn(`[ModelManager] iOS Safari load failed for ${modelName}, will retry with longer delay`)
-          // Longer wait for iOS Safari
+          
+          // Clear any potential memory issues
+          if (typeof (window as any).gc === 'function') {
+            (window as any).gc()
+          }
+          
+          // Longer wait for iOS Safari with exponential backoff
           if (attempt < actualMaxRetries) {
-            const waitTime = Math.min(2000 * attempt, 10000)
+            const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000)
             console.log(`[ModelManager] Waiting ${waitTime}ms before retry...`)
             await new Promise(resolve => setTimeout(resolve, waitTime))
           }
@@ -326,6 +376,71 @@ class FaceModelManager {
     
     // All retries failed
     throw lastError || new Error(`Failed to load ${modelName} after ${actualMaxRetries} attempts`)
+  }
+  
+  // Alternative loading approach for iOS Safari
+  private async loadModelsWithAlternativeApproach(): Promise<void> {
+    console.log('[ModelManager] Using alternative loading approach for iOS Safari...')
+    
+    // Try loading models one by one with longer delays and smaller chunks
+    const models = [
+      { name: 'TinyFaceDetector', loader: () => faceapi.nets.tinyFaceDetector, size: 'small' },
+      { name: 'FaceLandmark68Net', loader: () => faceapi.nets.faceLandmark68Net, size: 'medium' },
+      { name: 'FaceRecognitionNet', loader: () => faceapi.nets.faceRecognitionNet, size: 'large' }
+    ]
+    
+    for (const model of models) {
+      const net = model.loader()
+      if (net.isLoaded) {
+        console.log(`[ModelManager] ${model.name} already loaded`)
+        continue
+      }
+      
+      console.log(`[ModelManager] Loading ${model.name} with alternative approach...`)
+      
+      // Clear any cached data to free memory
+      if (typeof (window as any).gc === 'function') {
+        (window as any).gc()
+      }
+      
+      // Wait longer for large models on iOS
+      const waitTime = model.size === 'large' ? 3000 : model.size === 'medium' ? 2000 : 1000
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+      
+      try {
+        // Use a custom fetch with specific headers for iOS
+        const originalFetch = window.fetch
+        window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (typeof input === 'string' && input.includes('/models/')) {
+            // Add cache control headers for model files
+            init = {
+              ...init,
+              mode: 'cors',
+              cache: 'force-cache',
+              credentials: 'omit',
+              headers: {
+                ...((init?.headers as any) || {}),
+                'Accept': 'application/octet-stream, */*'
+              }
+            }
+          }
+          return originalFetch(input, init)
+        }
+        
+        await net.loadFromUri(this.MODEL_URL)
+        
+        // Restore original fetch
+        window.fetch = originalFetch
+        
+        console.log(`[ModelManager] ✅ ${model.name} loaded with alternative approach`)
+        
+        // Extra delay after successful load on iOS
+        await new Promise(resolve => setTimeout(resolve, 500))
+      } catch (error) {
+        console.error(`[ModelManager] Failed to load ${model.name} with alternative approach:`, error)
+        // Continue trying to load other models
+      }
+    }
   }
   
   // Force reload models (useful for error recovery)

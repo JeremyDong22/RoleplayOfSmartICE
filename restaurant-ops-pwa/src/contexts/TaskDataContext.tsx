@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { taskService } from '../services/taskService'
+import { supabase } from '../services/supabase'
 import type { WorkflowPeriod, TaskTemplate } from '../types/task.types'
 import { CircularProgress, Box } from '@mui/material'
 
@@ -46,7 +47,15 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       const initialized = await taskService.initialize()
       
       if (!initialized) {
-        // 如果初始化失败，显示具体的错误信息
+        // 检查是否是因为未登录
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          // 用户未登录，这是正常的，不需要显示错误
+          console.log('[TaskDataContext] No auth session, skipping task loading')
+          return
+        }
+        
+        // 如果有会话但初始化失败，显示具体的错误信息
         setError('无法连接到服务器，请检查网络连接。系统将在5秒后自动重试。')
         // 5秒后自动重试
         setTimeout(() => {

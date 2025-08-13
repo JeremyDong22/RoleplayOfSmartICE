@@ -61,12 +61,19 @@ class TaskService {
     console.log('[TaskService] Starting initialization...')
     
     try {
+      // Check if user is authenticated first
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        console.log('[TaskService] No auth session, skipping initialization')
+        return false
+      }
+      
       // 加载初始数据
       const periodsLoaded = await this.loadPeriods()
       const tasksLoaded = await this.loadAllTasks()
       
       if (!periodsLoaded || !tasksLoaded) {
-        console.error('[TaskService] Failed to initialize - some data could not be loaded')
+        console.warn('[TaskService] Some data could not be loaded, continuing with partial data')
         // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
         return false
       }

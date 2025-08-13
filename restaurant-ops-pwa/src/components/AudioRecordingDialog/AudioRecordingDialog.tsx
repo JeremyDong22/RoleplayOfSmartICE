@@ -89,7 +89,7 @@ export default function AudioRecordingDialog({
       
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         let finalTranscript = ''
-        let interimTranscript = ''
+        // let interimTranscript = ''
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript

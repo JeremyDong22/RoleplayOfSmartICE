@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Model Loading</title>
+</head>
+<body>
+    <h1>Model Loading Test</h1>
+    <div id="status"></div>
+    <script>
+        const statusEl = document.getElementById('status');
+        
+        async function testModelLoading() {
+            const modelFiles = [
+                '/models/tiny_face_detector_model-shard1.bin',
+                '/models/face_landmark_68_model-shard1.bin',
+                '/models/face_recognition_model-shard1.bin',
+                '/models/tiny_face_detector_model-weights_manifest.json',
+                '/models/face_landmark_68_model-weights_manifest.json',
+                '/models/face_recognition_model-weights_manifest.json'
+            ];
+            
+            for (const file of modelFiles) {
+                try {
+                    const response = await fetch(file);
+                    const size = response.headers.get('content-length');
+                    const type = response.headers.get('content-type');
+                    statusEl.innerHTML += `<p>✅ ${file} - ${response.status} - Size: ${size} bytes - Type: ${type}</p>`;
+                } catch (error) {
+                    statusEl.innerHTML += `<p>❌ ${file} - Error: ${error.message}</p>`;
+                }
+            }
+        }
+        
+        testModelLoading();
+    </script>
+</body>
+</html>

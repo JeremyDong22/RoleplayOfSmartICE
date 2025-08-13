@@ -87,16 +87,26 @@ export const LoginPageEnhanced = () => {
       // Try minimal load first for faster start
       if (!status.tinyFaceDetector) {
         console.log('⏳ Loading minimal models for quick start...')
-        await faceModelManager.initializeMinimal()
-        console.log('✅ Minimal models loaded, other models loading in background')
+        try {
+          await faceModelManager.initializeMinimal()
+          console.log('✅ Minimal models loaded, other models loading in background')
+        } catch (minimalError) {
+          console.warn('⚠️ Minimal model load failed, trying full initialization...')
+          // Fall back to full initialization if minimal fails
+          await faceModelManager.initialize()
+        }
       } else {
         // If minimal already loaded, ensure all models are loaded
         console.log('⏳ Completing model loading...')
         await faceRecognitionService.initialize()
         console.log('✅ All face models loaded')
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Failed to initialize face service:', err)
+      // Show user-friendly error message for iOS issues
+      if (err?.message?.includes('Load failed') || err?.message?.includes('TypeError')) {
+        setError('人脸识别模型加载失败，请刷新页面重试。如果问题持续，请使用密码登录。')
+      }
       // Don't block login, just disable face recognition
     }
   }
