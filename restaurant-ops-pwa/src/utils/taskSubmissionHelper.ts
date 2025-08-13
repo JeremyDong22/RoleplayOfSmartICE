@@ -352,6 +352,18 @@ export async function submitTaskWithMedia({
     
     console.log('[TaskSubmissionHelper] Calling submitTaskRecord...');
     
+    // Add mobile network detection
+    const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    if (connection) {
+      const effectiveType = connection.effectiveType;
+      console.log('[TaskSubmissionHelper] Network type:', effectiveType);
+      
+      // Show warning for slow connections
+      if (effectiveType === '2g' || effectiveType === 'slow-2g') {
+        onProgress?.(85, '检测到较慢的网络，可能需要更长时间...');
+      }
+    }
+    
     // Retry submission if it fails
     let submitRetries = 0
     let submitError: Error | null = null
@@ -360,7 +372,8 @@ export async function submitTaskWithMedia({
       try {
         if (submitRetries > 0) {
           onProgress?.(95, `重试提交 (${submitRetries}/${maxRetries})...`)
-          await new Promise(resolve => setTimeout(resolve, 1000 * submitRetries))
+          // Shorter wait time for retries
+          await new Promise(resolve => setTimeout(resolve, 500 + (500 * submitRetries)))
         } else {
           onProgress?.(90, '保存任务记录...')
         }
@@ -371,9 +384,15 @@ export async function submitTaskWithMedia({
         
         onProgress?.(100, '提交成功!')
         return result
-      } catch (error) {
+      } catch (error: any) {
         submitError = error as Error
         console.error(`Submit attempt ${submitRetries + 1} failed:`, error)
+        
+        // Check if it's a timeout error
+        if (error?.message?.includes('aborted') || error?.message?.includes('timeout')) {
+          onProgress?.(90 + submitRetries * 2, '网络超时，正在重试...');
+        }
+        
         submitRetries++
       }
     }

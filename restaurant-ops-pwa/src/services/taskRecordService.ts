@@ -28,6 +28,10 @@ export interface TaskRecord {
   reject_reason?: string
 }
 
+// Cache for user roles to avoid repeated queries
+const userRoleCache = new Map<string, { role_code: string; timestamp: number }>();
+const ROLE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // 提交任务（包括值班经理任务）
 export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
   // Check if user_id is already provided in taskData
@@ -35,31 +39,47 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     throw new Error('user_id is required in taskData')
   }
 
-  // 获取用户角色信息
-  const { data: userData } = await supabase
-    .from('roleplay_users')
-    .select(`
-      id,
-      roleplay_roles!inner (
-        role_code
-      )
-    `)
-    .eq('id', taskData.user_id)
-    .single()
-
-  const userRoleCode = userData?.roleplay_roles?.role_code
+  // Try to get user role from cache first
+  let userRoleCode: string | undefined;
+  const cachedRole = userRoleCache.get(taskData.user_id);
   
-  // 检查任务是否属于duty_manager角色
-  let isDutyManagerTask = false
-  if (taskData.task_id) {
-    const { data: taskInfo } = await supabase
+  if (cachedRole && Date.now() - cachedRole.timestamp < ROLE_CACHE_TTL) {
+    userRoleCode = cachedRole.role_code;
+    console.log('[TaskRecordService] Using cached user role:', userRoleCode);
+  } else {
+    // Fetch user role if not cached or expired
+    const { data: userData } = await supabase
+      .from('roleplay_users')
+      .select(`
+        id,
+        roleplay_roles!inner (
+          role_code
+        )
+      `)
+      .eq('id', taskData.user_id)
+      .single()
+    
+    userRoleCode = userData?.roleplay_roles?.role_code;
+    
+    // Cache the role
+    if (userRoleCode) {
+      userRoleCache.set(taskData.user_id, {
+        role_code: userRoleCode,
+        timestamp: Date.now()
+      });
+    }
+  }
+  
+  // Check task type and prepare record in parallel
+  const [taskInfo] = await Promise.all([
+    taskData.task_id ? supabase
       .from('roleplay_tasks')
       .select('role_code')
       .eq('id', taskData.task_id)
-      .single()
-    
-    isDutyManagerTask = taskInfo?.role_code === 'duty_manager'
-  }
+      .single() : Promise.resolve({ data: null })
+  ]);
+  
+  const isDutyManagerTask = taskInfo.data?.role_code === 'duty_manager'
   
   const record: Partial<TaskRecord> = {
     ...taskData,
@@ -76,12 +96,54 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     record.reviewed_at = new Date().toISOString()
   }
   
+  // Insert with retry for network issues
+  let retries = 0;
+  let lastError: any = null;
+  
+  while (retries < 3) {
+    try {
+      const { data, error } = await supabase
+        .from('roleplay_task_records')
+        .insert(record)
+        .select()
+        .single()
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Success - continue with inventory update
+      lastError = null;
+      break;
+    } catch (err: any) {
+      lastError = err;
+      retries++;
+      
+      // Don't retry on non-network errors
+      if (err?.message && !err.message.includes('fetch') && !err.message.includes('network')) {
+        break;
+      }
+      
+      if (retries < 3) {
+        console.log(`[TaskRecordService] Retry ${retries}/3 after error:`, err?.message);
+        await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+      }
+    }
+  }
+  
+  if (lastError) {
+    throw lastError;
+  }
+  
   const { data, error } = await supabase
     .from('roleplay_task_records')
-    .insert(record)
     .select()
+    .eq('user_id', taskData.user_id)
+    .eq('task_id', taskData.task_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .single()
-
+  
   if (error) {
     throw error
   }

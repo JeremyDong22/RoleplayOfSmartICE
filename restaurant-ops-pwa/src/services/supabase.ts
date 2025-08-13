@@ -30,6 +30,18 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       eventsPerSecond: 10
     },
     log_level: 'debug' // Enable debug logging for Realtime
+  },
+  global: {
+    fetch: (url, options = {}) => {
+      // Add timeout for all requests (15 seconds for mobile networks)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      
+      return fetch(url, {
+        ...options,
+        signal: controller.signal
+      }).finally(() => clearTimeout(timeout));
+    }
   }
 })
 

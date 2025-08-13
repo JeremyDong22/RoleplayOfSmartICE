@@ -2,7 +2,7 @@
 // This is a basic service worker that caches assets for offline use
 // Updated to support push notifications
 
-const CACHE_NAME = 'restaurant-ops-v1';
+const CACHE_NAME = 'restaurant-ops-v2'; // Updated to force cache refresh
 const urlsToCache = [
   '/',
   '/index.html',
@@ -23,6 +23,30 @@ self.addEventListener('install', event => {
 
 // Fetch event - serve from cache when offline
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  
+  // Skip caching for API requests
+  if (url.hostname.includes('supabase.co') || 
+      url.hostname.includes('supabase.in') ||
+      url.hostname.includes('localhost') && url.port === '54321') {
+    // API requests should always go to network
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // Skip caching for non-GET requests (POST, PUT, DELETE, etc.)
+  if (event.request.method !== 'GET') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // Skip caching for data URLs (base64 images, etc.)
+  if (url.protocol === 'data:') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // Only cache static assets (HTML, CSS, JS, images)
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -30,9 +54,32 @@ self.addEventListener('fetch', event => {
         if (response) {
           return response;
         }
-        return fetch(event.request);
+        
+        // No cache hit - fetch from network
+        return fetch(event.request).then(networkResponse => {
+          // Only cache successful responses for static assets
+          if (networkResponse && networkResponse.status === 200 && 
+              networkResponse.type === 'basic' &&
+              (url.pathname.endsWith('.html') ||
+               url.pathname.endsWith('.js') ||
+               url.pathname.endsWith('.css') ||
+               url.pathname.endsWith('.png') ||
+               url.pathname.endsWith('.jpg') ||
+               url.pathname.endsWith('.svg') ||
+               url.pathname === '/')) {
+            // Clone the response before caching
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        });
       }
-    )
+    ).catch(() => {
+      // Network request failed, try to serve a cached offline page
+      return caches.match('/index.html');
+    })
   );
 });
 
