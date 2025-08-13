@@ -145,6 +145,22 @@ const router = createBrowserRouter([
     ),
   },
   {
+    path: '/ceo/profile',
+    element: (
+      <PrivateRoute path="/ceo/profile">
+        <ProfilePageEnhanced />
+      </PrivateRoute>
+    ),
+  },
+  {
+    path: '/ceo/notifications',
+    element: (
+      <PrivateRoute path="/ceo/notifications">
+        <NotificationsPage role="ceo" />
+      </PrivateRoute>
+    ),
+  },
+  {
     path: '/test-camera',
     element: <TestFloatingCamera />,
   },

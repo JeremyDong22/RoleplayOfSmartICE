@@ -1084,10 +1084,11 @@ const ProfilePageEnhanced: React.FC = () => {
   const [user, setUser] = useState(authService.getCurrentUser())
   
   // Determine role from the current path
-  const getRoleFromPath = (): 'manager' | 'chef' | 'duty-manager' => {
+  const getRoleFromPath = (): 'manager' | 'chef' | 'duty-manager' | 'ceo' => {
     if (location.pathname.includes('/manager')) return 'manager'
     if (location.pathname.includes('/chef')) return 'chef'
     if (location.pathname.includes('/duty-manager')) return 'duty-manager'
+    if (location.pathname.includes('/ceo')) return 'ceo'
     return 'manager' // Default fallback
   }
   

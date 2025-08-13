@@ -69,6 +69,7 @@ import type {
   CombinedRestaurantData,
   FloatingTaskInfo 
 } from '../../services/ceoDashboardService';
+import { NavigationBar } from '../../components/Navigation/NavigationBar';
 
 // 动画组件
 const MotionCard = motion(Card);
@@ -1424,6 +1425,12 @@ export const CEODashboardDB: React.FC = () => {
           </DialogActions>
         )}
       </Dialog>
+      
+      {/* 底部导航栏 - 为CEO添加 */}
+      <NavigationBar role="ceo" />
+      
+      {/* 为底部导航栏留出空间 */}
+      <Box sx={{ pb: 8 }} />
     </Box>
   );
 };

@@ -28,7 +28,7 @@ import { useNavigate } from 'react-router-dom'
 import { NavigationBar } from '../components/Navigation/NavigationBar'
 
 interface NotificationsPageProps {
-  role?: 'manager' | 'chef' | 'duty-manager'
+  role?: 'manager' | 'chef' | 'duty-manager' | 'ceo'
 }
 
 export const NotificationsPage: React.FC<NotificationsPageProps> = ({ role = 'manager' }) => {

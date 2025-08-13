@@ -17,7 +17,7 @@ import {
 } from '@mui/icons-material'
 
 interface NavigationBarProps {
-  role: 'manager' | 'chef' | 'duty-manager'
+  role: 'manager' | 'chef' | 'duty-manager' | 'ceo'
 }
 
 export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
@@ -28,7 +28,8 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
   const roleRoutes = {
     'manager': '/manager',
     'chef': '/chef',
-    'duty-manager': '/duty-manager'
+    'duty-manager': '/duty-manager',
+    'ceo': '/ceo'
   }
   
   const baseRoute = roleRoutes[role]
