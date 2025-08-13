@@ -24,6 +24,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    detectSessionInUrl: true,
+    flowType: 'pkce'
   },
   realtime: {
     params: {
@@ -33,12 +36,22 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
   global: {
     fetch: (url, options = {}) => {
-      // Add timeout for all requests (15 seconds for mobile networks)
+      // iOS Safari specific headers to handle CORS
+      const headers = {
+        ...options.headers,
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      };
+      
+      // Add timeout for all requests (30 seconds for mobile networks)
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
       
       return fetch(url, {
         ...options,
+        headers,
+        mode: 'cors',
+        credentials: 'same-origin',
         signal: controller.signal
       }).finally(() => clearTimeout(timeout));
     }

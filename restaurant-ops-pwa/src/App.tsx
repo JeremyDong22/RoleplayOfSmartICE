@@ -207,8 +207,12 @@ function App() {
     initializeRestaurant()
     
     // 预加载人脸识别模型（后台加载，不阻塞）
+    // 在iOS设备上可能需要更长的加载时间
     console.log('[App] Starting face model preload...')
-    faceModelManager.preloadInBackground()
+    // 延迟加载以避免与其他初始化冲突
+    setTimeout(() => {
+      faceModelManager.preloadInBackground()
+    }, 1000)
     
     // 模拟用户登录后启动 Realtime
     // const initRealtime = async () => {

@@ -22,24 +22,42 @@ class RestaurantConfigService {
    */
   async initialize(): Promise<RestaurantConfig | null> {
     try {
+      // 如果已经初始化并有餐厅配置，直接返回
+      if (this.initialized && this.currentRestaurant) {
+        return this.currentRestaurant
+      }
+
       // 先尝试获取当前用户信息
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
       
-      if (user) {
+      // 如果获取用户失败（可能是网络问题），记录错误但继续尝试
+      if (authError) {
+        console.warn('[RestaurantConfigService] Auth error, trying to get default restaurant:', authError)
+      }
+      
+      if (user && !authError) {
         // 尝试从用户profile获取餐厅ID
-        const { data: userProfile } = await supabase
+        const { data: userProfile, error: profileError } = await supabase
           .from('roleplay_users')
           .select('restaurant_id')
           .eq('id', user.id)
           .single()
         
+        if (profileError) {
+          console.warn('[RestaurantConfigService] Error fetching user profile:', profileError)
+        }
+        
         if (userProfile?.restaurant_id) {
           // 获取餐厅详情
-          const { data: restaurant } = await supabase
+          const { data: restaurant, error: restaurantError } = await supabase
             .from('roleplay_restaurants')
             .select('id, name, is_active')
             .eq('id', userProfile.restaurant_id)
             .single()
+          
+          if (restaurantError) {
+            console.warn('[RestaurantConfigService] Error fetching user restaurant:', restaurantError)
+          }
           
           if (restaurant) {
             this.currentRestaurant = {
@@ -48,18 +66,36 @@ class RestaurantConfigService {
               isActive: restaurant.is_active
             }
             this.initialized = true
+            console.log('[RestaurantConfigService] Initialized with user restaurant:', this.currentRestaurant)
             return this.currentRestaurant
           }
         }
       }
       
       // 如果没有用户或用户没有分配餐厅，获取第一个活跃的餐厅
-      const { data: restaurants } = await supabase
+      const { data: restaurants, error: restaurantsError } = await supabase
         .from('roleplay_restaurants')
         .select('id, name, is_active')
         .eq('is_active', true)
         .order('created_at')
         .limit(1)
+      
+      if (restaurantsError) {
+        console.error('[RestaurantConfigService] Error fetching restaurants:', restaurantsError)
+        // 如果是CORS错误，使用默认餐厅
+        if (restaurantsError.message?.includes('access control') || restaurantsError.message?.includes('CORS')) {
+          console.warn('[RestaurantConfigService] CORS error detected, using default restaurant')
+          // 使用已知的默认餐厅ID（野百灵）
+          this.currentRestaurant = {
+            id: 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a',
+            name: '野百灵',
+            isActive: true
+          }
+          this.initialized = true
+          return this.currentRestaurant
+        }
+        throw restaurantsError
+      }
       
       if (restaurants && restaurants.length > 0) {
         this.currentRestaurant = {
@@ -68,15 +104,35 @@ class RestaurantConfigService {
           isActive: restaurants[0].is_active
         }
         this.initialized = true
+        console.log('[RestaurantConfigService] Initialized with default restaurant:', this.currentRestaurant)
         return this.currentRestaurant
       }
       
-      console.error('[RestaurantConfigService] No active restaurant found')
-      return null
+      // 如果没有找到任何餐厅，使用硬编码的默认值作为最后的备选
+      console.warn('[RestaurantConfigService] No active restaurant found, using hardcoded default')
+      this.currentRestaurant = {
+        id: 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a',
+        name: '野百灵',
+        isActive: true
+      }
+      this.initialized = true
+      return this.currentRestaurant
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('[RestaurantConfigService] Error initializing:', error)
-      return null
+      
+      // 如果出现任何错误，使用默认餐厅以确保应用可以继续运行
+      if (!this.currentRestaurant) {
+        console.warn('[RestaurantConfigService] Using fallback restaurant due to error')
+        this.currentRestaurant = {
+          id: 'e01868e3-5cff-4e89-9c5e-a0d4ae342b1a',
+          name: '野百灵',
+          isActive: true
+        }
+        this.initialized = true
+      }
+      
+      return this.currentRestaurant
     }
   }
 

@@ -60,24 +60,29 @@ class TaskService {
   async initialize(): Promise<boolean> {
     console.log('[TaskService] Starting initialization...')
     
-    // 加载初始数据
-    const periodsLoaded = await this.loadPeriods()
-    const tasksLoaded = await this.loadAllTasks()
-    
-    if (!periodsLoaded || !tasksLoaded) {
-      console.error('[TaskService] Failed to initialize - some data could not be loaded')
-      // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
+    try {
+      // 加载初始数据
+      const periodsLoaded = await this.loadPeriods()
+      const tasksLoaded = await this.loadAllTasks()
+      
+      if (!periodsLoaded || !tasksLoaded) {
+        console.error('[TaskService] Failed to initialize - some data could not be loaded')
+        // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
+        return false
+      }
+      
+      console.log('[TaskService] Initialized successfully')
+      
+      // 启用实时订阅（延迟以避免网络拥堵）
+      setTimeout(() => {
+        this.subscribeToChanges()
+      }, 2000)
+      
+      return true
+    } catch (error) {
+      console.error('[TaskService] Initialization error:', error)
       return false
     }
-    
-    // TaskService Initialized
-    
-    // 启用实时订阅
-    setTimeout(() => {
-      this.subscribeToChanges()
-    }, 1000)
-    
-    return true
   }
 
   /**

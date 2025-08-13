@@ -75,11 +75,32 @@ class FaceModelManager {
     
     console.log('[ModelManager] Starting background preload...')
     
-    // Start loading but don't await
-    this.initialize().catch(error => {
-      console.error('[ModelManager] Background preload failed:', error)
-      // Don't throw - this is background loading
-    })
+    // For iOS, add delay before starting background load to avoid conflicts
+    const startPreload = async () => {
+      if (this.isIOSDevice()) {
+        console.log('[ModelManager] iOS detected, waiting 2s before background preload...')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+      
+      // Start loading but don't await
+      this.initialize().catch(error => {
+        console.error('[ModelManager] Background preload failed:', error)
+        // Don't throw - this is background loading
+        // On iOS, might retry once more after a longer delay
+        if (this.isIOSDevice() && !this.modelsLoaded) {
+          console.log('[ModelManager] iOS background preload failed, retrying in 5s...')
+          setTimeout(() => {
+            if (!this.modelsLoaded && !this.loadingPromise) {
+              this.initialize().catch(err => {
+                console.error('[ModelManager] iOS retry also failed:', err)
+              })
+            }
+          }, 5000)
+        }
+      })
+    }
+    
+    startPreload()
   }
   
   // Initialize only essential models for fast start
@@ -264,19 +285,38 @@ class FaceModelManager {
     maxRetries: number = 3
   ): Promise<void> {
     let lastError: Error | null = null
+    const isIOS = this.isIOSDevice()
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // iOS Safari often fails on first load, increase retries
+    const actualMaxRetries = isIOS ? Math.max(maxRetries, 5) : maxRetries
+    
+    for (let attempt = 1; attempt <= actualMaxRetries; attempt++) {
       try {
-        console.log(`[ModelManager] Loading ${modelName} (attempt ${attempt}/${maxRetries})`)
+        console.log(`[ModelManager] Loading ${modelName} (attempt ${attempt}/${actualMaxRetries})`)
+        
+        // For iOS, add a small delay before loading to avoid race conditions
+        if (isIOS && attempt > 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        
         await loadFn()
         console.log(`[ModelManager] ✅ ${modelName} loaded successfully`)
         return
-      } catch (error) {
+      } catch (error: any) {
         lastError = error as Error
         console.error(`[ModelManager] Failed to load ${modelName} (attempt ${attempt}):`, error)
         
-        if (attempt < maxRetries) {
-          // Exponential backoff: 1s, 2s, 4s...
+        // iOS Safari specific error handling
+        if (isIOS && error?.message?.includes('Load failed')) {
+          console.warn(`[ModelManager] iOS Safari load failed for ${modelName}, will retry with longer delay`)
+          // Longer wait for iOS Safari
+          if (attempt < actualMaxRetries) {
+            const waitTime = Math.min(2000 * attempt, 10000)
+            console.log(`[ModelManager] Waiting ${waitTime}ms before retry...`)
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+          }
+        } else if (attempt < actualMaxRetries) {
+          // Normal exponential backoff for other errors
           const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
           console.log(`[ModelManager] Waiting ${waitTime}ms before retry...`)
           await new Promise(resolve => setTimeout(resolve, waitTime))
@@ -285,7 +325,7 @@ class FaceModelManager {
     }
     
     // All retries failed
-    throw lastError || new Error(`Failed to load ${modelName} after ${maxRetries} attempts`)
+    throw lastError || new Error(`Failed to load ${modelName} after ${actualMaxRetries} attempts`)
   }
   
   // Force reload models (useful for error recovery)
