@@ -1,5 +1,6 @@
 // CEO Dashboard - 数据库版本：完全基于真实数据
-import React, { useState, useEffect } from 'react';
+// 性能优化版本：减少查询，使用React.memo，添加加载骨架
+import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -31,7 +32,8 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   CircularProgress,
-  Backdrop
+  Backdrop,
+  Skeleton
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -165,12 +167,15 @@ export const CEODashboardDB: React.FC = () => {
     setPeriods(updatedPeriods);
   };
 
-  // 加载数据
+  // 加载数据（使用useCallback优化）
   const navigate = useNavigate();
 
-  const loadData = async () => {
+  const loadData = useCallback(async (showLoading = true) => {
     try {
-
+      if (showLoading) {
+        setLoading(true);
+      }
+      
       const data = await ceoDashboardService.getAllRestaurantsData();
       
       setFrontOfficeRestaurants(data.frontOfficeData.restaurants);
@@ -212,31 +217,35 @@ export const CEODashboardDB: React.FC = () => {
       // 更新时段统计 - 传入基础 periods 数据
       updatePeriodStatistics(currentRestaurant, data.periods);
       
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     } catch (error) {
       console.error('Error loading CEO dashboard data:', error);
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, [selectedRestaurantId, selectedDepartment]);
 
   useEffect(() => {
-    loadData();
+    loadData(true); // 初始加载显示loading
     
-    // 设置定时刷新
+    // 设置定时刷新（不显示loading，避免闪烁）
     const interval = setInterval(() => {
-      loadData();
+      loadData(false);
     }, 60000); // 每分钟刷新
 
-    // 订阅实时更新
+    // 订阅实时更新（不显示loading）
     const unsubscribe = ceoDashboardService.subscribeToUpdates(() => {
-      loadData();
+      loadData(false);
     });
 
     return () => {
       clearInterval(interval);
       unsubscribe();
     };
-  }, []); // 只在初始加载时获取数据
+  }, [loadData]); // 依赖loadData函数
 
   // 获取当前显示的餐厅列表（根据部门）
   const restaurants = selectedDepartment === '前厅' ? frontOfficeRestaurants : kitchenRestaurants;
@@ -302,8 +311,8 @@ export const CEODashboardDB: React.FC = () => {
     }
   };
 
-  // 任务列表组件 - 按时段分组
-  const TaskListByPeriod = () => {
+  // 任务列表组件 - 按时段分组（使用memo优化）
+  const TaskListByPeriod = memo(() => {
     if (!currentRestaurant) return null;
 
     return (
@@ -671,7 +680,7 @@ export const CEODashboardDB: React.FC = () => {
         )}
       </Box>
     );
-  };
+  });
 
   // 任务详情对话框
   const TaskDetailDialog = () => {
@@ -885,10 +894,62 @@ export const CEODashboardDB: React.FC = () => {
     );
   };
 
+  // 加载骨架屏 - 提供更好的视觉反馈
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
+      <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa' }}>
+        {/* Header骨架 */}
+        <Box sx={{ 
+          background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+          color: 'white',
+          py: 2,
+          px: 2,
+          height: 64
+        }}>
+          <Skeleton variant="text" width={200} height={30} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+        </Box>
+        
+        {/* 餐厅切换栏骨架 */}
+        <Box sx={{ px: 3, py: 2, bgcolor: 'white', borderBottom: '1px solid #e0e0e0' }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            {[1, 2, 3].map(i => (
+              <Skeleton key={i} variant="rectangular" width={150} height={40} sx={{ borderRadius: 1 }} />
+            ))}
+          </Box>
+        </Box>
+        
+        {/* 内容区域骨架 */}
+        <Container maxWidth="xl" sx={{ py: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+            {/* 左侧任务列表骨架 */}
+            <Card>
+              <CardContent>
+                <Skeleton variant="text" width={150} height={30} sx={{ mb: 2 }} />
+                {[1, 2, 3].map(i => (
+                  <Box key={i} sx={{ mb: 2 }}>
+                    <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
+                  </Box>
+                ))}
+              </CardContent>
+            </Card>
+            
+            {/* 右侧员工统计骨架 */}
+            <Card>
+              <CardContent>
+                <Skeleton variant="text" width={150} height={30} sx={{ mb: 2 }} />
+                {[1, 2, 3, 4].map(i => (
+                  <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Skeleton variant="circular" width={40} height={40} />
+                    <Box sx={{ flex: 1 }}>
+                      <Skeleton variant="text" width="60%" />
+                      <Skeleton variant="text" width="40%" />
+                    </Box>
+                  </Box>
+                ))}
+              </CardContent>
+            </Card>
+          </Box>
+        </Container>
       </Box>
     );
   }

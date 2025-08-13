@@ -16,6 +16,9 @@ export const RoleSelection = () => {
   const [error, setError] = useState('')
   const currentUser = authService.getCurrentUser()
   
+  // Check if user is administrator
+  const isAdministrator = currentUser?.roleCode === 'administrator'
+  
   // Debug: Log current user info
 
   const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager' | 'ceo') => {
@@ -187,15 +190,15 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: currentUser?.roleCode === 'manager' ? 'pointer' : 'not-allowed',
+                cursor: (currentUser?.roleCode === 'manager' || isAdministrator) ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: currentUser?.roleCode === 'manager' ? 1 : 0.5,
-                '&:hover': currentUser?.roleCode === 'manager' ? {
+                opacity: (currentUser?.roleCode === 'manager' || isAdministrator) ? 1 : 0.5,
+                '&:hover': (currentUser?.roleCode === 'manager' || isAdministrator) ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'primary.light',
@@ -242,15 +245,15 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: currentUser?.roleCode === 'chef' ? 'pointer' : 'not-allowed',
+                cursor: (currentUser?.roleCode === 'chef' || isAdministrator) ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: currentUser?.roleCode === 'chef' ? 1 : 0.5,
-                '&:hover': currentUser?.roleCode === 'chef' ? {
+                opacity: (currentUser?.roleCode === 'chef' || isAdministrator) ? 1 : 0.5,
+                '&:hover': (currentUser?.roleCode === 'chef' || isAdministrator) ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'secondary.light',
@@ -298,15 +301,15 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: currentUser?.roleCode === 'duty_manager' ? 'pointer' : 'not-allowed',
+                cursor: (currentUser?.roleCode === 'duty_manager' || isAdministrator) ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: currentUser?.roleCode === 'duty_manager' ? 1 : 0.5,
-                '&:hover': (currentUser?.roleCode === 'duty_manager') ? {
+                opacity: (currentUser?.roleCode === 'duty_manager' || isAdministrator) ? 1 : 0.5,
+                '&:hover': (currentUser?.roleCode === 'duty_manager' || isAdministrator) ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 6,
                   backgroundColor: 'info.light',
@@ -355,18 +358,18 @@ export const RoleSelection = () => {
               sx={{
                 p: { xs: 2, sm: 3, md: 4 },
                 textAlign: 'center',
-                cursor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 'pointer' : 'not-allowed',
+                cursor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s ease',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 1 : 0.5,
-                background: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 
+                opacity: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? 1 : 0.5,
+                background: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? 
                   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 
                   'inherit',
-                '&:hover': (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? {
+                '&:hover': (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? {
                   transform: 'translateY(-4px)',
                   boxShadow: 8,
                   background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
@@ -378,7 +381,7 @@ export const RoleSelection = () => {
                 sx={{ 
                   fontSize: { xs: 48, sm: 64, md: 80 }, 
                   mb: 1,
-                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? '#fff' : 'inherit'
                 }} 
               />
               <Typography 
@@ -386,7 +389,7 @@ export const RoleSelection = () => {
                 gutterBottom 
                 sx={{ 
                   fontSize: { xs: '1.25rem', sm: '1.75rem', md: '2.125rem' },
-                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? '#fff' : 'inherit'
                 }}
               >
                 首席执行官
@@ -395,7 +398,7 @@ export const RoleSelection = () => {
                 variant="h6" 
                 sx={{ 
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '1.25rem' },
-                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? '#fff' : 'inherit'
                 }}
               >
                 CEO
@@ -407,7 +410,7 @@ export const RoleSelection = () => {
                   opacity: 0.9, 
                   fontSize: { xs: '0.75rem', sm: '0.875rem', md: '1rem' }, 
                   display: { xs: 'none', sm: 'block' },
-                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? '#fff' : 'inherit'
                 }}
               >
                 全局运营监控
@@ -418,7 +421,7 @@ export const RoleSelection = () => {
                   opacity: 0.8, 
                   fontSize: { xs: '0.625rem', sm: '0.75rem', md: '0.875rem' }, 
                   display: { xs: 'none', sm: 'block' },
-                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit'
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? '#fff' : 'inherit'
                 }}
               >
                 Executive Dashboard
@@ -431,10 +434,10 @@ export const RoleSelection = () => {
                   fontSize: { xs: '0.875rem', sm: '1rem' },
                   py: { xs: 1, sm: 1.5 },
                   px: { xs: 2, sm: 3 },
-                  bgcolor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 'rgba(255,255,255,0.2)' : 'primary.main',
-                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? '#fff' : 'inherit',
+                  bgcolor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? 'rgba(255,255,255,0.2)' : 'primary.main',
+                  color: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? '#fff' : 'inherit',
                   '&:hover': {
-                    bgcolor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理') ? 'rgba(255,255,255,0.3)' : 'primary.dark'
+                    bgcolor: (currentUser?.roleCode === 'ceo' || currentUser?.role === '总经理' || isAdministrator) ? 'rgba(255,255,255,0.3)' : 'primary.dark'
                   }
                 }}
                 onClick={(e) => {

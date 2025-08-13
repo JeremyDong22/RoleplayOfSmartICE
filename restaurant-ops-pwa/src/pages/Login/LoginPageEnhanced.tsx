@@ -73,12 +73,28 @@ export const LoginPageEnhanced = () => {
   }, [])
 
   const initializeFaceService = async () => {
-    try {
-      // Initialize face recognition service
-      await faceRecognitionService.initialize()
-      console.log('✅ Face recognition service initialized')
-    } catch (err) {
-      console.error('Failed to initialize face service:', err)
+    let retryCount = 0
+    const maxRetries = 3
+    
+    while (retryCount < maxRetries) {
+      try {
+        // Initialize face recognition service
+        await faceRecognitionService.initialize()
+        console.log('✅ Face recognition service initialized')
+        return // Success, exit function
+      } catch (err) {
+        retryCount++
+        console.error(`Failed to initialize face service (attempt ${retryCount}/${maxRetries}):`, err)
+        
+        if (retryCount < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
+        } else {
+          // Final failure - show user-friendly message
+          console.error('❌ Face recognition service unavailable after multiple attempts')
+          // Don't block login, just disable face recognition
+        }
+      }
     }
   }
 

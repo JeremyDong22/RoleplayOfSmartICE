@@ -4,30 +4,111 @@
 
 import * as faceapi from 'face-api.js'
 import { supabase } from './supabase'
+import { faceModelManager } from './faceModelManager'
 
 class FaceRecognitionService {
-  private modelsLoaded = false
+  // Detect if running on iPad/iOS
+  private isIOSDevice(): boolean {
+    const ua = navigator.userAgent
+    return /iPad|iPhone|iPod/.test(ua) || 
+           (ua.includes('Macintosh') && 'ontouchend' in document)
+  }
 
   // Initialize the service and load face-api.js models
   async initialize(): Promise<void> {
-    if (this.modelsLoaded) return
+    // Use the global model manager
+    await faceModelManager.initialize()
+  }
 
+  private async loadModelsLegacy(): Promise<void> {
     try {
-      // Load models from local files
       const MODEL_URL = '/models'
+      const isIOS = this.isIOSDevice()
       
-      // Load required models for face detection and recognition
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-      ])
+      console.log(`[FaceRecognition] Loading models... (iOS device: ${isIOS})`)
+      
+      // Check if models are already loaded by face-api.js
+      const tinyFaceDetectorLoaded = faceapi.nets.tinyFaceDetector.isLoaded
+      const faceLandmark68NetLoaded = faceapi.nets.faceLandmark68Net.isLoaded
+      const faceRecognitionNetLoaded = faceapi.nets.faceRecognitionNet.isLoaded
+      
+      console.log('[FaceRecognition] Models status:', {
+        tinyFaceDetector: tinyFaceDetectorLoaded,
+        faceLandmark68Net: faceLandmark68NetLoaded,
+        faceRecognitionNet: faceRecognitionNetLoaded
+      })
+      
+      // For iOS devices, load models sequentially with longer delays
+      if (isIOS) {
+        console.log('[FaceRecognition] Using sequential loading for iOS device')
+        
+        // Load TinyFaceDetector first (smallest model)
+        if (!tinyFaceDetectorLoaded) {
+          await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)
+          console.log('[FaceRecognition] TinyFaceDetector loaded')
+          // Longer delay for iOS
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        
+        // Load FaceLandmark68Net
+        if (!faceLandmark68NetLoaded) {
+          await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+          console.log('[FaceRecognition] FaceLandmark68Net loaded')
+          // Longer delay for iOS
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        
+        // Load FaceRecognitionNet (largest model) - this is the problematic one
+        if (!faceRecognitionNetLoaded) {
+          // Add retry logic specifically for the large model
+          let retries = 0
+          const maxRetries = 3
+          
+          while (retries < maxRetries && !faceapi.nets.faceRecognitionNet.isLoaded) {
+            try {
+              console.log(`[FaceRecognition] Loading FaceRecognitionNet (attempt ${retries + 1}/${maxRetries})`)
+              await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+              console.log('[FaceRecognition] FaceRecognitionNet loaded successfully')
+              break
+            } catch (loadError) {
+              retries++
+              console.error(`[FaceRecognition] Failed to load FaceRecognitionNet (attempt ${retries}):`, loadError)
+              
+              if (retries < maxRetries) {
+                // Wait longer before retrying (exponential backoff)
+                const waitTime = 1000 * retries
+                console.log(`[FaceRecognition] Waiting ${waitTime}ms before retry...`)
+                await new Promise(resolve => setTimeout(resolve, waitTime))
+              } else {
+                throw loadError
+              }
+            }
+          }
+        }
+      } else {
+        // For non-iOS devices, load in parallel as before
+        const modelsToLoad = []
+        
+        if (!tinyFaceDetectorLoaded) {
+          modelsToLoad.push(faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL))
+        }
+        if (!faceLandmark68NetLoaded) {
+          modelsToLoad.push(faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL))
+        }
+        if (!faceRecognitionNetLoaded) {
+          modelsToLoad.push(faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL))
+        }
+        
+        if (modelsToLoad.length > 0) {
+          await Promise.all(modelsToLoad)
+        }
+      }
 
-      this.modelsLoaded = true
-      console.log('[FaceRecognition] Models loaded successfully')
+      // Legacy code - kept for reference but not used
+      console.log('[FaceRecognition] Legacy load complete')
     } catch (error) {
-      console.error('[FaceRecognition] Failed to load models:', error)
-      throw new Error('Failed to initialize face recognition service')
+      console.error('[FaceRecognition] Legacy load failed:', error)
+      throw error
     }
   }
 
@@ -45,7 +126,8 @@ class FaceRecognitionService {
 
   // Enroll user's face - save descriptor to Supabase
   async enrollUser(userId: string, videoElement: HTMLVideoElement, sampleCount: number = 1): Promise<void> {
-    if (!this.modelsLoaded) {
+    // Ensure models are loaded via the manager
+    if (!faceModelManager.isReady()) {
       await this.initialize()
     }
 
@@ -58,9 +140,15 @@ class FaceRecognitionService {
       while (descriptors.length < sampleCount && attempts < maxAttempts) {
         attempts++
         
-        // Detect face and extract descriptor
+        // Detect face and extract descriptor with iOS optimizations
+        const isIOS = this.isIOSDevice()
+        const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+          inputSize: isIOS ? 320 : 416, // Smaller input size for iOS
+          scoreThreshold: 0.5
+        })
+        
         const detection = await faceapi
-          .detectSingleFace(videoElement, new faceapi.TinyFaceDetectorOptions())
+          .detectSingleFace(videoElement, detectorOptions)
           .withFaceLandmarks()
           .withFaceDescriptor()
 
@@ -126,7 +214,8 @@ class FaceRecognitionService {
 
   // Calculate match distance and return detailed info
   async calculateMatchDistance(userId: string, videoElement: HTMLVideoElement): Promise<{distance: number, isMatch: boolean, similarity: number}> {
-    if (!this.modelsLoaded) {
+    // Ensure models are loaded via the manager
+    if (!faceModelManager.isReady()) {
       await this.initialize()
     }
 
@@ -142,9 +231,15 @@ class FaceRecognitionService {
         throw new Error('用户未注册人脸')
       }
 
-      // Detect current face
+      // Detect current face with iOS optimizations
+      const isIOS = this.isIOSDevice()
+      const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+        inputSize: isIOS ? 320 : 416, // Smaller input size for iOS to reduce memory usage
+        scoreThreshold: 0.5
+      })
+      
       const detection = await faceapi
-        .detectSingleFace(videoElement, new faceapi.TinyFaceDetectorOptions())
+        .detectSingleFace(videoElement, detectorOptions)
         .withFaceLandmarks()
         .withFaceDescriptor()
 

@@ -616,6 +616,229 @@ class CEODashboardService {
     };
   }
 
+  // 优化后的处理餐厅数据方法
+  private processRestaurantDataOptimized(
+    restaurant: { id: string; name: string },
+    periods: CEOPeriod[],
+    allTasks: any[],
+    restaurantRecords: any[],
+    department: '前厅' | '后厨'
+  ): CEORestaurantData | null {
+    try {
+      const now = new Date();
+      const currentTime = now.getTime();
+      const businessStartTime = this.getBusinessCycleStartTime();
+      
+      // 过滤部门相关的任务
+      let roleFilter = department === '前厅' 
+        ? ['manager', 'duty_manager']
+        : ['chef'];
+      
+      const relevantTasks = allTasks.filter(task => 
+        roleFilter.includes(task.role_code)
+      );
+      
+      // 过滤部门相关的记录
+      const relevantRecords = restaurantRecords.filter(record => {
+        const taskRoleCode = record.roleplay_tasks?.role_code;
+        return roleFilter.includes(taskRoleCode);
+      });
+      
+      // 处理任务数据
+      const taskDetails: CEOTaskDetail[] = [];
+      const tasksByPeriod: Record<string, CEOTaskDetail[]> = {};
+      const taskMap = new Map<string, CEOTaskDetail>();
+      
+      // 特殊任务识别
+      const manualClosingTask = relevantTasks.find(t => t.manual_closing === true);
+      const floatingTasks = relevantTasks.filter(t => t.is_floating === true);
+      
+      let isManuallyClosedToday = false;
+      let manuallyClosedAt: string | undefined;
+      
+      if (manualClosingTask) {
+        const closingRecord = relevantRecords.find(r => r.task_id === manualClosingTask.id);
+        if (closingRecord) {
+          isManuallyClosedToday = true;
+          manuallyClosedAt = closingRecord.created_at;
+        }
+      }
+      
+      // 构建浮动任务信息
+      const floatingTaskInfo: FloatingTaskInfo[] = floatingTasks.map(task => {
+        const submissions = relevantRecords.filter(r => r.task_id === task.id);
+        return {
+          task_id: task.id,
+          task_title: task.title,
+          submission_count: submissions.length,
+          submission_type: task.submission_type || 'none'
+        };
+      });
+      
+      // 初始化时段分组
+      const relevantPeriodIds = new Set<string>();
+      relevantTasks.forEach(task => {
+        if (task.period_id && !task.manual_closing) {
+          relevantPeriodIds.add(task.period_id);
+        }
+      });
+      
+      periods.forEach(period => {
+        if (relevantPeriodIds.has(period.id)) {
+          tasksByPeriod[period.id] = [];
+        }
+      });
+      
+      // 处理已完成的任务记录
+      relevantRecords.forEach(record => {
+        const periodId = record.roleplay_tasks?.period_id;
+        const period = periods.find(p => p.id === periodId);
+        if (!period) return;
+        
+        const taskDetail: CEOTaskDetail = {
+          id: record.id,
+          task_id: record.task_id,
+          task_title: record.roleplay_tasks?.title || '',
+          user_id: record.user_id,
+          user_name: record.roleplay_users?.full_name || '',
+          role_name: record.roleplay_users?.roleplay_roles?.role_name_zh || '',
+          submission_type: record.submission_type || record.roleplay_tasks?.submission_type,
+          text_content: record.text_content,
+          photo_urls: record.photo_urls,
+          submission_metadata: record.submission_metadata,
+          created_at: record.created_at_beijing || record.created_at,
+          is_late: record.is_late || false,
+          makeup_reason: record.makeup_reason,
+          has_errors: this.checkTaskErrors(record),
+          scheduled_time: record.scheduled_start,
+          actual_time: record.actual_complete,
+          period_id: periodId,
+          period_name: period.display_name,
+          status: 'completed'
+        };
+        
+        taskDetails.push(taskDetail);
+        if (tasksByPeriod[periodId]) {
+          tasksByPeriod[periodId].push(taskDetail);
+        }
+        taskMap.set(record.task_id, taskDetail);
+      });
+      
+      // 处理未完成的任务
+      let missingCount = 0;
+      relevantTasks.forEach(task => {
+        if (taskMap.has(task.id) || task.manual_closing || task.is_floating) return;
+        
+        const period = periods.find(p => p.id === task.period_id);
+        if (!period) return;
+        
+        const [endHours, endMinutes] = period.end_time.split(':');
+        const periodEndTime = new Date(businessStartTime);
+        periodEndTime.setHours(parseInt(endHours), parseInt(endMinutes), 0);
+        
+        if (periodEndTime < businessStartTime) {
+          periodEndTime.setDate(periodEndTime.getDate() + 1);
+        }
+        
+        const isPastDue = currentTime > periodEndTime.getTime();
+        const status = isPastDue ? 'missing' : 'pending';
+        
+        if (status === 'missing') {
+          missingCount++;
+        }
+        
+        const taskDetail: CEOTaskDetail = {
+          id: `pending-${task.id}`,
+          task_id: task.id,
+          task_title: task.title,
+          user_id: '',
+          user_name: '',
+          role_name: '',
+          submission_type: task.submission_type || 'none',
+          created_at: '',
+          is_late: false,
+          has_errors: false,
+          scheduled_time: periodEndTime.toISOString(),
+          period_id: task.period_id,
+          period_name: period.display_name,
+          status: status
+        };
+        
+        taskDetails.push(taskDetail);
+        if (tasksByPeriod[task.period_id]) {
+          tasksByPeriod[task.period_id].push(taskDetail);
+        }
+      });
+      
+      // 计算员工统计
+      const employeeMap = new Map<string, CEOEmployeeStat>();
+      relevantRecords.forEach(record => {
+        const userId = record.user_id;
+        if (!employeeMap.has(userId)) {
+          employeeMap.set(userId, {
+            user_id: userId,
+            user_name: record.roleplay_users?.full_name || '',
+            role_name: record.roleplay_users?.roleplay_roles?.role_name_zh || '',
+            completed_tasks: 0,
+            total_tasks: 0,
+            on_time_rate: 100,
+            late_count: 0
+          });
+        }
+        
+        const stat = employeeMap.get(userId)!;
+        stat.total_tasks++;
+        if (record.status === 'completed' || record.status === 'submitted') {
+          stat.completed_tasks++;
+          if (record.is_late) {
+            stat.late_count++;
+          }
+        }
+      });
+      
+      employeeMap.forEach(stat => {
+        if (stat.total_tasks > 0) {
+          const onTimeCompletedTasks = stat.completed_tasks - stat.late_count;
+          stat.on_time_rate = (onTimeCompletedTasks / stat.total_tasks) * 100;
+        }
+      });
+      
+      const employeeStats = Array.from(employeeMap.values())
+        .sort((a, b) => b.completed_tasks - a.completed_tasks);
+      
+      // 计算总体统计
+      const completedTasks = taskDetails.filter(t => t.status === 'completed').length;
+      const lateTasks = taskDetails.filter(t => t.is_late).length;
+      const errorTasks = taskDetails.filter(t => t.has_errors).length;
+      const onTimeRate = completedTasks > 0 ? 
+        ((completedTasks - lateTasks) / completedTasks) * 100 : 100;
+      
+      const currentPeriod = this.getCurrentPeriod(periods);
+      
+      return {
+        restaurant_id: restaurant.id,
+        restaurant_name: restaurant.name,
+        total_tasks: relevantTasks.filter(t => !t.is_floating && !t.manual_closing).length,
+        completed_tasks: completedTasks,
+        on_time_rate: onTimeRate,
+        current_period: currentPeriod?.display_name || '',
+        current_period_id: currentPeriod?.id || '',
+        task_details: taskDetails,
+        tasks_by_period: tasksByPeriod,
+        employee_stats: employeeStats,
+        missing_tasks_count: missingCount,
+        late_tasks_count: lateTasks,
+        error_tasks_count: errorTasks,
+        is_manually_closed: isManuallyClosedToday,
+        manually_closed_at: manuallyClosedAt,
+        floating_task_info: floatingTaskInfo
+      };
+    } catch (error) {
+      console.error('[CEODashboardService] Error processing restaurant data:', error);
+      return null;
+    }
+  }
+
   // 计算时段的警告和错误数量
   private calculatePeriodStatistics(periods: CEOPeriod[], tasksByPeriod: Record<string, CEOTaskDetail[]>): CEOPeriod[] {
     return periods.map(period => {
@@ -631,7 +854,7 @@ class CEODashboardService {
     });
   }
 
-  // 获取所有餐厅的数据（前厅和后厨分别获取）
+  // 获取所有餐厅的数据（优化版本 - 批量查询）
   async getAllRestaurantsData(): Promise<{
     frontOfficeData: {
       restaurants: CEORestaurantData[];
@@ -646,11 +869,74 @@ class CEODashboardService {
     periods: CEOPeriod[];
   }> {
     try {
-      // 1. 获取所有餐厅
-      const restaurantList = await this.getRestaurants();
+      console.time('[CEODashboardService] Total load time');
       
-      // 2. 如果没有餐厅，返回空数据
+      // 1. 批量获取基础数据
+      console.time('[CEODashboardService] Fetching base data');
+      const [restaurantList, allPeriods, allTasks, allRecords] = await Promise.all([
+        // 获取所有餐厅
+        this.getRestaurants(),
+        
+        // 获取所有时段（假设结构相同）
+        supabase
+          .from('roleplay_workflow_periods')
+          .select('*')
+          .order('display_order'),
+        
+        // 获取所有任务定义
+        supabase
+          .from('roleplay_tasks')
+          .select('*')
+          .in('role_code', ['manager', 'chef', 'duty_manager'])
+          .eq('is_active', true)
+          .eq('is_notice', false)
+          .or('manual_closing.is.null,manual_closing.eq.false'),
+        
+        // 获取今日所有记录（一次性获取所有餐厅的）
+        (() => {
+          const businessStartTime = this.getBusinessCycleStartTime();
+          const now = new Date();
+          return supabase
+            .from('roleplay_task_records')
+            .select(`
+              id,
+              task_id,
+              user_id,
+              restaurant_id,
+              status,
+              submission_type,
+              text_content,
+              photo_urls,
+              submission_metadata,
+              created_at,
+              created_at_beijing,
+              is_late,
+              makeup_reason,
+              scheduled_start,
+              actual_complete,
+              roleplay_tasks!roleplay_task_records_task_id_fkey (
+                title,
+                role_code,
+                period_id,
+                submission_type
+              ),
+              roleplay_users!roleplay_task_records_user_id_fkey (
+                id,
+                full_name,
+                roleplay_roles!roleplay_users_role_id_fkey (
+                  role_name_zh
+                )
+              )
+            `)
+            .gte('created_at', businessStartTime.toISOString())
+            .lte('created_at', now.toISOString());
+        })()
+      ]);
+      console.timeEnd('[CEODashboardService] Fetching base data');
+      
+      // 2. 处理错误和空数据
       if (restaurantList.length === 0) {
+        console.timeEnd('[CEODashboardService] Total load time');
         return {
           frontOfficeData: { restaurants: [], alerts: [] },
           kitchenData: { restaurants: [], alerts: [] },
@@ -660,29 +946,48 @@ class CEODashboardService {
         };
       }
       
-      // 3. 获取第一个餐厅的时段定义（假设所有餐厅的时段结构相同）
-      const periods = await this.getPeriods(restaurantList[0].id);
+      const periods = allPeriods.data || [];
+      const tasks = allTasks.data || [];
+      const records = allRecords.data || [];
       
-      // 4. 并行获取每个餐厅的前厅和后厨数据
-      const dataPromises = restaurantList.map(async (restaurant) => {
-        // 获取该餐厅的时段
-        const restaurantPeriods = await this.getPeriods(restaurant.id);
-        
-        // 并行获取前厅和后厨数据
-        const [frontOfficeData, kitchenData] = await Promise.all([
-          this.getRestaurantTaskData(restaurant.id, restaurantPeriods, '前厅'),
-          this.getRestaurantTaskData(restaurant.id, restaurantPeriods, '后厨')
-        ]);
-        
-        return { frontOfficeData, kitchenData };
+      // 3. 创建索引映射以提高查询速度
+      console.time('[CEODashboardService] Building indexes');
+      const recordsByRestaurant = new Map<string, any[]>();
+      records.forEach(record => {
+        if (!recordsByRestaurant.has(record.restaurant_id)) {
+          recordsByRestaurant.set(record.restaurant_id, []);
+        }
+        recordsByRestaurant.get(record.restaurant_id)!.push(record);
       });
+      console.timeEnd('[CEODashboardService] Building indexes');
       
-      const results = await Promise.all(dataPromises);
+      // 4. 批量处理每个餐厅的数据
+      console.time('[CEODashboardService] Processing restaurant data');
+      const processRestaurantData = (
+        restaurant: { id: string; name: string },
+        department: '前厅' | '后厨'
+      ): CEORestaurantData | null => {
+        const restaurantRecords = recordsByRestaurant.get(restaurant.id) || [];
+        return this.processRestaurantDataOptimized(
+          restaurant,
+          periods,
+          tasks,
+          restaurantRecords,
+          department
+        );
+      };
+      
+      // 并行处理所有餐厅的前厅和后厨数据
+      const results = restaurantList.map(restaurant => ({
+        frontOfficeData: processRestaurantData(restaurant, '前厅'),
+        kitchenData: processRestaurantData(restaurant, '后厨')
+      }));
+      console.timeEnd('[CEODashboardService] Processing restaurant data');
       
       const frontOfficeData = results.map(r => r.frontOfficeData).filter(data => data !== null) as CEORestaurantData[];
       const kitchenData = results.map(r => r.kitchenData).filter(data => data !== null) as CEORestaurantData[];
       
-      // 4. 合并餐厅数据
+      // 5. 合并餐厅数据
       const combinedData: CombinedRestaurantData[] = [];
       restaurantList.forEach((restaurant, index) => {
         const combined = this.combineRestaurantData(
@@ -694,26 +999,25 @@ class CEODashboardService {
         }
       });
       
-      // 5. 计算时段统计（基于当前选中的餐厅和部门）
+      // 6. 计算时段统计
       let periodsWithStats = periods;
       if (frontOfficeData.length > 0 || kitchenData.length > 0) {
-        // 获取当前显示的第一个餐厅的任务数据来计算时段统计
         const currentRestaurantData = frontOfficeData[0] || kitchenData[0];
         if (currentRestaurantData) {
           periodsWithStats = this.calculatePeriodStatistics(periods, currentRestaurantData.tasks_by_period);
         }
       }
       
-      // 6. 分别生成前厅和后厨的警告
+      // 7. 生成警告
       const frontOfficeAlerts = this.generateAlerts(frontOfficeData, '前厅');
       const kitchenAlerts = this.generateAlerts(kitchenData, '后厨');
-      
-      // 7. 合并所有警告
       const allAlerts = [...frontOfficeAlerts, ...kitchenAlerts].sort((a, b) => {
         if (a.type === 'error' && b.type !== 'error') return -1;
         if (a.type !== 'error' && b.type === 'error') return 1;
         return b.count - a.count;
       });
+      
+      console.timeEnd('[CEODashboardService] Total load time');
       
       return {
         frontOfficeData: {
@@ -730,6 +1034,7 @@ class CEODashboardService {
       };
     } catch (error) {
       console.error('[CEODashboardService] Error fetching all restaurants data:', error);
+      console.timeEnd('[CEODashboardService] Total load time');
       return {
         frontOfficeData: {
           restaurants: [],
