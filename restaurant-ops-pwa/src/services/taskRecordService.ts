@@ -99,20 +99,22 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
   // Insert with retry for network issues
   let retries = 0;
   let lastError: any = null;
+  let data: any = null;
   
   while (retries < 3) {
     try {
-      const { data, error } = await supabase
+      const result = await supabase
         .from('roleplay_task_records')
         .insert(record)
         .select()
         .single()
       
-      if (error) {
-        throw error;
+      if (result.error) {
+        throw result.error;
       }
       
-      // Success - continue with inventory update
+      // Success - store the data and break
+      data = result.data;
       lastError = null;
       break;
     } catch (err: any) {
@@ -135,17 +137,8 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     throw lastError;
   }
   
-  const { data, error } = await supabase
-    .from('roleplay_task_records')
-    .select()
-    .eq('user_id', taskData.user_id)
-    .eq('task_id', taskData.task_id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
-  
-  if (error) {
-    throw error
+  if (!data) {
+    throw new Error('Failed to insert task record');
   }
   
   // 如果任务包含结构化数据（收货验货或损耗盘点），自动更新库存
