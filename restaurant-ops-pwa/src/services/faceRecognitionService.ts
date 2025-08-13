@@ -300,7 +300,11 @@ class FaceRecognitionService {
 
   // Batch match multiple users at once (optimized for login)
   // Only detect face once and compare with all users in memory
-  async findBestMatch(videoElement: HTMLVideoElement, users: any[]): Promise<{
+  async findBestMatch(
+    videoElement: HTMLVideoElement, 
+    users: any[],
+    options: { fastMode?: boolean } = {}
+  ): Promise<{
     user: any | null,
     distance: number,
     similarity: number,
@@ -320,22 +324,37 @@ class FaceRecognitionService {
       const detectStart = performance.now()
       
       const isIOS = this.isIOSDevice()
+      const { fastMode = false } = options
+      
+      // Adjust settings based on mode
+      let inputSize: number
+      if (fastMode) {
+        inputSize = 128  // Ultra fast mode
+      } else if (isIOS) {
+        inputSize = 160  // iOS optimized
+      } else {
+        inputSize = 320  // Desktop standard
+      }
+      
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: isIOS ? 320 : 416,
-        scoreThreshold: 0.5
+        inputSize,
+        scoreThreshold: fastMode ? 0.3 : 0.4
       })
+      
+      // Detect face, landmarks, and descriptor in ONE call
+      console.log(`[FaceRecognition] Using inputSize=${detectorOptions.inputSize}, threshold=${detectorOptions.scoreThreshold}`)
       
       const detection = await faceapi
         .detectSingleFace(videoElement, detectorOptions)
         .withFaceLandmarks()
         .withFaceDescriptor()
-
+      
       if (!detection) {
-        throw new Error('未检测到人脸，请确保面部清晰可见')
+        throw new Error('特征提取失败，请重试')
       }
 
       const detectTime = performance.now() - detectStart
-      console.log(`[FaceRecognition] Face detected in ${detectTime.toFixed(0)}ms`)
+      console.log(`[FaceRecognition] Total detection time: ${detectTime.toFixed(0)}ms`)
 
       // Step 2: Compare with all users in memory (super fast)
       console.log('[FaceRecognition] Comparing with all users...')

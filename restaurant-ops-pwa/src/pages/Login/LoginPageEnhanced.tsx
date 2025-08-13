@@ -132,12 +132,16 @@ export const LoginPageEnhanced = () => {
     setDetectionProgress(0)
     
     try {
-      // Request camera permission
+      // Request camera permission with optimized constraints
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                   (navigator.userAgent.includes('Macintosh') && 'ontouchend' in document)
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'user'
+          width: { ideal: isIOS ? 320 : 640 },  // Lower resolution for iOS
+          height: { ideal: isIOS ? 240 : 480 },
+          facingMode: 'user',
+          frameRate: { ideal: 15, max: 30 }  // Limit framerate for better performance
         }
       })
       
