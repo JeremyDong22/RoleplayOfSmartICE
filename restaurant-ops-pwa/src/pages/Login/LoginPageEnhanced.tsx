@@ -37,6 +37,7 @@ import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
 import { supabase } from '../../services/supabase'
 import { faceModelManager } from '../../services/faceModelManager'
+import { faceDetectionCleanup } from '../../services/faceDetectionCleanup'
 
 export const LoginPageEnhanced = () => {
   const navigate = useNavigate()
@@ -115,13 +116,13 @@ export const LoginPageEnhanced = () => {
   useEffect(() => {
     if (loginMethod === 'face') {
       console.log('👤 Switched to face login, starting detection...')
-      startAutoDetection()
+      // Ensure clean state before starting
+      completeCleanup().then(() => {
+        startAutoDetection()
+      })
     } else if (loginMethod === 'password') {
-      // Stop camera when switching back to password
-      stopCamera()
-      setFaceDetectionState('idle')
-      setCanRetry(false)
-      setAttemptCount(0)
+      // Complete cleanup when switching back to password
+      completeCleanup()
     }
   }, [loginMethod])
   
@@ -170,9 +171,14 @@ export const LoginPageEnhanced = () => {
       })
       
       streamRef.current = stream
+      // Register stream with cleanup service
+      faceDetectionCleanup.registerStream(stream)
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
+        // Register video with cleanup service
+        faceDetectionCleanup.registerVideo(videoRef.current)
+        
         videoRef.current.onloadedmetadata = async () => {
           try {
             await videoRef.current?.play()
@@ -346,35 +352,64 @@ export const LoginPageEnhanced = () => {
   }
 
   const stopCamera = () => {
+    console.log('[LoginPage] Performing complete camera cleanup...')
+    
+    // 1. Stop and disable all tracks
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current.getTracks().forEach(track => {
+        track.stop()
+        track.enabled = false // Extra safety - disable track
+      })
       streamRef.current = null
     }
+    
+    // 2. Fully reset video element
     if (videoRef.current) {
+      videoRef.current.pause()
       videoRef.current.srcObject = null
+      videoRef.current.load() // Force reload to clear internal state
+      // Remove all event listeners
+      videoRef.current.onloadedmetadata = null
+      videoRef.current.onloadeddata = null
     }
+    
     setCameraReady(false)
   }
 
-  // Clean up camera and detection on unmount to prevent hanging
+  // Complete cleanup function for face detection
+  const completeCleanup = async () => {
+    console.log('[LoginPage] Starting complete cleanup...')
+    
+    // Clear any running detection timeouts
+    if (detectionTimeoutRef.current) {
+      clearTimeout(detectionTimeoutRef.current)
+      detectionTimeoutRef.current = null
+    }
+    if (detectionIntervalRef.current) {
+      clearTimeout(detectionIntervalRef.current)
+      detectionIntervalRef.current = null
+    }
+    
+    // Stop camera with full cleanup
+    stopCamera()
+    
+    // Reset all detection states
+    setFaceDetectionState('idle')
+    setCanRetry(false)
+    setAttemptCount(0)
+    setDetectionProgress(0)
+    setDetectedUser(null)
+    
+    // Use centralized cleanup service
+    await faceDetectionCleanup.performCompleteCleanup()
+    
+    console.log('[LoginPage] Complete cleanup finished')
+  }
+
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      console.log('[LoginPage] Cleaning up camera and detection...')
-      // Clear any running detection timeouts
-      if (detectionTimeoutRef.current) {
-        clearTimeout(detectionTimeoutRef.current)
-        detectionTimeoutRef.current = null
-      }
-      if (detectionIntervalRef.current) {
-        clearTimeout(detectionIntervalRef.current)
-        detectionIntervalRef.current = null
-      }
-      // Stop camera stream
-      stopCamera()
-      // Reset detection state
-      setFaceDetectionState('idle')
-      setCanRetry(false)
-      setAttemptCount(0)
+      completeCleanup()
     }
   }, [])
 

@@ -108,7 +108,7 @@ class AuthService {
   }
 
   // Logout user
-  logout(): void {
+  async logout(): Promise<void> {
     // Clear all auth cookies
     Cookies.remove('authToken')
     Cookies.remove('userId')
@@ -119,7 +119,17 @@ class AuthService {
     Cookies.remove('restaurantId')
 
     // Sign out from Supabase
-    supabase.auth.signOut()
+    await supabase.auth.signOut()
+    
+    // Perform complete face detection cleanup
+    // Import dynamically to avoid circular dependencies
+    try {
+      const { faceDetectionCleanup } = await import('./faceDetectionCleanup')
+      await faceDetectionCleanup.performCompleteCleanup()
+      console.log('[AuthService] Face detection cleanup completed on logout')
+    } catch (error) {
+      console.warn('[AuthService] Could not perform face detection cleanup:', error)
+    }
   }
 
   // Check if user has specific role
