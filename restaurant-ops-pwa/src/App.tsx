@@ -4,6 +4,7 @@
 // Updated: 2025-08-04 - Added force clear cache button
 // Updated: 2025-08-11 - Added face-api.js face recognition
 // Updated: 2025-08-12 - Removed FaceIO, implemented auto face detection
+// Updated: 2025-01-13 - Fixed auth initialization timing
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -26,12 +27,13 @@ import TestTaskUpload from './pages/TestTaskUpload'
 import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
-import { initializeRestaurant } from './utils/restaurantSetup'
+import { restaurantConfigService } from './services/restaurantConfigService'
 import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
 import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
 import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton'
 import { faceModelManager } from './services/faceModelManager'
+import { supabase } from './services/supabase'
 
 // CEO Dashboard imports
 import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
@@ -219,8 +221,20 @@ function App() {
     // 初始化Storage
     initializeStorage()
     
-    // 初始化餐厅设置
-    initializeRestaurant()
+    // 监听认证状态变化，登录后才初始化餐厅配置
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          // 用户已登录，初始化餐厅配置
+          console.log('[App] User authenticated, initializing restaurant config...')
+          await restaurantConfigService.initialize()
+        } else if (event === 'SIGNED_OUT') {
+          // 用户登出，清理餐厅配置
+          console.log('[App] User signed out, clearing restaurant config...')
+          await restaurantConfigService.refresh()
+        }
+      }
+    )
     
     // 预加载人脸识别模型（后台加载，不阻塞）
     // 在iOS设备上可能需要更长的加载时间
@@ -264,6 +278,7 @@ function App() {
     // initRealtime()
 
     return () => {
+      subscription.unsubscribe()
       realtimeService.unsubscribeAll()
     }
   }, [])

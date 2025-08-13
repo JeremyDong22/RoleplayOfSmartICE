@@ -1,8 +1,9 @@
 // Realtime communication service for restaurant operations
 // Created: 2025-07-22
 // Features: WebSocket connection management, real-time updates, notification push
+// Updated: 2025-01-13 - Use singleton Supabase client to avoid duplicate instances
 
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabase';
 import { store } from '../store';
 
 // Types for realtime events
@@ -18,17 +19,8 @@ export class RealtimeService {
   private maxReconnectAttempts = 5;
 
   constructor() {
-    this.supabase = createClient(
-      import.meta.env.VITE_SUPABASE_URL,
-      import.meta.env.VITE_SUPABASE_ANON_KEY,
-      {
-        realtime: {
-          params: {
-            eventsPerSecond: 10
-          }
-        }
-      }
-    );
+    // Use the existing Supabase client instead of creating a new one
+    this.supabase = supabase;
   }
 
   // Subscribe to task updates
