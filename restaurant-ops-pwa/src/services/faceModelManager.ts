@@ -67,6 +67,76 @@ class FaceModelManager {
     }
   }
   
+  // Preload models in background (non-blocking)
+  preloadInBackground(): void {
+    if (this.modelsLoaded || this.loadingPromise) {
+      return
+    }
+    
+    console.log('[ModelManager] Starting background preload...')
+    
+    // Start loading but don't await
+    this.initialize().catch(error => {
+      console.error('[ModelManager] Background preload failed:', error)
+      // Don't throw - this is background loading
+    })
+  }
+  
+  // Initialize only essential models for fast start
+  async initializeMinimal(): Promise<void> {
+    if (faceapi.nets.tinyFaceDetector.isLoaded) {
+      console.log('[ModelManager] Minimal models already loaded')
+      return
+    }
+    
+    try {
+      console.log('[ModelManager] Loading minimal models for fast start...')
+      
+      // Only load TinyFaceDetector for basic detection
+      await faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL)
+      console.log('[ModelManager] Minimal models loaded')
+      
+      // Load other models in background
+      this.loadRemainingModelsInBackground()
+    } catch (error) {
+      console.error('[ModelManager] Failed to load minimal models:', error)
+      throw error
+    }
+  }
+  
+  private loadRemainingModelsInBackground(): void {
+    if (this.modelsLoaded) return
+    
+    const loadRemaining = async () => {
+      try {
+        const isIOS = this.isIOSDevice()
+        
+        if (!faceapi.nets.faceLandmark68Net.isLoaded) {
+          console.log('[ModelManager] Background loading FaceLandmark68Net...')
+          await faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL)
+          if (isIOS) await new Promise(resolve => setTimeout(resolve, 200))
+        }
+        
+        if (!faceapi.nets.faceRecognitionNet.isLoaded) {
+          console.log('[ModelManager] Background loading FaceRecognitionNet...')
+          await this.loadModelWithRetry(
+            () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
+            'FaceRecognitionNet',
+            3
+          )
+        }
+        
+        this.modelsLoaded = true
+        console.log('[ModelManager] All models loaded in background')
+      } catch (error) {
+        console.error('[ModelManager] Background loading failed:', error)
+      }
+    }
+    
+    // Start background loading
+    loadRemaining()
+  }
+  
   private async loadModels(): Promise<void> {
     try {
       this.loadAttempts++

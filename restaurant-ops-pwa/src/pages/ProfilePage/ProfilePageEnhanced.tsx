@@ -48,6 +48,7 @@ import { authService } from '../../services/authService'
 import { faceDetectionService, type FaceDetectionResult } from '../../services/faceDetectionService'
 import { NavigationBar } from '../../components/Navigation/NavigationBar'
 import { supabase } from '../../services/supabase'
+import { faceModelManager } from '../../services/faceModelManager'
 
 // Smart Face Enrollment Dialog with 9-angle capture
 const SmartFaceEnrollmentDialog: React.FC<{
@@ -196,7 +197,17 @@ const SmartFaceEnrollmentDialog: React.FC<{
   
   const initializeDetection = async () => {
     try {
-      await faceDetectionService.initialize()
+      // Check if models are already loaded
+      const status = faceModelManager.getModelStatus()
+      console.log('📊 Model status in ProfilePage:', status)
+      
+      if (!status.allLoaded) {
+        console.log('⏳ Loading face models...')
+        await faceDetectionService.initialize()
+        console.log('✅ Face models loaded')
+      } else {
+        console.log('✅ Face models already loaded')
+      }
     } catch (err) {
       console.error('Failed to initialize face detection:', err)
       setError('无法加载人脸检测模型，请刷新页面重试')

@@ -31,6 +31,7 @@ import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
 import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
 import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton'
+import { faceModelManager } from './services/faceModelManager'
 
 // CEO Dashboard imports
 import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
@@ -204,6 +205,10 @@ function App() {
     
     // 初始化餐厅设置
     initializeRestaurant()
+    
+    // 预加载人脸识别模型（后台加载，不阻塞）
+    console.log('[App] Starting face model preload...')
+    faceModelManager.preloadInBackground()
     
     // 模拟用户登录后启动 Realtime
     // const initRealtime = async () => {

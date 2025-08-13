@@ -36,6 +36,7 @@ import {
 import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
 import { supabase } from '../../services/supabase'
+import { faceModelManager } from '../../services/faceModelManager'
 
 export const LoginPageEnhanced = () => {
   const navigate = useNavigate()
@@ -73,28 +74,30 @@ export const LoginPageEnhanced = () => {
   }, [])
 
   const initializeFaceService = async () => {
-    let retryCount = 0
-    const maxRetries = 3
-    
-    while (retryCount < maxRetries) {
-      try {
-        // Initialize face recognition service
-        await faceRecognitionService.initialize()
-        console.log('✅ Face recognition service initialized')
-        return // Success, exit function
-      } catch (err) {
-        retryCount++
-        console.error(`Failed to initialize face service (attempt ${retryCount}/${maxRetries}):`, err)
-        
-        if (retryCount < maxRetries) {
-          // Wait before retrying (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
-        } else {
-          // Final failure - show user-friendly message
-          console.error('❌ Face recognition service unavailable after multiple attempts')
-          // Don't block login, just disable face recognition
-        }
+    try {
+      // Check if models are already loaded (by preload)
+      const status = faceModelManager.getModelStatus()
+      console.log('📊 Model status on login page:', status)
+      
+      if (status.allLoaded) {
+        console.log('✅ Face models already loaded (from preload)')
+        return
       }
+      
+      // Try minimal load first for faster start
+      if (!status.tinyFaceDetector) {
+        console.log('⏳ Loading minimal models for quick start...')
+        await faceModelManager.initializeMinimal()
+        console.log('✅ Minimal models loaded, other models loading in background')
+      } else {
+        // If minimal already loaded, ensure all models are loaded
+        console.log('⏳ Completing model loading...')
+        await faceRecognitionService.initialize()
+        console.log('✅ All face models loaded')
+      }
+    } catch (err) {
+      console.error('❌ Failed to initialize face service:', err)
+      // Don't block login, just disable face recognition
     }
   }
 
