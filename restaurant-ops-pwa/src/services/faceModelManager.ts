@@ -14,12 +14,9 @@ class FaceModelManager {
   private readonly MODEL_URL = '/models'
   private readonly MODEL_URL_ABSOLUTE = window.location.origin + '/models'
   private progressCallback: ((message: string, progress: number) => void) | null = null
-  private isFetchIntercepted = false  // Global flag to prevent multiple interceptors
-  private originalFetch: typeof fetch | null = null  // Store original fetch globally
   
   private constructor() {
-    // Store the original fetch immediately on construction
-    this.originalFetch = window.fetch
+    // Simplified constructor - no fetch interception needed
   }
   
   static getInstance(): FaceModelManager {
@@ -66,9 +63,6 @@ class FaceModelManager {
   
   // Main initialization method
   async initialize(): Promise<void> {
-    // Ensure fetch is clean before starting
-    this.ensureFetchRestored()
-    
     // If already loaded, return immediately
     if (this.modelsLoaded) {
       return
@@ -86,7 +80,6 @@ class FaceModelManager {
       await this.loadingPromise
     } finally {
       this.loadingPromise = null
-      this.ensureFetchRestored() // Extra safety: ensure fetch is restored after loading
     }
   }
   
@@ -237,74 +230,45 @@ class FaceModelManager {
   private async loadModelsInParallel(): Promise<void> {
     const loadStartTime = performance.now()
     
-    // Use a single global interceptor for all parallel loads
-    let globalFetchCount = 0
-    
-    if (!this.isFetchIntercepted && this.originalFetch) {
-      this.isFetchIntercepted = true
-      const savedOriginalFetch = this.originalFetch
-      
-      window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.toString()
-        
-        // Only log model-related fetches
-        if (url.includes('/models/')) {
-          globalFetchCount++
-          
-          try {
-            const response = await savedOriginalFetch(input, init)
-            return response
-          } catch (fetchError) {
-            throw fetchError
-          }
-        } else {
-          // For non-model fetches, just pass through without logging
-          return savedOriginalFetch(input, init)
-        }
-      }
-    }
+    // Remove fetch interceptor to prevent duplicate requests
+    // The interceptor was causing the same model files to be requested multiple times
     
     const modelsToLoad = []
     
-    try {
-      if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-        modelsToLoad.push(
-          this.loadModelWithRetrySimple(
-            () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
-            'TinyFaceDetector'
-          )
+    if (!faceapi.nets.tinyFaceDetector.isLoaded) {
+      modelsToLoad.push(
+        this.loadModelWithRetrySimple(
+          () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
+          'TinyFaceDetector'
         )
-      }
-      
-      if (!faceapi.nets.faceLandmark68Net.isLoaded) {
-        modelsToLoad.push(
-          this.loadModelWithRetrySimple(
-            () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
-            'FaceLandmark68Net'
-          )
+      )
+    }
+    
+    if (!faceapi.nets.faceLandmark68Net.isLoaded) {
+      modelsToLoad.push(
+        this.loadModelWithRetrySimple(
+          () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
+          'FaceLandmark68Net'
         )
-      }
-      
-      if (!faceapi.nets.faceRecognitionNet.isLoaded) {
-        modelsToLoad.push(
-          this.loadModelWithRetrySimple(
-            () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
-            'FaceRecognitionNet'
-          )
+      )
+    }
+    
+    if (!faceapi.nets.faceRecognitionNet.isLoaded) {
+      modelsToLoad.push(
+        this.loadModelWithRetrySimple(
+          () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
+          'FaceRecognitionNet'
         )
-      }
-      
-      if (modelsToLoad.length > 0) {
-        await Promise.all(modelsToLoad)
-        const parallelTime = performance.now() - loadStartTime
-      } else {
-      }
-    } finally {
-      // Always restore original fetch
-      if (this.isFetchIntercepted && this.originalFetch) {
-        window.fetch = this.originalFetch
-        this.isFetchIntercepted = false
-      }
+      )
+    }
+    
+    if (modelsToLoad.length > 0) {
+      console.log('[ModelManager] Starting parallel load of', modelsToLoad.length, 'models')
+      await Promise.all(modelsToLoad)
+      const parallelTime = performance.now() - loadStartTime
+      console.log('[ModelManager] All models loaded in', Math.round(parallelTime), 'ms')
+    } else {
+      console.log('[ModelManager] All models already loaded')
     }
   }
   
@@ -312,19 +276,26 @@ class FaceModelManager {
   private async loadModelWithRetrySimple(
     loadFn: () => Promise<void>,
     modelName: string,
-    maxRetries: number = 3
+    maxRetries: number = 2  // Reduced from 3 to 2 for faster failure
   ): Promise<void> {
     let lastError: Error | null = null
     const modelStartTime = performance.now()
+    const TIMEOUT_MS = 15000  // 15 second timeout per model
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const attemptStartTime = performance.now()
       
       try {
-        await loadFn()
+        // Add timeout to model loading
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Loading ${modelName} timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS)
+        })
+        
+        await Promise.race([loadFn(), timeoutPromise])
         
         const attemptTime = performance.now() - attemptStartTime
         const totalTime = performance.now() - modelStartTime
+        console.log(`[ModelManager] ✅ ${modelName} loaded in ${Math.round(attemptTime)}ms`)
         
         if (this.progressCallback) {
           const progress = modelName === 'TinyFaceDetector' ? 33 :
@@ -336,9 +307,11 @@ class FaceModelManager {
       } catch (error: any) {
         lastError = error as Error
         const attemptTime = performance.now() - attemptStartTime
+        console.warn(`[ModelManager] ❌ ${modelName} attempt ${attempt} failed after ${Math.round(attemptTime)}ms:`, error.message)
         
         if (attempt < maxRetries) {
-          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
+          const waitTime = Math.min(1000 * attempt, 3000)  // Simpler backoff: 1s, 2s, 3s max
+          console.log(`[ModelManager] Retrying ${modelName} in ${waitTime}ms...`)
           await new Promise(resolve => setTimeout(resolve, waitTime))
         }
       }
@@ -346,6 +319,7 @@ class FaceModelManager {
     
     // All retries failed
     const totalTime = performance.now() - modelStartTime
+    console.error(`[ModelManager] Failed to load ${modelName} after ${maxRetries} attempts (${Math.round(totalTime)}ms total)`)
     throw lastError || new Error(`Failed to load ${modelName} after ${maxRetries} attempts`)
   }
   
@@ -406,17 +380,8 @@ class FaceModelManager {
     }
   }
   
-  // Ensure fetch is restored (safety mechanism)
-  private ensureFetchRestored(): void {
-    if (this.isFetchIntercepted && this.originalFetch) {
-      window.fetch = this.originalFetch
-      this.isFetchIntercepted = false
-    }
-  }
-  
   // Force reload models (useful for error recovery)
   async forceReload(): Promise<void> {
-    this.ensureFetchRestored() // Ensure fetch is clean before reload
     this.modelsLoaded = false
     this.loadingPromise = null
     this.loadAttempts = 0

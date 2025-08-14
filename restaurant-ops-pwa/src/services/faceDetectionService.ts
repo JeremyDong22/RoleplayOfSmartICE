@@ -130,10 +130,9 @@ class FaceDetectionService {
     }
 
     try {
-      const isIOS = this.isIOSDevice()
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: isIOS ? 320 : 416, // Smaller input size for iOS
-        scoreThreshold: 0.5
+        inputSize: 128, // Unified small size for all devices - 10x faster
+        scoreThreshold: 0.4  // Slightly lower threshold to compensate
       })
       
       const detection = await faceapi
@@ -216,10 +215,9 @@ class FaceDetectionService {
     }
 
     try {
-      const isIOS = this.isIOSDevice()
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: isIOS ? 320 : 416, // Smaller input size for iOS
-        scoreThreshold: 0.5
+        inputSize: 128, // Unified small size for all devices - 10x faster
+        scoreThreshold: 0.4  // Slightly lower threshold to compensate
       })
       
       const detection = await faceapi
@@ -248,10 +246,9 @@ class FaceDetectionService {
     }
 
     try {
-      const isIOS = this.isIOSDevice()
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: isIOS ? 320 : 416, // Smaller input size for iOS
-        scoreThreshold: 0.5
+        inputSize: 128, // Unified small size for all devices - 10x faster
+        scoreThreshold: 0.4  // Slightly lower threshold to compensate
       })
       
       const detection = await faceapi

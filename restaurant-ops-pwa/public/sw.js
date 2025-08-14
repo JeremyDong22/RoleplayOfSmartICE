@@ -1,8 +1,10 @@
 // Service Worker for Restaurant Operations PWA
 // This is a basic service worker that caches assets for offline use
 // Updated to support push notifications
+// Updated 2025-01-14: Added face recognition model caching
 
-const CACHE_NAME = 'restaurant-ops-v2'; // Updated to force cache refresh
+const CACHE_NAME = 'restaurant-ops-v3'; // Updated to force cache refresh
+const MODEL_CACHE_NAME = 'face-models-v1'; // Separate cache for models
 const urlsToCache = [
   '/',
   '/index.html',
@@ -24,6 +26,32 @@ self.addEventListener('install', event => {
 // Fetch event - serve from cache when offline
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  
+  // Special handling for face recognition models
+  if (url.pathname.includes('/models/') && 
+      (url.pathname.endsWith('.bin') || url.pathname.endsWith('.json'))) {
+    event.respondWith(
+      caches.open(MODEL_CACHE_NAME).then(cache => {
+        return cache.match(event.request).then(response => {
+          if (response) {
+            console.log('[SW] Model from cache:', url.pathname);
+            return response;
+          }
+          
+          console.log('[SW] Fetching model:', url.pathname);
+          return fetch(event.request).then(networkResponse => {
+            // Cache the model file for future use
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(event.request, networkResponse.clone());
+              console.log('[SW] Model cached:', url.pathname);
+            }
+            return networkResponse;
+          });
+        });
+      })
+    );
+    return;
+  }
   
   // Skip caching for API requests
   if (url.hostname.includes('supabase.co') || 
@@ -85,12 +113,13 @@ self.addEventListener('fetch', event => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
+  const cacheWhitelist = [CACHE_NAME, MODEL_CACHE_NAME]; // Keep both caches
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
