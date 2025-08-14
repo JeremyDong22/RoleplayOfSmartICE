@@ -131,8 +131,8 @@ class FaceDetectionService {
 
     try {
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 128, // Unified small size for all devices - 10x faster
-        scoreThreshold: 0.4  // Slightly lower threshold to compensate
+        inputSize: 416, // Standard size for better accuracy
+        scoreThreshold: 0.5  // Standard detection threshold
       })
       
       const detection = await faceapi
@@ -216,8 +216,8 @@ class FaceDetectionService {
 
     try {
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 128, // Unified small size for all devices - 10x faster
-        scoreThreshold: 0.4  // Slightly lower threshold to compensate
+        inputSize: 416, // Standard size for better accuracy
+        scoreThreshold: 0.5  // Standard detection threshold
       })
       
       const detection = await faceapi
@@ -247,8 +247,8 @@ class FaceDetectionService {
 
     try {
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 128, // Unified small size for all devices - 10x faster
-        scoreThreshold: 0.4  // Slightly lower threshold to compensate
+        inputSize: 416, // Standard size for better accuracy
+        scoreThreshold: 0.5  // Standard detection threshold
       })
       
       const detection = await faceapi

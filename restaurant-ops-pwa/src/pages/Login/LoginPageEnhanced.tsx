@@ -49,13 +49,15 @@ export const LoginPageEnhanced = () => {
   const [success, setSuccess] = useState('')
   
   // Face detection states
-  const [faceDetectionState, setFaceDetectionState] = useState<'detecting' | 'success' | 'failed' | 'idle'>('idle')
+  const [faceDetectionState, setFaceDetectionState] = useState<'detecting' | 'success' | 'failed' | 'idle' | 'no-match' | 'timeout'>('idle')
   const [detectedUser, setDetectedUser] = useState<any>(null)
   const [loginMethod, setLoginMethod] = useState<'auto' | 'face' | 'password'>('password')
   const [cameraReady, setCameraReady] = useState(false)
   const [detectionProgress, setDetectionProgress] = useState(0)
   const [attemptCount, setAttemptCount] = useState(0)
   const [canRetry, setCanRetry] = useState(false)
+  const [detectionMessage, setDetectionMessage] = useState('正在启动摄像头...')
+  const [detectionStage, setDetectionStage] = useState<'camera' | 'database' | 'matching' | 'done'>('camera')
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -119,11 +121,12 @@ export const LoginPageEnhanced = () => {
   
   // Handle retry on face icon click
   const handleFaceRetry = () => {
-    if (canRetry && faceDetectionState === 'failed') {
+    if (canRetry && (faceDetectionState === 'failed' || faceDetectionState === 'no-match' || faceDetectionState === 'timeout')) {
       setFaceDetectionState('detecting')
       setCanRetry(false)
       setAttemptCount(0)
       setDetectionProgress(0)
+      setDetectionMessage('正在启动摄像头...')
       performAutoDetection()
     }
   }
@@ -194,18 +197,27 @@ export const LoginPageEnhanced = () => {
       return
     }
     
-    const MAX_ATTEMPTS = 1 // Only 1 attempt
-    const ATTEMPT_INTERVAL = 1000 // Not needed for single attempt but keeping for consistency
+    const MAX_ATTEMPTS = 3 // Increased to 3 attempts for better success rate
+    const ATTEMPT_INTERVAL = 500 // Reduced interval between attempts
+    const DETECTION_TIMEOUT = 10000 // 10 seconds total timeout
     let attempts = 0
     
     // Reset states
     setCanRetry(false)
     setAttemptCount(0)
+    setDetectionProgress(0)
+    setDetectionStage('camera')
     
-    // Progress animation
-    detectionIntervalRef.current = setInterval(() => {
-      setDetectionProgress(prev => Math.min(prev + 10, 100))
-    }, 50)
+    // Set overall timeout
+    const overallTimeout = setTimeout(() => {
+      if (faceDetectionState === 'detecting') {
+        setFaceDetectionState('timeout')
+        setDetectionMessage('识别超时，请重试')
+        setCanRetry(true)
+        setDetectionProgress(100)
+        if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current)
+      }
+    }, DETECTION_TIMEOUT)
     
     const tryDetection = async () => {
       if (!videoRef.current) {
@@ -213,6 +225,16 @@ export const LoginPageEnhanced = () => {
       }
       
       try {
+        // Stage 1: Camera ready (0-20%)
+        setDetectionStage('camera')
+        setDetectionMessage('摄像头已就绪，开始检测...')
+        setDetectionProgress(20)
+        
+        // Stage 2: Database query (20-50%)
+        setDetectionStage('database')
+        setDetectionMessage('正在查询用户数据库...')
+        setDetectionProgress(30)
+        
         // Get all users with face descriptors with timeout using AbortController
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 5000)
@@ -224,6 +246,10 @@ export const LoginPageEnhanced = () => {
             .select('*')
             .not('face_descriptor', 'is', null)
             .abortSignal(controller.signal)
+          
+          setDetectionProgress(50) // Database query complete
+          // Small delay to show the progress
+          await new Promise(resolve => setTimeout(resolve, 200))
         } catch (err: any) {
           clearTimeout(timeout)
           if (err.name === 'AbortError' || err.message?.includes('abort')) {
@@ -251,8 +277,22 @@ export const LoginPageEnhanced = () => {
         const { data: users, error: dbError } = result as any
         
         if (dbError || !users || users.length === 0) {
+          setDetectionMessage('未找到注册用户')
+          setDetectionProgress(100)
           return false
         }
+        
+        // Stage 3: Face matching (50-90%)
+        setDetectionStage('matching')
+        setDetectionMessage(`正在匹配人脸（共${users.length}个用户）...`)
+        setDetectionProgress(60)
+        
+        // Add small delay to show the matching stage
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+        // Progress animation during matching
+        setDetectionProgress(70)
+        await new Promise(resolve => setTimeout(resolve, 200))
         
         // Use the new optimized batch matching function
         const matchResult = await faceRecognitionService.findBestMatch(
@@ -260,10 +300,22 @@ export const LoginPageEnhanced = () => {
           users
         )
         
+        setDetectionProgress(80)
+        await new Promise(resolve => setTimeout(resolve, 200))
+        setDetectionProgress(90)
+        
+        // Add small delay to show the progress
+        await new Promise(resolve => setTimeout(resolve, 200))
+        
+        // Stage 4: Process result (90-100%)
+        setDetectionStage('done')
+        
         // Check if we found a match
         if (matchResult.isMatch && matchResult.user) {
           const displayName = matchResult.user.full_name || matchResult.user.username || '用户'
           
+          setDetectionMessage('识别成功！')
+          setDetectionProgress(100)
           setDetectedUser(matchResult.user)
           setFaceDetectionState('success')
           setSuccess(`识别成功！欢迎回来，${displayName} (相似度: ${matchResult.similarity.toFixed(0)}%)`)
@@ -274,6 +326,10 @@ export const LoginPageEnhanced = () => {
           }, 1000)
           
           return true
+        } else {
+          // No match found
+          setDetectionMessage('未找到匹配的用户')
+          setDetectionProgress(100)
         }
         
         return false
@@ -287,30 +343,39 @@ export const LoginPageEnhanced = () => {
       while (attempts < MAX_ATTEMPTS) {
         attempts++
         setAttemptCount(attempts) // Update UI with current attempt
+        setDetectionMessage(`第 ${attempts}/${MAX_ATTEMPTS} 次尝试...`)
         
         const matched = await tryDetection()
         if (matched) {
-          if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current)
+          clearTimeout(overallTimeout)
           stopCamera()
           return
         }
         
-        // Wait before next attempt
-        await new Promise(resolve => setTimeout(resolve, ATTEMPT_INTERVAL))
+        // Wait before next attempt (if not last attempt)
+        if (attempts < MAX_ATTEMPTS) {
+          setDetectionMessage('准备重试...')
+          await new Promise(resolve => setTimeout(resolve, ATTEMPT_INTERVAL))
+        }
       }
       
-      // No face matched after the attempt
-      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current)
-      setFaceDetectionState('failed')
+      // No face matched after all attempts
+      clearTimeout(overallTimeout)
+      setFaceDetectionState('no-match')
+      setDetectionMessage('未能识别您的身份，请确保您已注册人脸')
       setCanRetry(true)
       setAttemptCount(MAX_ATTEMPTS)
+      setDetectionProgress(100)
       // Don't switch to password, stay on face login with error state
       // stopCamera() - Keep camera running for retry
     }
     
     detectionLoop().catch(err => {
+      clearTimeout(overallTimeout)
       setFaceDetectionState('failed')
+      setDetectionMessage('检测过程出错，请重试')
       setCanRetry(true)
+      setDetectionProgress(100)
       // Don't switch to password
     })
   }
@@ -677,24 +742,35 @@ export const LoginPageEnhanced = () => {
                 {faceDetectionState === 'detecting' && (
                   <>
                     <Alert severity="info" icon={<CameraAlt />} sx={{ mb: 2 }}>
-                      正在识别您的面部...
+                      {detectionMessage}
                     </Alert>
                     <LinearProgress 
                       variant="determinate" 
                       value={detectionProgress} 
                       sx={{ mb: 2 }}
                     />
+                    {attemptCount > 0 && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        第 {attemptCount}/3 次尝试
+                      </Typography>
+                    )}
                   </>
                 )}
                 
-                {faceDetectionState === 'failed' && (
+                {(faceDetectionState === 'failed' || faceDetectionState === 'no-match' || faceDetectionState === 'timeout') && (
                   <>
-                    {/* Subtle error message */}
-                    <Typography variant="body1" color="error" sx={{ mb: 1 }}>
-                      未能识别您的面部
-                    </Typography>
+                    {/* Contextual error message */}
+                    <Alert 
+                      severity={faceDetectionState === 'no-match' ? 'warning' : 'error'} 
+                      sx={{ mb: 2 }}
+                      onClose={() => setFaceDetectionState('idle')}
+                    >
+                      {detectionMessage}
+                    </Alert>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      请确保光线充足并正对摄像头
+                      {faceDetectionState === 'no-match' ? '请确保您已注册人脸或尝试密码登录' :
+                       faceDetectionState === 'timeout' ? '网络可能不稳定，请检查网络后重试' :
+                       '请确保光线充足并正对摄像头'}
                     </Typography>
                   </>
                 )}
@@ -718,7 +794,8 @@ export const LoginPageEnhanced = () => {
                     borderRadius: '50%',
                     border: '3px solid',
                     borderColor: 
-                      faceDetectionState === 'failed' ? 'error.main' : 
+                      (faceDetectionState === 'failed' || faceDetectionState === 'timeout') ? 'error.main' :
+                      faceDetectionState === 'no-match' ? 'warning.main' : 
                       faceDetectionState === 'detecting' || faceDetectionState === 'loading' ? 'primary.main' : 
                       'grey.300',
                     backgroundColor: 'transparent',
@@ -729,7 +806,7 @@ export const LoginPageEnhanced = () => {
                     transition: 'all 0.3s ease',
                     animation: 
                       faceDetectionState === 'detecting' || faceDetectionState === 'loading' ? 'pulse 2s infinite' : 
-                      faceDetectionState === 'failed' ? 'shake 0.5s' : 'none',
+                      (faceDetectionState === 'failed' || faceDetectionState === 'timeout') ? 'shake 0.5s' : 'none',
                     '&:hover': canRetry ? {
                       transform: 'scale(1.05)',
                       borderColor: 'error.dark'
@@ -750,7 +827,8 @@ export const LoginPageEnhanced = () => {
                     sx={{ 
                       fontSize: 48, 
                       color: 
-                        faceDetectionState === 'failed' ? 'error.main' :
+                        (faceDetectionState === 'failed' || faceDetectionState === 'timeout') ? 'error.main' :
+                        faceDetectionState === 'no-match' ? 'warning.main' :
                         faceDetectionState === 'detecting' || faceDetectionState === 'loading' ? 'primary.main' : 
                         'grey.500',
                       transition: 'color 0.3s ease'
@@ -759,7 +837,7 @@ export const LoginPageEnhanced = () => {
                 </Box>
                 
                 {/* Retry hint text */}
-                {canRetry && faceDetectionState === 'failed' && (
+                {canRetry && (faceDetectionState === 'failed' || faceDetectionState === 'no-match' || faceDetectionState === 'timeout') && (
                   <Typography 
                     variant="caption" 
                     sx={{ 

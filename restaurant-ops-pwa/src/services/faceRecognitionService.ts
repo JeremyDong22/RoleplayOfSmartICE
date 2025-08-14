@@ -129,10 +129,10 @@ class FaceRecognitionService {
         attempts++
         const attemptStart = performance.now()
         
-        // Use smaller input size for better mobile performance
+        // Use unified detector options for all devices
         const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-          inputSize: 128, // Reduced from 416 for 10x faster processing
-          scoreThreshold: 0.4  // Slightly lower threshold to compensate for smaller size
+          inputSize: 416, // Standard size for better accuracy
+          scoreThreshold: 0.5  // Standard detection threshold
         })
         
         const detection = await faceapi
@@ -218,8 +218,8 @@ class FaceRecognitionService {
       const detectStart = performance.now()
       
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 128, // Reduced from 416 for 10x faster processing
-        scoreThreshold: 0.4  // Slightly lower threshold to compensate for smaller size
+        inputSize: 416, // Standard size for better accuracy
+        scoreThreshold: 0.5  // Standard detection threshold
       })
       
       const detection = await faceapi
@@ -323,12 +323,12 @@ class FaceRecognitionService {
       
       const { fastMode = false } = options
       
-      // Optimized settings for mobile performance
-      const inputSize = fastMode ? 96 : 128  // Ultra-fast mode (96px) or standard (128px)
+      // Unified settings for all devices
+      const inputSize = fastMode ? 128 : 416  // Fast mode (128px) or standard (416px) 
       
       const detectorOptions = new faceapi.TinyFaceDetectorOptions({
         inputSize,
-        scoreThreshold: fastMode ? 0.3 : 0.4
+        scoreThreshold: 0.5  // Standard detection threshold
       })
       
       // Detect face, landmarks, and descriptor in ONE call with timeout
