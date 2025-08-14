@@ -35,7 +35,7 @@ import {
 } from '@mui/icons-material'
 import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
-import { supabase, resetSupabaseClient } from '../../services/supabase'
+import { getSupabase, resetSupabaseClient } from '../../services/supabase'
 import { faceModelManager } from '../../services/faceModelManager'
 import { faceDetectionCleanup } from '../../services/faceDetectionCleanup'
 
@@ -64,7 +64,6 @@ export const LoginPageEnhanced = () => {
 
   // Initialize face-api.js on mount (but don't start detection)
   useEffect(() => {
-    console.log('🚀 Initializing face recognition service...')
     initializeFaceService()
     
     return () => {
@@ -78,29 +77,22 @@ export const LoginPageEnhanced = () => {
     try {
       // Check if models are already loaded (by preload)
       const status = faceModelManager.getModelStatus()
-      console.log('📊 Model status on login page:', status)
       
       if (status.allLoaded) {
-        console.log('✅ Face models already loaded (from preload)')
         return
       }
       
       // Try minimal load first for faster start
       if (!status.tinyFaceDetector) {
-        console.log('⏳ Loading minimal models for quick start...')
         try {
           await faceModelManager.initializeMinimal()
-          console.log('✅ Minimal models loaded, other models loading in background')
         } catch (minimalError) {
-          console.warn('⚠️ Minimal model load failed, trying full initialization...')
           // Fall back to full initialization if minimal fails
           await faceModelManager.initialize()
         }
       } else {
         // If minimal already loaded, ensure all models are loaded
-        console.log('⏳ Completing model loading...')
         await faceRecognitionService.initialize()
-        console.log('✅ All face models loaded')
       }
     } catch (err: any) {
       console.error('❌ Failed to initialize face service:', err)
@@ -115,7 +107,6 @@ export const LoginPageEnhanced = () => {
   // Start face detection when switching to face mode
   useEffect(() => {
     if (loginMethod === 'face') {
-      console.log('👤 Switched to face login, starting detection...')
       // Ensure clean state before starting
       completeCleanup().then(() => {
         startAutoDetection()
@@ -129,7 +120,6 @@ export const LoginPageEnhanced = () => {
   // Handle retry on face icon click
   const handleFaceRetry = () => {
     if (canRetry && faceDetectionState === 'failed') {
-      console.log('🔄 Retrying face detection...')
       setFaceDetectionState('detecting')
       setCanRetry(false)
       setAttemptCount(0)
@@ -183,18 +173,16 @@ export const LoginPageEnhanced = () => {
           try {
             await videoRef.current?.play()
             setCameraReady(true)
-            console.log('📹 Camera ready, starting detection...')
             // Add a small delay to ensure state is updated
             setTimeout(() => {
               performAutoDetection()
             }, 100)
           } catch (playError) {
-            console.error('Failed to play video:', playError)
+            // Video play failed
           }
         }
       }
     } catch (err) {
-      console.error('Camera access denied:', err)
       setFaceDetectionState('failed')
       setLoginMethod('password')
     }
@@ -202,9 +190,7 @@ export const LoginPageEnhanced = () => {
 
   const performAutoDetection = async () => {
     // Don't check cameraReady here - it's called after camera is ready
-    console.log('🔍 Starting performAutoDetection')
     if (!videoRef.current) {
-      console.error('❌ No video element')
       return
     }
     
@@ -223,54 +209,52 @@ export const LoginPageEnhanced = () => {
     
     const tryDetection = async () => {
       if (!videoRef.current) {
-        console.log('❌ No video ref in tryDetection')
         return false
       }
       
-      console.log('🔍 Attempting face detection with BEST MATCH strategy...')
-      
       try {
-        // Get all users with face descriptors with timeout
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Supabase query timeout')), 5000)
-        })
-        
-        let queryPromise = supabase
-          .from('roleplay_users')
-          .select('*')
-          .not('face_descriptor', 'is', null)
+        // Get all users with face descriptors with timeout using AbortController
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 5000)
         
         let result
         try {
-          result = await Promise.race([queryPromise, timeoutPromise])
-        } catch (timeoutErr: any) {
-          if (timeoutErr.message === 'Supabase query timeout') {
-            console.log('⚠️ Supabase timeout detected, resetting client...')
+          result = await getSupabase()
+            .from('roleplay_users')
+            .select('*')
+            .not('face_descriptor', 'is', null)
+            .abortSignal(controller.signal)
+        } catch (err: any) {
+          clearTimeout(timeout)
+          if (err.name === 'AbortError' || err.message?.includes('abort')) {
             // Reset the Supabase client and retry once
             const freshSupabase = resetSupabaseClient()
-            queryPromise = freshSupabase
-              .from('roleplay_users')
-              .select('*')
-              .not('face_descriptor', 'is', null)
+            const retryController = new AbortController()
+            const retryTimeout = setTimeout(() => retryController.abort(), 5000)
             
-            // Try again with fresh client (no timeout this time for faster fail)
-            result = await queryPromise
+            try {
+              result = await freshSupabase
+                .from('roleplay_users')
+                .select('*')
+                .not('face_descriptor', 'is', null)
+                .abortSignal(retryController.signal)
+            } finally {
+              clearTimeout(retryTimeout)
+            }
           } else {
-            throw timeoutErr
+            throw err
           }
+        } finally {
+          clearTimeout(timeout)
         }
         
         const { data: users, error: dbError } = result as any
         
-        console.log('👥 Found users with face data:', users?.length || 0)
-        
         if (dbError || !users || users.length === 0) {
-          console.log('No enrolled users found', dbError)
           return false
         }
         
         // Use the new optimized batch matching function
-        console.log('📊 Starting optimized batch matching...')
         const matchResult = await faceRecognitionService.findBestMatch(
           videoRef.current!,
           users
@@ -279,11 +263,6 @@ export const LoginPageEnhanced = () => {
         // Check if we found a match
         if (matchResult.isMatch && matchResult.user) {
           const displayName = matchResult.user.full_name || matchResult.user.username || '用户'
-          
-          console.log('🏆 Match found:')
-          console.log(`   User: ${displayName}`)
-          console.log(`   Distance: ${matchResult.distance.toFixed(3)}`)
-          console.log(`   Similarity: ${matchResult.similarity.toFixed(1)}%`)
           
           setDetectedUser(matchResult.user)
           setFaceDetectionState('success')
@@ -297,21 +276,17 @@ export const LoginPageEnhanced = () => {
           return true
         }
         
-        console.log('❌ No matches found with threshold 0.35')
         return false
       } catch (err) {
-        console.error('Detection attempt failed:', err)
         return false
       }
     }
     
     // Try detection multiple times
     const detectionLoop = async () => {
-      console.log('🚀 Starting detection loop...')
       while (attempts < MAX_ATTEMPTS) {
         attempts++
         setAttemptCount(attempts) // Update UI with current attempt
-        console.log(`🔍 Detection attempt ${attempts}/${MAX_ATTEMPTS}`)
         
         const matched = await tryDetection()
         if (matched) {
@@ -325,7 +300,6 @@ export const LoginPageEnhanced = () => {
       }
       
       // No face matched after the attempt
-      console.log('⚠️ No face detected')
       if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current)
       setFaceDetectionState('failed')
       setCanRetry(true)
@@ -334,9 +308,7 @@ export const LoginPageEnhanced = () => {
       // stopCamera() - Keep camera running for retry
     }
     
-    console.log('📌 Calling detectionLoop...')
     detectionLoop().catch(err => {
-      console.error('Detection loop error:', err)
       setFaceDetectionState('failed')
       setCanRetry(true)
       // Don't switch to password
@@ -347,7 +319,7 @@ export const LoginPageEnhanced = () => {
     setLoading(true)
     try {
       // Fetch role information from database
-      const { data: roleData, error: roleError } = await supabase
+      const { data: roleData, error: roleError } = await getSupabase()
         .from('roleplay_roles')
         .select('role_code, role_name_zh')
         .eq('id', userData.role_id)
@@ -370,7 +342,6 @@ export const LoginPageEnhanced = () => {
       // Navigate to role selection or dashboard
       navigate('/role-selection')
     } catch (err) {
-      console.error('Auto-login failed:', err)
       setError('自动登录失败，请使用密码登录')
       setLoginMethod('password')
     } finally {
@@ -379,8 +350,6 @@ export const LoginPageEnhanced = () => {
   }
 
   const stopCamera = () => {
-    console.log('[LoginPage] Performing complete camera cleanup...')
-    
     // 1. Stop and disable all tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
@@ -405,8 +374,6 @@ export const LoginPageEnhanced = () => {
 
   // Complete cleanup function for face detection
   const completeCleanup = async () => {
-    console.log('[LoginPage] Starting complete cleanup...')
-    
     // Clear any running detection timeouts
     if (detectionTimeoutRef.current) {
       clearTimeout(detectionTimeoutRef.current)
@@ -429,8 +396,6 @@ export const LoginPageEnhanced = () => {
     
     // Use centralized cleanup service
     await faceDetectionCleanup.performCompleteCleanup()
-    
-    console.log('[LoginPage] Complete cleanup finished')
   }
 
   // Clean up on unmount
@@ -464,7 +429,6 @@ export const LoginPageEnhanced = () => {
       // Navigate to role selection
       navigate('/role-selection')
     } catch (err: any) {
-      console.error('Login error:', err)
       setError('登录失败，请稍后重试')
     } finally {
       setLoading(false)
@@ -482,7 +446,7 @@ export const LoginPageEnhanced = () => {
     
     try {
       // Get all users with face descriptors
-      const { data: users, error: dbError } = await supabase
+      const { data: users, error: dbError } = await getSupabase()
         .from('roleplay_users')
         .select('*')
         .not('face_descriptor', 'is', null)

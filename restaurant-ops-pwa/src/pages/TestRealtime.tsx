@@ -1,13 +1,11 @@
 // Test page for Supabase Realtime functionality
 // Created: 2025-07-22
+// Updated: 2025-08-14 - Use singleton Supabase client to prevent multiple instances
 import React, { useState, useEffect } from 'react';
 import { Box, Button, Typography, Paper, List, ListItem, Chip } from '@mui/material';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '../services/supabase';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const supabase = getSupabase();
 
 export const TestRealtime: React.FC = () => {
   const [events, setEvents] = useState<any[]>([]);

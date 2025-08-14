@@ -28,6 +28,7 @@ import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
 import { restaurantConfigService } from './services/restaurantConfigService'
+import { authService } from './services/authService'
 import { enableSupabaseDebug, testSupabaseQueries } from './utils/debugSupabase'
 import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
@@ -216,43 +217,49 @@ function App() {
   const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
-    // Enable Supabase debugging in development
-    if (import.meta.env.DEV) {
-      enableSupabaseDebug();
-      // Run test queries after a short delay to allow auth to initialize
+    // Use a flag to prevent double initialization in StrictMode
+    let initialized = false
+    
+    const initializeApp = async () => {
+      if (initialized) return
+      initialized = true
+      
+      // 初始化缓存管理器（必须最先执行）
+      initializeCacheManager()
+      
+      // 初始化Storage
+      initializeStorage()
+      
+      // Initialize restaurant config if user is already logged in (Cookie-based auth)
+      // Note: We don't use Supabase Auth, we use our custom auth with cookies
+      const currentUser = authService.getCurrentUser()
+      if (currentUser) {
+        console.log('[App] User authenticated via Cookie, initializing restaurant config...')
+        await restaurantConfigService.initialize()
+      }
+      
+      // Enable Supabase debugging only in development
+      if (import.meta.env.DEV) {
+        enableSupabaseDebug();
+        // Run test queries after services are initialized
+        setTimeout(() => {
+          testSupabaseQueries();
+        }, 2000);
+      }
+      
+      // 预加载人脸识别模型（后台加载，不阻塞）
+      // 在iOS设备上可能需要更长的加载时间
+      console.log('[App] Starting face model preload...')
+      // 延迟加载以避免与其他初始化冲突
       setTimeout(() => {
-        testSupabaseQueries();
-      }, 2000);
+        faceModelManager.preloadInBackground()
+      }, 1000)
     }
     
-    // 初始化缓存管理器（必须最先执行）
-    initializeCacheManager()
-    
-    // 初始化Storage
-    initializeStorage()
-    
-    // 监听认证状态变化，登录后才初始化餐厅配置
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session) {
-          // 用户已登录，初始化餐厅配置
-          console.log('[App] User authenticated, initializing restaurant config...')
-          await restaurantConfigService.initialize()
-        } else if (event === 'SIGNED_OUT') {
-          // 用户登出，清理餐厅配置
-          console.log('[App] User signed out, clearing restaurant config...')
-          await restaurantConfigService.refresh()
-        }
-      }
-    )
-    
-    // 预加载人脸识别模型（后台加载，不阻塞）
-    // 在iOS设备上可能需要更长的加载时间
-    console.log('[App] Starting face model preload...')
-    // 延迟加载以避免与其他初始化冲突
-    setTimeout(() => {
-      faceModelManager.preloadInBackground()
-    }, 1000)
+    // Add small delay to batch initialization and avoid race conditions
+    const timer = setTimeout(() => {
+      initializeApp()
+    }, 10)
     
     // 模拟用户登录后启动 Realtime
     // const initRealtime = async () => {
@@ -288,7 +295,7 @@ function App() {
     // initRealtime()
 
     return () => {
-      subscription.unsubscribe()
+      clearTimeout(timer)
       realtimeService.unsubscribeAll()
     }
   }, [])

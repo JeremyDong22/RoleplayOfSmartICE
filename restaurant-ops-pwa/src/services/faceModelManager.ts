@@ -66,15 +66,16 @@ class FaceModelManager {
   
   // Main initialization method
   async initialize(): Promise<void> {
+    // Ensure fetch is clean before starting
+    this.ensureFetchRestored()
+    
     // If already loaded, return immediately
     if (this.modelsLoaded) {
-      console.log('[ModelManager] Models already loaded, skipping initialization')
       return
     }
     
     // If currently loading, return the existing promise
     if (this.loadingPromise) {
-      console.log('[ModelManager] Models currently loading, waiting for existing promise')
       return this.loadingPromise
     }
     
@@ -85,6 +86,7 @@ class FaceModelManager {
       await this.loadingPromise
     } finally {
       this.loadingPromise = null
+      this.ensureFetchRestored() // Extra safety: ensure fetch is restored after loading
     }
   }
   
@@ -95,11 +97,9 @@ class FaceModelManager {
     }
     
     const deviceInfo = this.getDeviceInfo()
-    console.log('[ModelManager] Starting background preload...', deviceInfo)
     
     // Start loading but don't await
     this.initialize().catch(error => {
-      console.error('[ModelManager] Background preload failed:', error, deviceInfo)
       // Don't throw - this is background loading
     })
   }
@@ -107,21 +107,17 @@ class FaceModelManager {
   // Initialize only essential models for fast start
   async initializeMinimal(): Promise<void> {
     if (faceapi.nets.tinyFaceDetector.isLoaded) {
-      console.log('[ModelManager] Minimal models already loaded')
       return
     }
     
     try {
-      console.log('[ModelManager] Loading minimal models for fast start...')
       
       // Only load TinyFaceDetector for basic detection
       await faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL)
-      console.log('[ModelManager] Minimal models loaded')
       
       // Load other models in background
       this.loadRemainingModelsInBackground()
     } catch (error) {
-      console.error('[ModelManager] Failed to load minimal models:', error)
       throw error
     }
   }
@@ -132,20 +128,16 @@ class FaceModelManager {
     const loadRemaining = async () => {
       try {
         if (!faceapi.nets.faceLandmark68Net.isLoaded) {
-          console.log('[ModelManager] Background loading FaceLandmark68Net...')
           await faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL)
         }
         
         if (!faceapi.nets.faceRecognitionNet.isLoaded) {
-          console.log('[ModelManager] Background loading FaceRecognitionNet...')
           // Use simple loading without fetch interceptor for background loads
           await faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL)
         }
         
         this.modelsLoaded = true
-        console.log('[ModelManager] All models loaded in background')
       } catch (error) {
-        console.error('[ModelManager] Background loading failed:', error)
       }
     }
     
@@ -160,25 +152,17 @@ class FaceModelManager {
     try {
       this.loadAttempts++
       
-      console.log(`[ModelManager] =====  MODEL LOADING START =====`)
-      console.log(`[ModelManager] Attempt: ${this.loadAttempts}`)
-      console.log(`[ModelManager] Device Info:`, deviceInfo)
-      console.log(`[ModelManager] Model URL: ${this.MODEL_URL}`)
-      console.log(`[ModelManager] Window location: ${window.location.origin}`)
       
       // Check current status
       const status = this.getModelStatus()
-      console.log('[ModelManager] Current model status:', status)
       
       // If all models are already loaded, just mark as complete
       if (status.tinyFaceDetector && status.faceLandmark68Net && status.faceRecognitionNet) {
-        console.log('[ModelManager] All models already loaded by face-api.js')
         this.modelsLoaded = true
         return
       }
       
       // Always use parallel loading for all devices
-      console.log('[ModelManager] Using unified parallel loading strategy...')
       if (this.progressCallback) {
         this.progressCallback('正在加载人脸识别模型...', 0)
       }
@@ -191,9 +175,6 @@ class FaceModelManager {
       
       if (finalStatus.tinyFaceDetector && finalStatus.faceLandmark68Net && finalStatus.faceRecognitionNet) {
         this.modelsLoaded = true
-        console.log('[ModelManager] ✅ All models loaded successfully')
-        console.log(`[ModelManager] Total load time: ${loadTime.toFixed(0)}ms`)
-        console.log('[ModelManager] ===== MODEL LOADING END =====')
         
         if (this.progressCallback) {
           this.progressCallback('模型加载完成', 100)
@@ -204,15 +185,9 @@ class FaceModelManager {
       
     } catch (error) {
       const loadTime = performance.now() - startTime
-      console.error('[ModelManager] ===== MODEL LOADING FAILED =====')
-      console.error('[ModelManager] Error:', error)
-      console.error('[ModelManager] Failed after:', `${loadTime.toFixed(0)}ms`)
-      console.error('[ModelManager] Device info:', deviceInfo)
-      console.error('[ModelManager] Error stack:', (error as Error).stack)
       
       // Log network details if available
       if ('connection' in navigator) {
-        console.error('[ModelManager] Network info:', (navigator as any).connection)
       }
       
       // Provide user-friendly error messages
@@ -228,11 +203,9 @@ class FaceModelManager {
   }
   
   private async loadModelsSequentially(): Promise<void> {
-    console.log('[ModelManager] Using sequential loading (fallback strategy)')
     
     // Load TinyFaceDetector
     if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-      console.log('[ModelManager] Loading TinyFaceDetector...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
         'TinyFaceDetector',
@@ -243,7 +216,6 @@ class FaceModelManager {
     
     // Load FaceLandmark68Net  
     if (!faceapi.nets.faceLandmark68Net.isLoaded) {
-      console.log('[ModelManager] Loading FaceLandmark68Net...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
         'FaceLandmark68Net',
@@ -254,7 +226,6 @@ class FaceModelManager {
     
     // Load FaceRecognitionNet (largest)
     if (!faceapi.nets.faceRecognitionNet.isLoaded) {
-      console.log('[ModelManager] Loading FaceRecognitionNet...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
         'FaceRecognitionNet',
@@ -264,7 +235,6 @@ class FaceModelManager {
   }
   
   private async loadModelsInParallel(): Promise<void> {
-    console.log('[ModelManager] Using parallel loading')
     const loadStartTime = performance.now()
     
     // Use a single global interceptor for all parallel loads
@@ -280,17 +250,11 @@ class FaceModelManager {
         // Only log model-related fetches
         if (url.includes('/models/')) {
           globalFetchCount++
-          console.log(`[ModelManager] Model fetch #${globalFetchCount}: ${url}`)
           
           try {
             const response = await savedOriginalFetch(input, init)
-            console.log(`[ModelManager] Model fetch #${globalFetchCount} response:`, {
-              status: response.status,
-              ok: response.ok
-            })
             return response
           } catch (fetchError) {
-            console.error(`[ModelManager] Model fetch #${globalFetchCount} error:`, fetchError)
             throw fetchError
           }
         } else {
@@ -304,7 +268,6 @@ class FaceModelManager {
     
     try {
       if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-        console.log('[ModelManager] Queueing TinyFaceDetector for loading...')
         modelsToLoad.push(
           this.loadModelWithRetrySimple(
             () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
@@ -314,7 +277,6 @@ class FaceModelManager {
       }
       
       if (!faceapi.nets.faceLandmark68Net.isLoaded) {
-        console.log('[ModelManager] Queueing FaceLandmark68Net for loading...')
         modelsToLoad.push(
           this.loadModelWithRetrySimple(
             () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
@@ -324,7 +286,6 @@ class FaceModelManager {
       }
       
       if (!faceapi.nets.faceRecognitionNet.isLoaded) {
-        console.log('[ModelManager] Queueing FaceRecognitionNet for loading...')
         modelsToLoad.push(
           this.loadModelWithRetrySimple(
             () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
@@ -334,19 +295,15 @@ class FaceModelManager {
       }
       
       if (modelsToLoad.length > 0) {
-        console.log(`[ModelManager] Starting parallel load of ${modelsToLoad.length} models...`)
         await Promise.all(modelsToLoad)
         const parallelTime = performance.now() - loadStartTime
-        console.log(`[ModelManager] Parallel loading completed in ${parallelTime.toFixed(0)}ms`)
       } else {
-        console.log('[ModelManager] No models to load')
       }
     } finally {
       // Always restore original fetch
       if (this.isFetchIntercepted && this.originalFetch) {
         window.fetch = this.originalFetch
         this.isFetchIntercepted = false
-        console.log('[ModelManager] Fetch interceptor removed')
       }
     }
   }
@@ -364,13 +321,10 @@ class FaceModelManager {
       const attemptStartTime = performance.now()
       
       try {
-        console.log(`[ModelManager] Loading ${modelName} (attempt ${attempt}/${maxRetries})`)
         await loadFn()
         
         const attemptTime = performance.now() - attemptStartTime
         const totalTime = performance.now() - modelStartTime
-        console.log(`[ModelManager] ✅ ${modelName} loaded successfully`)
-        console.log(`[ModelManager] [${modelName}] Attempt time: ${attemptTime.toFixed(0)}ms, Total time: ${totalTime.toFixed(0)}ms`)
         
         if (this.progressCallback) {
           const progress = modelName === 'TinyFaceDetector' ? 33 :
@@ -383,15 +337,8 @@ class FaceModelManager {
         lastError = error as Error
         const attemptTime = performance.now() - attemptStartTime
         
-        console.error(`[ModelManager] ❌ Failed to load ${modelName} (attempt ${attempt}):`, {
-          error: error,
-          message: error?.message,
-          attemptTime: `${attemptTime.toFixed(0)}ms`
-        })
-        
         if (attempt < maxRetries) {
           const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
-          console.log(`[ModelManager] Waiting ${waitTime}ms before retry...`)
           await new Promise(resolve => setTimeout(resolve, waitTime))
         }
       }
@@ -399,101 +346,15 @@ class FaceModelManager {
     
     // All retries failed
     const totalTime = performance.now() - modelStartTime
-    console.error(`[ModelManager] ❌❌❌ Failed to load ${modelName} after ${maxRetries} attempts, total time: ${totalTime.toFixed(0)}ms`)
     throw lastError || new Error(`Failed to load ${modelName} after ${maxRetries} attempts`)
   }
   
-  private async loadModelWithRetry(
-    loadFn: () => Promise<void>,
-    modelName: string,
-    maxRetries: number = 3
-  ): Promise<void> {
-    let lastError: Error | null = null
-    const modelStartTime = performance.now()
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const attemptStartTime = performance.now()
-      const originalFetch = window.fetch
-      let fetchCount = 0
-      
-      try {
-        console.log(`[ModelManager] Loading ${modelName} (attempt ${attempt}/${maxRetries})`)
-        console.log(`[ModelManager] URL: ${this.MODEL_URL}/${modelName.toLowerCase()}_model-*`)
-        
-        // Add request interceptor to log fetch details
-        // Only intercept model-related fetches
-        window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = typeof input === 'string' ? input : input.toString()
-          
-          // Only log model-related fetches
-          if (url.includes('/models/')) {
-            fetchCount++
-            console.log(`[ModelManager] [${modelName}] Fetch #${fetchCount}: ${url}`)
-            
-            try {
-              const response = await originalFetch(input, init)
-              console.log(`[ModelManager] [${modelName}] Fetch #${fetchCount} response:`, {
-                status: response.status,
-                ok: response.ok,
-                headers: response.headers.get('content-type'),
-                size: response.headers.get('content-length')
-              })
-              return response
-            } catch (fetchError) {
-              console.error(`[ModelManager] [${modelName}] Fetch #${fetchCount} error:`, fetchError)
-              throw fetchError
-            }
-          } else {
-            // For non-model fetches, just pass through without logging
-            return originalFetch(input, init)
-          }
-        }
-        
-        await loadFn()
-        
-        const attemptTime = performance.now() - attemptStartTime
-        const totalTime = performance.now() - modelStartTime
-        console.log(`[ModelManager] ✅ ${modelName} loaded successfully`)
-        console.log(`[ModelManager] [${modelName}] Attempt time: ${attemptTime.toFixed(0)}ms, Total time: ${totalTime.toFixed(0)}ms`)
-        
-        if (this.progressCallback) {
-          const progress = modelName === 'TinyFaceDetector' ? 33 :
-                          modelName === 'FaceLandmark68Net' ? 66 : 100
-          this.progressCallback(`已加载 ${modelName}`, progress)
-        }
-        
-        return
-      } catch (error: any) {
-        lastError = error as Error
-        const attemptTime = performance.now() - attemptStartTime
-        
-        console.error(`[ModelManager] ❌ Failed to load ${modelName} (attempt ${attempt}):`, {
-          error: error,
-          message: error?.message,
-          stack: error?.stack,
-          attemptTime: `${attemptTime.toFixed(0)}ms`
-        })
-        
-        if (attempt < maxRetries) {
-          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
-          console.log(`[ModelManager] Waiting ${waitTime}ms before retry...`)
-          await new Promise(resolve => setTimeout(resolve, waitTime))
-        }
-      } finally {
-        // ALWAYS restore original fetch, whether success or error
-        window.fetch = originalFetch
-      }
-    }
-    
-    // All retries failed
-    const totalTime = performance.now() - modelStartTime
-    console.error(`[ModelManager] ❌❌❌ Failed to load ${modelName} after ${maxRetries} attempts, total time: ${totalTime.toFixed(0)}ms`)
-    throw lastError || new Error(`Failed to load ${modelName} after ${maxRetries} attempts`)
-  }
+  // DEPRECATED - This method is no longer used due to fetch interceptor issues
+  // Kept for reference only - DO NOT USE
+  // Use loadModelWithRetrySimple instead
   
   // Alternative loading approach (removed iOS-specific logic)
   private async loadModelsWithAlternativeApproach(): Promise<void> {
-    console.log('[ModelManager] Using alternative loading approach (last resort)...')
     
     // Try loading models one by one with custom fetch settings
     const models = [
@@ -505,18 +366,15 @@ class FaceModelManager {
     for (const model of models) {
       const net = model.loader()
       if (net.isLoaded) {
-        console.log(`[ModelManager] ${model.name} already loaded`)
         continue
       }
       
-      console.log(`[ModelManager] Loading ${model.name} with alternative approach...`)
       
       try {
         // Use a custom fetch with specific headers
         const originalFetch = window.fetch
         window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
           const url = typeof input === 'string' ? input : input.toString()
-          console.log(`[ModelManager] [Alt] Fetching: ${url}`)
           
           if (url.includes('/models/')) {
             // Add specific headers for model files
@@ -539,12 +397,10 @@ class FaceModelManager {
         // Restore original fetch
         window.fetch = originalFetch
         
-        console.log(`[ModelManager] ✅ ${model.name} loaded with alternative approach`)
         
         // Small delay between models
         await new Promise(resolve => setTimeout(resolve, 100))
       } catch (error) {
-        console.error(`[ModelManager] Failed to load ${model.name} with alternative approach:`, error)
         // Continue trying to load other models
       }
     }
@@ -553,7 +409,6 @@ class FaceModelManager {
   // Ensure fetch is restored (safety mechanism)
   private ensureFetchRestored(): void {
     if (this.isFetchIntercepted && this.originalFetch) {
-      console.warn('[ModelManager] Restoring fetch that was left intercepted')
       window.fetch = this.originalFetch
       this.isFetchIntercepted = false
     }
@@ -561,7 +416,6 @@ class FaceModelManager {
   
   // Force reload models (useful for error recovery)
   async forceReload(): Promise<void> {
-    console.log('[ModelManager] Force reloading models...')
     this.ensureFetchRestored() // Ensure fetch is clean before reload
     this.modelsLoaded = false
     this.loadingPromise = null

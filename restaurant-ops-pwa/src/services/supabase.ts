@@ -14,69 +14,54 @@ if (!supabaseUrl || !supabaseAnonKey) {
 let supabaseInstance: SupabaseClient<Database> | null = null
 
 // Function to create or get the Supabase client
-const getSupabaseClient = (): SupabaseClient<Database> => {
-  if (!supabaseInstance) {
-    // Add logging to debug Realtime connection
-    console.log('[Supabase] Creating new client instance:', {
-      url: supabaseUrl,
-      hasAnonKey: !!supabaseAnonKey,
-      realtimeConfig: {
-        params: {
-          eventsPerSecond: 10
-        }
-      }
-    })
-    
-    supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
+const createSupabaseClient = (): SupabaseClient<Database> => {
+  // Create client without custom fetch - use Supabase's built-in timeout handling
+  const client = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      detectSessionInUrl: true,
+      flowType: 'pkce'
     },
-    log_level: 'debug' // Enable debug logging for Realtime
-  },
-      global: {
-        fetch: (url, options = {}) => {
-          // Add timeout for all requests (30 seconds for mobile networks)
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 30000);
-          
-          // Make sure we don't override existing headers, especially the apikey
-          return fetch(url, {
-            ...options,
-            signal: controller.signal
-          }).finally(() => clearTimeout(timeout));
-        }
+    realtime: {
+      params: {
+        eventsPerSecond: 10
       }
-    })
-    
-    // Log when Supabase client is created
-    console.log('[Supabase] Client created successfully')
-  } else {
-    console.log('[Supabase] Using existing client instance')
-  }
+    },
+    db: {
+      schema: 'public'
+    },
+    // Remove custom fetch to avoid connection issues
+    global: {
+      headers: {
+        'x-client-info': 'restaurant-ops-pwa'
+      }
+    }
+  })
   
+  return client
+}
+
+// Export function to get current Supabase instance
+export const getSupabase = (): SupabaseClient<Database> => {
+  if (!supabaseInstance) {
+    supabaseInstance = createSupabaseClient()
+  }
   return supabaseInstance
 }
 
-// Export the singleton instance
-export const supabase = getSupabaseClient()
+// For backward compatibility - this will be deprecated
+export const supabase = getSupabase()
 
 // Reset function to create a fresh Supabase client
 export const resetSupabaseClient = (): SupabaseClient<Database> => {
-  console.log('[Supabase] Resetting client instance...')
-  if (supabaseInstance) {
-    // Clear the existing instance
-    supabaseInstance = null
-  }
+  // Clear the existing instance
+  supabaseInstance = null
+  
   // Create and return a fresh instance
-  supabaseInstance = getSupabaseClient()
+  supabaseInstance = createSupabaseClient()
+  
   return supabaseInstance
 }
 
@@ -86,7 +71,7 @@ export const uploadFile = async (
   path: string,
   file: File
 ): Promise<{ data: any; error: any }> => {
-  const { data, error } = await supabase.storage
+  const { data, error } = await getSupabase().storage
     .from(bucket)
     .upload(path, file, {
       cacheControl: '3600',
@@ -94,12 +79,11 @@ export const uploadFile = async (
     })
 
   if (error) {
-    console.error('Upload error:', error)
     return { data: null, error }
   }
 
   // Get public URL
-  const { data: { publicUrl } } = supabase.storage
+  const { data: { publicUrl } } = getSupabase().storage
     .from(bucket)
     .getPublicUrl(path)
 
@@ -108,11 +92,11 @@ export const uploadFile = async (
 
 // Helper to get authenticated user
 export const getCurrentUser = async () => {
-  const { data: { user }, error } = await supabase.auth.getUser()
+  const { data: { user }, error } = await getSupabase().auth.getUser()
   if (error || !user) return null
   
   // Get user profile with role
-  const { data: profile } = await supabase
+  const { data: profile } = await getSupabase()
     .from('user_profiles')
     .select('*')
     .eq('id', user.id)

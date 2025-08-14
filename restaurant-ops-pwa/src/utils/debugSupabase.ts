@@ -1,7 +1,9 @@
-// Temporary debug utility to trace 400 errors
+// Debug utility for authentication and database queries
 // Created: 2025-08-13
+// Updated: 2025-08-14 - Added Cookie auth debugging, removed misleading Supabase Auth checks
 
 import { supabase } from '../services/supabase';
+import { authService } from '../services/authService';
 
 // Intercept Supabase fetch to log 400 errors
 const originalFetch = window.fetch;
@@ -55,26 +57,34 @@ export function disableSupabaseDebug() {
   console.log('[DEBUG] Supabase debugging disabled');
 }
 
-// Check current auth session
-export async function checkAuthStatus() {
-  const { data: { session }, error } = await supabase.auth.getSession();
+/**
+ * Check Cookie-based authentication status
+ * This shows the REAL user authentication status from our custom auth system
+ */
+export function checkCookieAuthStatus() {
+  const user = authService.getCurrentUser();
   
-  console.log('[DEBUG] Auth Status:', {
-    hasSession: !!session,
-    sessionError: error,
-    userId: session?.user?.id,
-    expiresAt: session?.expires_at
+  console.log('[DEBUG] Cookie Auth Status:', {
+    isLoggedIn: !!user,
+    userId: user?.id || 'Not logged in',
+    userName: user?.name || 'N/A',
+    userEmail: user?.email || 'N/A',
+    userRole: user?.roleCode || 'N/A',
+    restaurantId: user?.restaurantId || 'N/A'
   });
   
-  return session;
+  return user;
 }
 
-// Test basic queries
+// Test basic queries and authentication
 export async function testSupabaseQueries() {
-  console.log('[DEBUG] Testing Supabase queries...');
+  // Only log in development and if explicitly debugging
+  if (!import.meta.env.DEV) return;
   
-  // Test 1: Check auth
-  await checkAuthStatus();
+  console.log('[DEBUG] Testing authentication and database connection...');
+  
+  // Check REAL auth status from Cookie
+  checkCookieAuthStatus();
   
   // Test 2: Try to fetch restaurants (public table)
   const { data: restaurants, error: restaurantsError } = await supabase
@@ -88,13 +98,13 @@ export async function testSupabaseQueries() {
     data: restaurants
   });
   
-  // Test 3: Try to fetch user profile (requires auth)
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
+  // Test 3: Try to fetch user profile using Cookie auth (NOT Supabase Auth)
+  const currentUser = authService.getCurrentUser();
+  if (currentUser && currentUser.id) {
     const { data: profile, error: profileError } = await supabase
       .from('roleplay_users')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', currentUser.id)
       .single();
     
     console.log('[DEBUG] User profile query:', {
@@ -102,5 +112,10 @@ export async function testSupabaseQueries() {
       error: profileError,
       data: profile
     });
+    
+    // Final summary with real user info
+    console.log(`[DEBUG] ✅ System ready - User: ${currentUser.name} (${currentUser.roleCode}) logged in`);
+  } else {
+    console.log('[DEBUG] ⚠️ No user logged in via Cookie - Please login first');
   }
 }

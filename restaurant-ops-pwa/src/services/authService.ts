@@ -1,7 +1,19 @@
-// Authentication service for managing user login state
-// Created: 2025-07-24 - Handles auth state with cookies and Supabase
+/**
+ * Custom Authentication Service - NOT using Supabase Auth!
+ * 
+ * This service manages user authentication using:
+ * 1. Cookie-based session management (NOT Supabase Auth)
+ * 2. Custom user table (roleplay_users) in database
+ * 3. Two login methods:
+ *    - Password login: login() method
+ *    - Face recognition login: setCurrentUser() method
+ * 
+ * Created: 2025-07-24 - Handles auth state with cookies and custom user table
+ * Updated: 2025-08-13 - Use getSupabase() function to avoid stale references
+ * Updated: 2025-08-14 - Added clear documentation to avoid confusion with Supabase Auth
+ */
 import Cookies from 'js-cookie'
-import { supabase } from './supabase'
+import { getSupabase } from './supabase'
 
 export interface AuthUser {
   id: string
@@ -44,11 +56,15 @@ class AuthService {
     }
   }
 
-  // Login user with username and password
+  /**
+   * PASSWORD LOGIN METHOD
+   * Login user with username and password
+   * This queries our custom roleplay_users table, NOT Supabase Auth
+   */
   async login(username: string, password: string): Promise<{ user: AuthUser; error?: string }> {
     try {
       // Query user by username
-      const { data: userData, error: userError } = await supabase
+      const { data: userData, error: userError } = await getSupabase()
         .from('roleplay_users')
         .select(`
           *,
@@ -73,10 +89,6 @@ class AuthService {
         return { user: null as any, error: '用户名或密码错误' }
       }
 
-      // Debug: Log the userData to see structure
-      console.log('Login userData:', userData)
-      console.log('Role data:', userData.roleplay_roles)
-      
       // Create auth session - handle both single object and array response
       const roleData = Array.isArray(userData.roleplay_roles) 
         ? userData.roleplay_roles[0] 
@@ -102,12 +114,14 @@ class AuthService {
 
       return { user: authUser }
     } catch (error: any) {
-      console.error('Login error:', error)
       return { user: null as any, error: error.message || '登录失败' }
     }
   }
 
-  // Logout user
+  /**
+   * Logout user - clears Cookie-based session
+   * Note: We don't use Supabase Auth, so no need to call supabase.auth.signOut()
+   */
   async logout(): Promise<void> {
     // Clear all auth cookies
     Cookies.remove('authToken')
@@ -118,17 +132,15 @@ class AuthService {
     Cookies.remove('userRoleCode')
     Cookies.remove('restaurantId')
 
-    // Sign out from Supabase
-    await supabase.auth.signOut()
+    // Note: Removed supabase.auth.signOut() because we don't use Supabase Auth
     
     // Perform complete face detection cleanup
     // Import dynamically to avoid circular dependencies
     try {
       const { faceDetectionCleanup } = await import('./faceDetectionCleanup')
       await faceDetectionCleanup.performCompleteCleanup()
-      console.log('[AuthService] Face detection cleanup completed on logout')
     } catch (error) {
-      console.warn('[AuthService] Could not perform face detection cleanup:', error)
+      // Cleanup failed but continue logout
     }
   }
 
@@ -180,7 +192,12 @@ class AuthService {
     // Note: face_descriptor is not stored in cookies, only in memory/database
   }
 
-  // Set current user for face recognition auto-login
+  /**
+   * FACE RECOGNITION LOGIN METHOD
+   * Set current user after successful face recognition
+   * This method is called by face recognition service to establish session
+   * Sets the same cookies as password login for consistency
+   */
   setCurrentUser(userData: {
     id: string
     email: string

@@ -25,7 +25,6 @@ class FaceDetectionCleanupService {
    */
   registerStream(stream: MediaStream) {
     this.activeStreams.add(stream)
-    console.log('[CleanupService] Stream registered. Active streams:', this.activeStreams.size)
   }
 
   /**
@@ -33,7 +32,6 @@ class FaceDetectionCleanupService {
    */
   registerVideo(video: HTMLVideoElement) {
     this.activeVideos.add(video)
-    console.log('[CleanupService] Video registered. Active videos:', this.activeVideos.size)
   }
 
   /**
@@ -42,11 +40,9 @@ class FaceDetectionCleanupService {
   cleanupStream(stream: MediaStream | null) {
     if (!stream) return
     
-    console.log('[CleanupService] Cleaning up stream...')
     stream.getTracks().forEach(track => {
       track.stop()
       track.enabled = false
-      console.log(`[CleanupService] Track ${track.kind} stopped`)
     })
     
     this.activeStreams.delete(stream)
@@ -58,7 +54,6 @@ class FaceDetectionCleanupService {
   cleanupVideo(video: HTMLVideoElement | null) {
     if (!video) return
     
-    console.log('[CleanupService] Cleaning up video element...')
     video.pause()
     video.srcObject = null
     video.load() // Force reload to clear internal buffers
@@ -77,10 +72,8 @@ class FaceDetectionCleanupService {
    * Clean up face-api.js tensors and memory
    */
   async cleanupFaceApiMemory() {
-    console.log('[CleanupService] Cleaning face-api.js memory...')
     
     if (typeof faceapi === 'undefined') {
-      console.log('[CleanupService] face-api.js not loaded, skipping tensor cleanup')
       return
     }
 
@@ -89,7 +82,6 @@ class FaceDetectionCleanupService {
       const engine = (faceapi.env as any).engine
       if (engine) {
         const numTensorsBefore = engine.state?.numTensors || 0
-        console.log(`[CleanupService] Tensors before cleanup: ${numTensorsBefore}`)
         
         // Dispose all tensors
         if (engine.dispose) {
@@ -102,10 +94,8 @@ class FaceDetectionCleanupService {
         }
         
         const numTensorsAfter = engine.state?.numTensors || 0
-        console.log(`[CleanupService] Tensors after cleanup: ${numTensorsAfter}`)
       }
     } catch (error) {
-      console.warn('[CleanupService] Error during tensor cleanup:', error)
     }
   }
 
@@ -113,17 +103,14 @@ class FaceDetectionCleanupService {
    * Perform complete cleanup of all face detection resources
    */
   async performCompleteCleanup() {
-    console.log('[CleanupService] === STARTING COMPLETE CLEANUP ===')
     
     // 1. Clean up all active streams
-    console.log(`[CleanupService] Cleaning ${this.activeStreams.size} active streams...`)
     this.activeStreams.forEach(stream => {
       this.cleanupStream(stream)
     })
     this.activeStreams.clear()
     
     // 2. Clean up all active video elements
-    console.log(`[CleanupService] Cleaning ${this.activeVideos.size} active videos...`)
     this.activeVideos.forEach(video => {
       this.cleanupVideo(video)
     })
@@ -135,7 +122,6 @@ class FaceDetectionCleanupService {
     // 4. Wait a bit for browser to release resources
     await new Promise(resolve => setTimeout(resolve, 100))
     
-    console.log('[CleanupService] === COMPLETE CLEANUP FINISHED ===')
   }
 
   /**

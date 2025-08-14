@@ -7,6 +7,7 @@
 import { supabase } from './supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { restaurantConfigService } from './restaurantConfigService'
+import { authService } from './authService'
 import type { TaskTemplate, WorkflowPeriod } from '../types/task.types'
 
 export interface DatabaseTask {
@@ -52,18 +53,38 @@ class TaskService {
   private tasksCache: Map<string, DatabaseTask[]> = new Map()
   private periodsCache: DatabasePeriod[] = []
   private listeners: Map<string, (data: any) => void> = new Map()
-  
+  private isInitialized: boolean = false
+  private initializingPromise: Promise<boolean> | null = null
 
   /**
    * 初始化服务并订阅实时更新
    */
   async initialize(): Promise<boolean> {
+    // If already initialized, return immediately
+    if (this.isInitialized) {
+      return true
+    }
+    
+    // If initialization is in progress, wait for it
+    if (this.initializingPromise) {
+      return this.initializingPromise
+    }
+    
+    // Start initialization
+    this.initializingPromise = this._doInitialize()
+    const result = await this.initializingPromise
+    this.initializingPromise = null
+    return result
+  }
+  
+  private async _doInitialize(): Promise<boolean> {
     console.log('[TaskService] Starting initialization...')
     
     try {
-      // Check if user is authenticated first
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
+      // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
+      // This checks our custom authentication from authService
+      const currentUser = authService.getCurrentUser()
+      if (!currentUser) {
         console.log('[TaskService] No auth session, skipping initialization')
         return false
       }
@@ -79,6 +100,9 @@ class TaskService {
       }
       
       console.log('[TaskService] Initialized successfully')
+      
+      // Mark as initialized
+      this.isInitialized = true
       
       // 启用实时订阅（延迟以避免网络拥堵）
       setTimeout(() => {

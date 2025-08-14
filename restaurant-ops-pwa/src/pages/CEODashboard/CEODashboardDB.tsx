@@ -71,8 +71,8 @@ import type {
 } from '../../services/ceoDashboardService';
 import { NavigationBar } from '../../components/Navigation/NavigationBar';
 
-// 动画组件
-const MotionCard = motion(Card);
+// 动画组件 - 使用新的 motion.create API
+const MotionCard = motion.create(Card);
 
 // 时段图标映射 - 基于时段显示名称或ID模式
 const getPeriodIcon = (periodId: string, displayName: string): React.ReactElement => {

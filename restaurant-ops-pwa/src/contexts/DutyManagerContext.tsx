@@ -87,9 +87,14 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
   const [isInitialized, setIsInitialized] = useState(false)
   const submissionInProgressRef = useRef<Set<string>>(new Set()) // 防止重复提交
   const realtimeInitRef = useRef(false) // 防止重复初始化 Realtime
+  const initStartedRef = useRef(false) // 防止重复初始化整个服务
 
   // Initialize realtime service and load data from database
   useEffect(() => {
+    // Use ref to ensure initialization only happens once
+    if (initStartedRef.current) return
+    initStartedRef.current = true
+    
     const initServices = async () => {
       const currentUser = authService.getCurrentUser()
       const userId = currentUser?.id || 'demo-user-' + Date.now()
@@ -149,9 +154,8 @@ export const DutyManagerProvider: React.FC<DutyManagerProviderProps> = ({ childr
         setIsInitialized(true)
       }
     }
-    if (!isInitialized) {
-      initServices()
-    }
+    
+    initServices()
     
     // Don't cleanup on unmount - keep the connection alive
     // Only cleanup when the entire app unmounts

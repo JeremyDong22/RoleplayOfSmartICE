@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { taskService } from '../services/taskService'
-import { supabase } from '../services/supabase'
+import { authService } from '../services/authService'
 import type { WorkflowPeriod, TaskTemplate } from '../types/task.types'
 import { CircularProgress, Box } from '@mui/material'
 
@@ -47,9 +47,10 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       const initialized = await taskService.initialize()
       
       if (!initialized) {
-        // 检查是否是因为未登录
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
+        // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
+        // This checks our custom authentication from authService
+        const currentUser = authService.getCurrentUser()
+        if (!currentUser) {
           // 用户未登录，这是正常的，不需要显示错误
           console.log('[TaskDataContext] No auth session, skipping task loading')
           return

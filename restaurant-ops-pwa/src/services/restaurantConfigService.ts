@@ -6,6 +6,7 @@
  */
 
 import { supabase } from './supabase'
+import { authService } from './authService'
 
 interface RestaurantConfig {
   id: string
@@ -54,25 +55,46 @@ class RestaurantConfigService {
    */
   private async _doInitialize(): Promise<RestaurantConfig | null> {
     try {
-      // 先尝试获取当前用户信息
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      // 使用 authService 获取当前用户信息（从 cookies）
+      const currentUser = authService.getCurrentUser()
       
-      // 如果没有认证会话，不输出警告（这是正常的未登录状态）
-      if (authError?.message?.includes('session missing')) {
-        console.log('[RestaurantConfigService] No auth session, skipping initialization')
+      // 如果没有认证用户，静默返回
+      if (!currentUser) {
+        // 不输出日志，避免重复日志
         return null
       }
       
-      if (authError) {
-        console.warn('[RestaurantConfigService] Auth error:', authError)
+      // 首先检查用户是否有餐厅ID
+      if (currentUser.restaurantId) {
+        // 获取餐厅详情
+        const { data: restaurant, error: restaurantError } = await supabase
+          .from('roleplay_restaurants')
+          .select('id, name, is_active')
+          .eq('id', currentUser.restaurantId)
+          .single()
+        
+        if (restaurantError) {
+          console.warn('[RestaurantConfigService] Error fetching user restaurant:', restaurantError)
+        }
+        
+        if (restaurant) {
+          this.currentRestaurant = {
+            id: restaurant.id,
+            name: restaurant.name,
+            isActive: restaurant.is_active
+          }
+          this.initialized = true
+          console.log('[RestaurantConfigService] Initialized with user restaurant:', this.currentRestaurant)
+          return this.currentRestaurant
+        }
       }
       
-      if (user && !authError) {
-        // 尝试从用户profile获取餐厅ID
+      // 如果用户没有分配餐厅，尝试从用户profile获取
+      if (currentUser.id) {
         const { data: userProfile, error: profileError } = await supabase
           .from('roleplay_users')
           .select('restaurant_id')
-          .eq('id', user.id)
+          .eq('id', currentUser.id)
           .single()
         
         if (profileError) {
@@ -98,7 +120,7 @@ class RestaurantConfigService {
               isActive: restaurant.is_active
             }
             this.initialized = true
-            console.log('[RestaurantConfigService] Initialized with user restaurant:', this.currentRestaurant)
+            console.log('[RestaurantConfigService] Initialized with user restaurant from profile:', this.currentRestaurant)
             return this.currentRestaurant
           }
         }
