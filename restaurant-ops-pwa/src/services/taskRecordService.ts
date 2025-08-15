@@ -85,13 +85,16 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     ...taskData,
     status: 'submitted',
     // Manager任务自动approved，duty_manager任务需要审核
-    review_status: userRoleCode === 'manager' ? 'approved' : 
+    // 管理员提交manager任务也应该自动approved
+    review_status: (userRoleCode === 'manager' || 
+                   (userRoleCode === 'administrator' && !isDutyManagerTask)) ? 'approved' : 
                    isDutyManagerTask ? 'pending' : undefined,
     created_at: new Date().toISOString()
   }
   
   // 如果是Manager任务且自动approved，设置审核信息
-  if (userRoleCode === 'manager' && record.review_status === 'approved') {
+  if ((userRoleCode === 'manager' || userRoleCode === 'administrator') && 
+      record.review_status === 'approved') {
     record.reviewed_by = taskData.user_id
     record.reviewed_at = new Date().toISOString()
   }
