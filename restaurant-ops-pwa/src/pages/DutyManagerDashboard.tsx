@@ -298,8 +298,15 @@ const DutyManagerDashboard: React.FC = () => {
       const uploadedPhotoUrls = []
       const uploadedPhotoGroups = []
       
-      // 获取用户ID（使用mock ID）
-      const userId = 'mock-user-' + Date.now()
+      // 获取真实用户ID
+      const currentUser = authService.getCurrentUser()
+      if (!currentUser) {
+        console.error('[DutyManagerDashboard] No authenticated user found')
+        alert('请先登录')
+        throw new Error('未找到登录用户')
+      }
+      const userId = currentUser.id
+      console.log('[DutyManagerDashboard] Using real userId for photo upload:', userId)
       
       // 检查是否有照片组数据（新格式）
       // 注意：PhotoSubmissionDialog 返回的数据可能是嵌套的
@@ -461,7 +468,16 @@ const DutyManagerDashboard: React.FC = () => {
       
       // 只调用 addSubmission，它会在 Context 中保存到数据库
       try {
+        console.log('[DutyManagerDashboard] Submitting task with data:', {
+          taskId: submission.taskId,
+          userId: userId,
+          photos: submission.content.photos?.length || 0,
+          photoGroups: submission.content.photoGroups?.length || 0
+        })
+        
         await addSubmission(submission)
+        
+        console.log('[DutyManagerDashboard] Task submission successful for userId:', userId)
         
         // Refresh task statuses from database for TaskSummary
         if (currentUserId) {
@@ -469,6 +485,7 @@ const DutyManagerDashboard: React.FC = () => {
           setDbTaskStatuses(updatedTaskStatuses)
         }
       } catch (error) {
+        console.error('[DutyManagerDashboard] Task submission failed:', error)
         throw error
       }
       }
