@@ -2,9 +2,10 @@
 // This is a basic service worker that caches assets for offline use
 // Updated to support push notifications
 // Updated 2025-01-14: Added face recognition model caching
+// Updated 2025-08-15: Enhanced model caching for offline-first strategy
 
-const CACHE_NAME = 'restaurant-ops-v3'; // Updated to force cache refresh
-const MODEL_CACHE_NAME = 'face-models-v1'; // Separate cache for models
+const CACHE_NAME = 'restaurant-ops-v4'; // Updated to force cache refresh
+const MODEL_CACHE_NAME = 'face-models-v2'; // Separate cache for models
 const urlsToCache = [
   '/',
   '/index.html',
@@ -12,14 +13,49 @@ const urlsToCache = [
   '/src/App.tsx'
 ];
 
-// Install event - cache assets
+// Model files to pre-cache
+const modelFiles = [
+  '/models/tiny_face_detector_model-weights_manifest.json',
+  '/models/tiny_face_detector_model-shard1.bin',
+  '/models/face_landmark_68_model-weights_manifest.json',
+  '/models/face_landmark_68_model-shard1.bin',
+  '/models/face_recognition_model-weights_manifest.json',
+  '/models/face_recognition_model-shard1.bin',
+  '/models/face_recognition_model-shard2.bin'
+];
+
+// Install event - cache assets and models
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
+    Promise.all([
+      // Cache general assets
+      caches.open(CACHE_NAME).then(cache => {
+        console.log('[SW] Opened general cache');
         return cache.addAll(urlsToCache);
+      }),
+      // Pre-cache model files for offline use
+      caches.open(MODEL_CACHE_NAME).then(cache => {
+        console.log('[SW] Pre-caching model files...');
+        return Promise.allSettled(
+          modelFiles.map(url => 
+            fetch(url)
+              .then(response => {
+                if (response.ok) {
+                  return cache.put(url, response);
+                }
+              })
+              .catch(err => {
+                console.warn(`[SW] Failed to pre-cache ${url}:`, err);
+                // Don't fail installation if model pre-caching fails
+              })
+          )
+        );
       })
+    ]).then(() => {
+      console.log('[SW] Installation complete');
+      // Skip waiting to activate immediately
+      self.skipWaiting();
+    })
   );
 });
 
@@ -27,25 +63,51 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // Special handling for face recognition models
+  // Special handling for face recognition models - OFFLINE FIRST
   if (url.pathname.includes('/models/') && 
       (url.pathname.endsWith('.bin') || url.pathname.endsWith('.json'))) {
     event.respondWith(
       caches.open(MODEL_CACHE_NAME).then(cache => {
-        return cache.match(event.request).then(response => {
-          if (response) {
-            console.log('[SW] Model from cache:', url.pathname);
-            return response;
+        return cache.match(event.request).then(cachedResponse => {
+          if (cachedResponse) {
+            console.log('[SW] Model from cache (offline-first):', url.pathname);
+            // Try to update cache in background if online
+            if (navigator.onLine) {
+              fetch(event.request)
+                .then(networkResponse => {
+                  if (networkResponse && networkResponse.status === 200) {
+                    cache.put(event.request, networkResponse.clone());
+                    console.log('[SW] Model cache updated in background:', url.pathname);
+                  }
+                })
+                .catch(() => {}); // Ignore errors in background update
+            }
+            return cachedResponse;
           }
           
-          console.log('[SW] Fetching model:', url.pathname);
-          return fetch(event.request).then(networkResponse => {
-            // Cache the model file for future use
+          // Not in cache, try to fetch with timeout
+          console.log('[SW] Model not cached, attempting fetch:', url.pathname);
+          return Promise.race([
+            fetch(event.request),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Model fetch timeout')), 10000)
+            )
+          ]).then(networkResponse => {
+            // Cache successful response
             if (networkResponse && networkResponse.status === 200) {
-              cache.put(event.request, networkResponse.clone());
-              console.log('[SW] Model cached:', url.pathname);
+              const responseToCache = networkResponse.clone();
+              cache.put(event.request, responseToCache);
+              console.log('[SW] Model fetched and cached:', url.pathname);
             }
             return networkResponse;
+          }).catch(error => {
+            console.error('[SW] Failed to fetch model:', url.pathname, error);
+            // Return a 503 Service Unavailable response
+            return new Response('Model unavailable - please check network connection', {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: { 'Content-Type': 'text/plain' }
+            });
           });
         });
       })

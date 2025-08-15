@@ -1,6 +1,7 @@
 // Global face model manager to ensure models are loaded only once
 // Prevents multiple components from loading the same models simultaneously
 // Updated: 2025-08-13 - Removed mobile-specific logic, added comprehensive logging
+// Updated: 2025-08-15 - Added cache detection and offline-first strategy
 
 import * as faceapi from 'face-api.js'
 import { IOSModelLoader } from './iOSModelLoader'
@@ -61,7 +62,80 @@ class FaceModelManager {
     }
   }
   
-  // Main initialization method
+  // Check if models are cached in Service Worker
+  private async checkModelCache(): Promise<boolean> {
+    if (!('caches' in window)) {
+      console.log('[ModelManager] Cache API not available');
+      return false;
+    }
+    
+    try {
+      const cache = await caches.open('face-models-v2');
+      const modelFiles = [
+        '/models/tiny_face_detector_model-weights_manifest.json',
+        '/models/tiny_face_detector_model-shard1.bin',
+        '/models/face_landmark_68_model-weights_manifest.json',
+        '/models/face_landmark_68_model-shard1.bin',
+        '/models/face_recognition_model-weights_manifest.json',
+        '/models/face_recognition_model-shard1.bin',
+        '/models/face_recognition_model-shard2.bin'
+      ];
+      
+      // Check if all model files are cached
+      const cacheChecks = await Promise.all(
+        modelFiles.map(url => cache.match(url))
+      );
+      
+      const allCached = cacheChecks.every(response => response !== undefined);
+      console.log(`[ModelManager] Models cached: ${allCached}`);
+      return allCached;
+    } catch (error) {
+      console.error('[ModelManager] Error checking cache:', error);
+      return false;
+    }
+  }
+  
+  // Pre-cache models for offline use
+  private async preCacheModels(): Promise<void> {
+    if (!('caches' in window)) {
+      return;
+    }
+    
+    try {
+      const cache = await caches.open('face-models-v2');
+      const modelFiles = [
+        '/models/tiny_face_detector_model-weights_manifest.json',
+        '/models/tiny_face_detector_model-shard1.bin',
+        '/models/face_landmark_68_model-weights_manifest.json',
+        '/models/face_landmark_68_model-shard1.bin',
+        '/models/face_recognition_model-weights_manifest.json',
+        '/models/face_recognition_model-shard1.bin',
+        '/models/face_recognition_model-shard2.bin'
+      ];
+      
+      console.log('[ModelManager] Pre-caching models...');
+      
+      await Promise.allSettled(
+        modelFiles.map(async (url) => {
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              await cache.put(url, response);
+              console.log(`[ModelManager] Cached: ${url}`);
+            }
+          } catch (err) {
+            console.warn(`[ModelManager] Failed to cache ${url}:`, err);
+          }
+        })
+      );
+      
+      console.log('[ModelManager] Pre-caching complete');
+    } catch (error) {
+      console.error('[ModelManager] Pre-cache error:', error);
+    }
+  }
+  
+  // Main initialization method with offline-first approach
   async initialize(): Promise<void> {
     // If already loaded, return immediately
     if (this.modelsLoaded) {
@@ -73,7 +147,25 @@ class FaceModelManager {
       return this.loadingPromise
     }
     
-    // Start new loading process
+    // Check network status
+    const isOffline = !navigator.onLine;
+    if (isOffline) {
+      console.log('[ModelManager] Offline mode detected');
+    }
+    
+    // Check if models are cached
+    const isCached = await this.checkModelCache();
+    
+    if (!isCached && !isOffline) {
+      // Models not cached and we're online - try to pre-cache them
+      console.log('[ModelManager] Models not cached, attempting to cache...');
+      if (this.progressCallback) {
+        this.progressCallback('首次使用，正在缓存模型文件...', 5);
+      }
+      await this.preCacheModels();
+    }
+    
+    // Start loading process (will use cache if available)
     this.loadingPromise = this.loadModels()
     
     try {
@@ -280,7 +372,8 @@ class FaceModelManager {
   ): Promise<void> {
     let lastError: Error | null = null
     const modelStartTime = performance.now()
-    const TIMEOUT_MS = 15000  // 15 second timeout per model
+    // Shorter timeout if offline to fail faster
+    const TIMEOUT_MS = navigator.onLine ? 15000 : 5000  // 15s online, 5s offline
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const attemptStartTime = performance.now()
@@ -308,6 +401,12 @@ class FaceModelManager {
         lastError = error as Error
         const attemptTime = performance.now() - attemptStartTime
         console.warn(`[ModelManager] ❌ ${modelName} attempt ${attempt} failed after ${Math.round(attemptTime)}ms:`, error.message)
+        
+        // Don't retry if offline
+        if (!navigator.onLine) {
+          console.log(`[ModelManager] Offline - skipping retries for ${modelName}`);
+          break;
+        }
         
         if (attempt < maxRetries) {
           const waitTime = Math.min(1000 * attempt, 3000)  // Simpler backoff: 1s, 2s, 3s max

@@ -69,11 +69,28 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // 添加模型文件到预缓存列表
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,bin,json}'],
         // Exclude large image files from precaching
         globIgnores: ['**/task-samples/**/*.jpg', '**/task-samples/**/*.jpeg'],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3MB
+        // 提升到10MB以支持模型文件
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
         runtimeCaching: [
+          // 人脸识别模型 - 缓存优先，永久保存
+          {
+            urlPattern: /\/models\/.*\.(bin|json)$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'face-models-v1',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1年缓存
+              },
+              cacheableResponse: {
+                statuses: [0, 200] // 支持跨域请求
+              }
+            }
+          },
           {
             urlPattern: /^https:\/\/wdpeoyugsxqnpwwtkqsl\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
@@ -82,7 +99,8 @@ export default defineConfig({
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
-              }
+              },
+              networkTimeoutSeconds: 5 // 5秒超时后使用缓存
             }
           },
           // Cache task sample images at runtime instead of precaching
