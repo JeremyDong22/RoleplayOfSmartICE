@@ -81,7 +81,7 @@ export default defineConfig({
             urlPattern: /\/models\/.*\.(bin|json)$/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'face-models-v1',
+              cacheName: 'face-models-v2',  // 统一版本号，避免冲突
               expiration: {
                 maxEntries: 20,
                 maxAgeSeconds: 60 * 60 * 24 * 365 // 1年缓存

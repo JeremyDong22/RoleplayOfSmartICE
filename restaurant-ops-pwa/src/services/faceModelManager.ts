@@ -237,6 +237,7 @@ class FaceModelManager {
     try {
       this.loadAttempts++
       
+      console.log('[ModelManager] 开始加载模型，使用串行策略...')
       
       // Check current status
       const status = this.getModelStatus()
@@ -247,12 +248,13 @@ class FaceModelManager {
         return
       }
       
-      // Always use parallel loading for all devices
+      // Use sequential loading to avoid connection limits
       if (this.progressCallback) {
         this.progressCallback('正在加载人脸识别模型...', 0)
       }
       
-      await this.loadModelsInParallel()
+      // 改为串行加载，避免并发连接限制
+      await this.loadModelsSequentially()
       
       // Verify all models are loaded
       const finalStatus = this.getModelStatus()
@@ -260,6 +262,16 @@ class FaceModelManager {
       
       if (finalStatus.tinyFaceDetector && finalStatus.faceLandmark68Net && finalStatus.faceRecognitionNet) {
         this.modelsLoaded = true
+        
+        // 记录总加载时间
+        const totalSeconds = (loadTime / 1000).toFixed(1)
+        console.log(`✅ 所有模型加载完成，总耗时: ${Math.round(loadTime)}ms (${totalSeconds}秒)`)
+        
+        if (loadTime < 60000) {
+          console.log(`🎉 成功！模型在60秒内加载完成`)
+        } else {
+          console.warn(`⚠️ 警告：加载耗时超过60秒`)
+        }
         
         if (this.progressCallback) {
           this.progressCallback('模型加载完成', 100)
@@ -270,9 +282,16 @@ class FaceModelManager {
       
     } catch (error) {
       const loadTime = performance.now() - startTime
+      console.error(`[ModelManager] 模型加载失败，耗时: ${Math.round(loadTime)}ms`, error)
       
       // Log network details if available
       if ('connection' in navigator) {
+        const conn = (navigator as any).connection
+        console.log('[ModelManager] 网络信息:', {
+          effectiveType: conn?.effectiveType,
+          downlink: conn?.downlink,
+          rtt: conn?.rtt
+        })
       }
       
       // Provide user-friendly error messages
@@ -288,35 +307,49 @@ class FaceModelManager {
   }
   
   private async loadModelsSequentially(): Promise<void> {
+    const sequentialStartTime = performance.now()
+    console.log('[ModelManager] 开始串行加载3个模型...')
     
-    // Load TinyFaceDetector
+    // Load TinyFaceDetector (330KB)
     if (!faceapi.nets.tinyFaceDetector.isLoaded) {
+      const t1 = performance.now()
+      console.log('[1/3] 正在加载 TinyFaceDetector (330KB)...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
         'TinyFaceDetector',
         3
       )
-      await new Promise(resolve => setTimeout(resolve, 200))
+      console.log(`[1/3] TinyFaceDetector 加载完成: ${Math.round(performance.now() - t1)}ms`)
+      // 不等待，直接继续
     }
     
-    // Load FaceLandmark68Net  
+    // Load FaceLandmark68Net (360KB)
     if (!faceapi.nets.faceLandmark68Net.isLoaded) {
+      const t2 = performance.now()
+      console.log('[2/3] 正在加载 FaceLandmark68Net (360KB)...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
         'FaceLandmark68Net',
         3
       )
-      await new Promise(resolve => setTimeout(resolve, 200))
+      console.log(`[2/3] FaceLandmark68Net 加载完成: ${Math.round(performance.now() - t2)}ms`)
+      // 不等待，直接继续
     }
     
-    // Load FaceRecognitionNet (largest)
+    // Load FaceRecognitionNet (6.2MB)
     if (!faceapi.nets.faceRecognitionNet.isLoaded) {
+      const t3 = performance.now()
+      console.log('[3/3] 正在加载 FaceRecognitionNet (6.2MB)...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
         'FaceRecognitionNet',
         3
       )
+      console.log(`[3/3] FaceRecognitionNet 加载完成: ${Math.round(performance.now() - t3)}ms`)
     }
+    
+    const totalTime = performance.now() - sequentialStartTime
+    console.log(`[ModelManager] ✅ 串行加载完成，总耗时: ${Math.round(totalTime)}ms`)
   }
   
   private async loadModelsInParallel(): Promise<void> {
@@ -372,8 +405,8 @@ class FaceModelManager {
   ): Promise<void> {
     let lastError: Error | null = null
     const modelStartTime = performance.now()
-    // Shorter timeout if offline to fail faster
-    const TIMEOUT_MS = navigator.onLine ? 15000 : 5000  // 15s online, 5s offline
+    // 增加超时到60秒，给足够的时间加载
+    const TIMEOUT_MS = navigator.onLine ? 60000 : 5000  // 60s online, 5s offline
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const attemptStartTime = performance.now()
@@ -381,7 +414,7 @@ class FaceModelManager {
       try {
         // Add timeout to model loading
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`Loading ${modelName} timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS)
+          setTimeout(() => reject(new Error(`Loading ${modelName} timed out after ${TIMEOUT_MS/1000} seconds`)), TIMEOUT_MS)
         })
         
         await Promise.race([loadFn(), timeoutPromise])
