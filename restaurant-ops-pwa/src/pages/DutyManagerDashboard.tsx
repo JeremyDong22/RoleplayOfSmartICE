@@ -114,7 +114,6 @@ const DutyManagerDashboard: React.FC = () => {
       
       // 检查是否需要在晚上10:30（22:30）清空任务
       if (currentHour === 22 && currentMinute === 30) {
-        // 移除 localStorage 操作 - 使用状态管理
         const lastResetStr = lastResetTime
         const resetKey = `${currentDateStr}-22:30`
         
@@ -130,14 +129,27 @@ const DutyManagerDashboard: React.FC = () => {
             currentTrigger: undefined,
             isInClosingPeriod: false,
           })
-          // 移除 localStorage 操作 - 完全依赖数据库
+          
+          // 清理localStorage中的失败任务（过了营业时间就清理）
+          try {
+            localStorage.removeItem('duty-manager-failed-tasks')
+            // 清理所有任务的照片缓存
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i)
+              if (key && key.startsWith('photo-collection-closing-duty-manager-')) {
+                localStorage.removeItem(key)
+              }
+            }
+          } catch (e) {
+            console.error('Failed to clean localStorage:', e)
+          }
+          
           setLastResetTime(resetKey)
         }
       }
       
       // 检查是否需要在早上8:00刷新任务
       if (currentHour === 8 && currentMinute === 0) {
-        // 移除 localStorage 操作 - 使用状态管理
         const lastResetStr = lastResetTime
         const resetKey = `${currentDateStr}-8:00`
         
@@ -153,7 +165,21 @@ const DutyManagerDashboard: React.FC = () => {
             currentTrigger: undefined,
             isInClosingPeriod: false,
           })
-          // 移除 localStorage 操作 - 完全依赖数据库
+          
+          // 清理localStorage中的失败任务（新的一天清理旧数据）
+          try {
+            localStorage.removeItem('duty-manager-failed-tasks')
+            // 清理所有任务的照片缓存
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i)
+              if (key && key.startsWith('photo-collection-')) {
+                localStorage.removeItem(key)
+              }
+            }
+          } catch (e) {
+            console.error('Failed to clean localStorage:', e)
+          }
+          
           setLastResetTime(resetKey)
         }
       }
@@ -172,7 +198,54 @@ const DutyManagerDashboard: React.FC = () => {
   useEffect(() => {
     const loadTaskStatusesFromDB = async () => {
       try {
-        // 移除 localStorage 恢复逻辑 - 完全从数据库加载
+        // 恢复失败的任务数据
+        try {
+          const failedTasksStr = localStorage.getItem('duty-manager-failed-tasks')
+          if (failedTasksStr) {
+            const failedTasks = JSON.parse(failedTasksStr)
+            console.log('[DutyManagerDashboard] Found failed tasks to restore:', failedTasks)
+            
+            // 检查任务是否是今天的（避免恢复昨天的失败任务）
+            const today = new Date().toISOString().split('T')[0]
+            const todayTasks: any = {}
+            
+            Object.entries(failedTasks).forEach(([taskId, task]: [string, any]) => {
+              const taskDate = new Date(task.timestamp).toISOString().split('T')[0]
+              if (taskDate === today) {
+                todayTasks[taskId] = task
+              }
+            })
+            
+            if (Object.keys(todayTasks).length > 0) {
+              // 恢复任务状态，这样用户可以看到之前的提交
+              const restoredStatuses: any = {}
+              Object.entries(todayTasks).forEach(([taskId, task]: [string, any]) => {
+                restoredStatuses[taskId] = {
+                  completedAt: new Date(task.timestamp),
+                  overdue: false,
+                  evidence: task.evidence,
+                  status: 'pending',  // 标记为待上传状态
+                  review_status: 'pending'  // 审核状态也是pending
+                }
+              })
+              
+              setState(prev => ({
+                ...prev,
+                taskStatuses: { ...prev.taskStatuses, ...restoredStatuses }
+              }))
+              
+              // 提示用户有未上传的任务
+              setTimeout(() => {
+                alert('检测到有未成功上传的任务，您的照片已自动恢复。\n请在任务列表中重新提交。')
+              }, 1500)
+            } else if (Object.keys(failedTasks).length > 0) {
+              // 清理过期的失败任务
+              localStorage.removeItem('duty-manager-failed-tasks')
+            }
+          }
+        } catch (e) {
+          console.error('Failed to restore failed tasks:', e)
+        }
         
         const currentUser = authService.getCurrentUser()
         if (!currentUser) {
@@ -193,9 +266,10 @@ const DutyManagerDashboard: React.FC = () => {
         setDbTaskStatuses(dbStatuses)
 
         // 更新已完成的任务ID列表
+        // 注意：pending状态的任务不算完成，需要等待审核
         const completedIds = taskStatuses ? Object.keys(taskStatuses).filter(taskId => 
           taskStatuses[taskId].status === 'submitted' && 
-          taskStatuses[taskId].review_status !== 'rejected'
+          taskStatuses[taskId].review_status === 'approved'  // 只有approved才算完成
         ) : []
 
         // 直接使用数据库的状态
@@ -484,23 +558,54 @@ const DutyManagerDashboard: React.FC = () => {
           const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
           setDbTaskStatuses(updatedTaskStatuses)
         }
+        
+        // 清理成功上传的任务
+        try {
+          const failedTasksStr = localStorage.getItem('duty-manager-failed-tasks')
+          if (failedTasksStr) {
+            const failedTasks = JSON.parse(failedTasksStr)
+            delete failedTasks[taskId]
+            if (Object.keys(failedTasks).length > 0) {
+              localStorage.setItem('duty-manager-failed-tasks', JSON.stringify(failedTasks))
+            } else {
+              localStorage.removeItem('duty-manager-failed-tasks')
+            }
+          }
+          
+          // 同时清理PhotoSubmissionDialog的localStorage
+          const photoStorageKey = `photo-collection-${taskId}`
+          localStorage.removeItem(photoStorageKey)
+        } catch (e) {
+          console.error('Failed to clean up localStorage:', e)
+        }
       } catch (error) {
         console.error('[DutyManagerDashboard] Task submission failed:', error)
         throw error
       }
       }
     } catch (error) {
-      alert('照片上传失败，请检查网络连接并重试')
-      // 回滚状态
-      setState(prev => {
-        const newTaskStatuses = { ...prev.taskStatuses }
-        delete newTaskStatuses[taskId]
-        return {
-          ...prev,
-          completedTaskIds: prev.completedTaskIds.filter(id => id !== taskId),
-          taskStatuses: newTaskStatuses
-        }
-      })
+      console.error('[DutyManagerDashboard] Task submission failed:', error)
+      alert('任务提交失败，数据已保存到本地，请稍后重试。\n\n刷新页面后，您的照片和数据将自动恢复。')
+      
+      // 不删除状态！保留evidence数据，这样用户刷新页面后可以重试
+      // PhotoSubmissionDialog已经通过localStorage保存了照片
+      // 我们只需要保留taskStatuses中的evidence即可
+      
+      // 保存失败的任务到localStorage，以便页面刷新后恢复
+      const failedTask = {
+        taskId,
+        evidence: data,
+        timestamp: Date.now()
+      }
+      
+      try {
+        const existingFailed = localStorage.getItem('duty-manager-failed-tasks')
+        const failedTasks = existingFailed ? JSON.parse(existingFailed) : {}
+        failedTasks[taskId] = failedTask
+        localStorage.setItem('duty-manager-failed-tasks', JSON.stringify(failedTasks))
+      } catch (e) {
+        console.error('Failed to save task to localStorage:', e)
+      }
     }
   }
 
@@ -657,16 +762,30 @@ const DutyManagerDashboard: React.FC = () => {
                   onComment={handleNoticeComment}
                   hideTimer={true}  // 值班经理不显示倒计时
                   reviewStatus={reviewStatus}  // 传递审核状态
-                  previousSubmissions={submissions.reduce((acc, sub) => {
-                    // 将submissions转换为TaskCountdown期望的格式
-                    acc[sub.taskId] = {
-                      photoGroups: sub.content.photoGroups || [],
-                      photos: sub.content.photos || [],
-                      text: sub.content.text,
-                      amount: sub.content.amount
-                    }
-                    return acc
-                  }, {} as { [taskId: string]: any })}
+                  previousSubmissions={(() => {
+                    // 将submissions和失败的任务都传递给TaskCountdown
+                    const allSubmissions: { [taskId: string]: any } = {}
+                    
+                    // 添加来自Context的submissions（已提交的任务）
+                    submissions.forEach(sub => {
+                      allSubmissions[sub.taskId] = {
+                        photoGroups: sub.content.photoGroups || [],
+                        photos: sub.content.photos || [],
+                        text: sub.content.text,
+                        amount: sub.content.amount
+                      }
+                    })
+                    
+                    // 添加来自taskStatuses的evidence（失败的任务）
+                    Object.entries(state.taskStatuses).forEach(([taskId, status]) => {
+                      if (status.evidence && !allSubmissions[taskId]) {
+                        // 如果有evidence但还没有submission，说明是失败的任务
+                        allSubmissions[taskId] = status.evidence
+                      }
+                    })
+                    
+                    return allSubmissions
+                  })()}
                 />
               ) : (
                 <Paper sx={{ p: 3, mb: 3 }}>

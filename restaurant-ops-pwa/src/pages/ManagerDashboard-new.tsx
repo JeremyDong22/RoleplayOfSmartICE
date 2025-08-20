@@ -4,6 +4,8 @@
 // Creates two audit tasks for lunch period (energy management and revenue verification) and
 // two for dinner/closing period (energy safety check and security check). These audit tasks
 // are linked to corresponding duty manager tasks for review.
+// Fixed: Manager now receives review tasks for BOTH afternoon (14:00-15:30) and evening (21:30+) 
+// duty manager submissions. Previously only worked for evening period.
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
@@ -43,6 +45,7 @@ import { supabase } from '../services/supabase'
 import { authService } from '../services/authService'
 import { getRestaurantId } from '../utils/restaurantSetup'
 import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
+import { isClosingPeriod, isLunchClosingPeriod } from '../utils/periodHelpers'
 // import { submitNoticeResponse, getTodayNoticeResponses } from '../services/noticeResponseService'
 // import { recordPeriodTransition, hasManuallyClosedToday, getLatestTransition } from '../services/periodTransitionService'
 
@@ -1157,10 +1160,11 @@ export const ManagerDashboard: React.FC = () => {
   }, [testTime, clearTrigger])
   
   // Always append floating tasks at the end
-  // Include review tasks for duty manager tasks in closing period
+  // Include review tasks for duty manager tasks in BOTH lunch closing AND evening closing periods
   let baseTasks = currentPeriod?.tasks?.manager || []
-  const isClosingPeriod = workflowPeriods.length > 0 && currentPeriod?.id === workflowPeriods[workflowPeriods.length - 1].id
-  if (isClosingPeriod) {
+  // Check if current period is either lunch closing (14:00-15:30) or evening closing (21:30+)
+  const shouldIncludeReviewTasks = isClosingPeriod(currentPeriod) || isLunchClosingPeriod(currentPeriod)
+  if (shouldIncludeReviewTasks) {
     baseTasks = [...baseTasks, ...reviewTasks]
   }
   const currentTasks = [...baseTasks, ...floatingTasks]
