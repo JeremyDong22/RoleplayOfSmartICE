@@ -1155,63 +1155,216 @@ export const CEODashboardDB: React.FC = () => {
               </CardContent>
             </MotionCard>
 
-            {/* 右侧：员工绩效 */}
+            {/* 右侧：员工绩效 - 增强版 */}
             <MotionCard
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
             >
               <CardContent sx={{ p: isMobile ? 2 : 3 }}>
                 <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 3 }}>
-                  今日员工绩效
+                  今日员工绩效（{selectedDepartment}）
                 </Typography>
 
                 {currentRestaurant.employee_stats.length === 0 ? (
-                  <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center', py: 4 }}>
-                    暂无员工数据
-                  </Typography>
+                  <Alert severity="info" sx={{ py: 3 }}>
+                    <Typography variant="body2">
+                      该部门暂无员工或员工数据
+                    </Typography>
+                  </Alert>
                 ) : (
-                  currentRestaurant.employee_stats.map((employee, index) => (
-                    <Box 
-                      key={employee.user_id}
-                      sx={{ 
-                        py: 2, 
-                        borderBottom: index < currentRestaurant.employee_stats.length - 1 ? '1px solid #f0f0f0' : 'none',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Avatar 
-                          sx={{ 
-                            width: isMobile ? 32 : 36, 
-                            height: isMobile ? 32 : 36,
-                            bgcolor: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#e0e0e0',
-                            fontWeight: 'bold',
-                            fontSize: isMobile ? 14 : 16
-                          }}
-                        >
-                          {index + 1}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {employee.user_name}
-                          </Typography>
+                  <Box>
+                    {/* 部门统计汇总 */}
+                    <Box sx={{ mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          部门总览
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                          {currentRestaurant.employee_stats.length} 名员工
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip 
+                          size="small"
+                          label={`${currentRestaurant.employee_stats.reduce((sum, e) => sum + e.completed_tasks, 0)} 已完成`}
+                          color="success"
+                        />
+                        <Chip 
+                          size="small"
+                          label={`${currentRestaurant.employee_stats.reduce((sum, e) => sum + e.assigned_tasks, 0)} 应完成`}
+                          color="primary"
+                        />
+                        {currentRestaurant.employee_stats.reduce((sum, e) => sum + e.missing_tasks, 0) > 0 && (
+                          <Chip 
+                            size="small"
+                            label={`${currentRestaurant.employee_stats.reduce((sum, e) => sum + e.missing_tasks, 0)} 缺失`}
+                            color="error"
+                          />
+                        )}
+                      </Box>
+                    </Box>
+                    
+                    {/* 员工列表 */}
+                    {currentRestaurant.employee_stats.map((employee, index) => (
+                      <Box 
+                        key={employee.user_id}
+                        sx={{ 
+                          py: 2,
+                          px: 1,
+                          mb: 2,
+                          borderRadius: 1,
+                          border: '1px solid #e0e0e0',
+                          bgcolor: employee.completed_tasks === 0 && employee.assigned_tasks > 0 ? '#fff3e0' : 'transparent',
+                          '&:hover': {
+                            bgcolor: '#f5f5f5',
+                            borderColor: '#1976d2'
+                          }
+                        }}
+                      >
+                        {/* 员工基本信息 */}
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar 
+                              sx={{ 
+                                width: isMobile ? 32 : 36, 
+                                height: isMobile ? 32 : 36,
+                                bgcolor: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#e0e0e0',
+                                fontWeight: 'bold',
+                                fontSize: isMobile ? 14 : 16
+                              }}
+                            >
+                              {index + 1}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {employee.user_name}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                {employee.role_name}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          
+                          {/* 完成率标签 */}
+                          <Chip 
+                            size="small"
+                            label={
+                              employee.assigned_tasks > 0 
+                                ? `${Math.round((employee.completed_tasks / employee.assigned_tasks) * 100)}%`
+                                : employee.completed_tasks > 0 ? '100%' : '未开始'
+                            }
+                            color={
+                              employee.assigned_tasks === 0 && employee.completed_tasks === 0 ? 'default' :
+                              employee.completed_tasks >= employee.assigned_tasks ? 'success' :
+                              employee.completed_tasks > 0 ? 'warning' : 'error'
+                            }
+                          />
+                        </Box>
+                        
+                        {/* 任务进度条 */}
+                        <Box sx={{ mb: 1 }}>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={
+                              employee.assigned_tasks > 0 
+                                ? (employee.completed_tasks / employee.assigned_tasks) * 100 
+                                : 0
+                            }
+                            sx={{ 
+                              height: 6,
+                              borderRadius: 3,
+                              bgcolor: '#E0E0E0',
+                              '& .MuiLinearProgress-bar': {
+                                borderRadius: 3,
+                                bgcolor: 
+                                  employee.completed_tasks >= employee.assigned_tasks ? '#4CAF50' :
+                                  employee.completed_tasks > 0 ? '#FF9800' : '#f44336'
+                              }
+                            }}
+                          />
+                        </Box>
+                        
+                        {/* 详细统计 */}
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+                          <Chip 
+                            label={`${employee.completed_tasks}/${employee.assigned_tasks} 完成`}
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            sx={{ height: 22, fontSize: '0.75rem' }}
+                          />
+                          {employee.late_count > 0 && (
+                            <Chip 
+                              label={`${employee.late_count} 迟到`}
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              sx={{ height: 22, fontSize: '0.75rem' }}
+                            />
+                          )}
+                          {employee.missing_tasks > 0 && (
+                            <Chip 
+                              label={`${employee.missing_tasks} 缺失`}
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              sx={{ height: 22, fontSize: '0.75rem' }}
+                            />
+                          )}
+                          {employee.pending_tasks > 0 && (
+                            <Chip 
+                              label={`${employee.pending_tasks} 待完成`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ height: 22, fontSize: '0.75rem' }}
+                            />
+                          )}
+                        </Box>
+                        
+                        {/* 当前时段进度 */}
+                        {employee.current_period_progress && (
+                          <Box sx={{ 
+                            pt: 1, 
+                            borderTop: '1px solid #e0e0e0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}>
+                            <TimeIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                              当前时段：{employee.current_period_progress.period_name}
+                            </Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                              ({employee.current_period_progress.completed}/{employee.current_period_progress.assigned})
+                            </Typography>
+                          </Box>
+                        )}
+                        
+                        {/* 准时率 */}
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            {employee.role_name}
+                            准时率
+                          </Typography>
+                          <Typography variant="caption" sx={{ 
+                            fontWeight: 'bold',
+                            color: employee.on_time_rate >= 90 ? '#4CAF50' : 
+                                   employee.on_time_rate >= 70 ? '#FF9800' : '#f44336'
+                          }}>
+                            {employee.on_time_rate.toFixed(0)}%
                           </Typography>
                         </Box>
                       </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
-                          {employee.completed_tasks}/{employee.total_tasks}
+                    ))}
+                    
+                    {/* 无任务员工提示 */}
+                    {currentRestaurant.employee_stats.filter(e => e.total_tasks === 0).length > 0 && (
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="caption">
+                          {currentRestaurant.employee_stats.filter(e => e.total_tasks === 0).length} 名员工今日无任务安排
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {employee.on_time_rate.toFixed(0)}% 准时
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))
+                      </Alert>
+                    )}
+                  </Box>
                 )}
               </CardContent>
             </MotionCard>
