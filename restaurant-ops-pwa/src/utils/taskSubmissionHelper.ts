@@ -3,10 +3,15 @@
 // 处理任务数据的上传，包括照片、音频等媒体文件
 // Updated: 2025-08-05 - Added retry mechanism and progress tracking for better reliability
 // Updated: 2025-08-11 - Added inventory update support for structured fields
+// Updated: 2025-08-21 - Added parallel upload with smart fallback (10→7→5→3)
 
 import { submitTaskRecord } from '../services/taskRecordService'
 import { uploadPhoto, uploadAudio } from '../services/storageService'
 import { compressImage, needsCompression, formatFileSize, estimateFileSize } from './imageCompressor'
+
+// Batch sizes to try in order for parallel uploads
+const BATCH_SIZES = [10, 7, 5, 3]
+const UPLOAD_TIMEOUT = 30000 // 30 seconds per batch
 
 interface TaskSubmissionData {
   taskId: string
@@ -25,6 +30,7 @@ interface UploadResult {
   url?: string
   error?: string
   retryCount?: number
+  index?: number
 }
 
 /**
@@ -94,6 +100,108 @@ async function uploadPhotoWithRetry(
     error: lastError?.message || 'Upload failed after retries',
     retryCount
   }
+}
+
+/**
+ * Upload a batch of photos with timeout
+ */
+async function uploadBatchWithTimeout(
+  batch: any[],
+  userId: string,
+  taskId: string,
+  timeout: number = UPLOAD_TIMEOUT
+): Promise<UploadResult[]> {
+  return Promise.race([
+    // Parallel upload all photos in batch
+    Promise.all(
+      batch.map(async (item, index) => {
+        const photoData = item.photo || item.image
+        try {
+          const result = await uploadPhotoWithRetry(
+            photoData,
+            userId,
+            taskId,
+            3 // maxRetries
+          )
+          return { ...result, index }
+        } catch (error: any) {
+          return { 
+            success: false, 
+            error: error.message,
+            index 
+          }
+        }
+      })
+    ),
+    
+    // Timeout promise
+    new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Upload timeout')), timeout)
+    )
+  ])
+}
+
+/**
+ * Upload photos with automatic batch size fallback
+ */
+async function uploadPhotosWithFallback(
+  photos: any[],
+  userId: string,
+  taskId: string,
+  onProgress?: (progress: number, message?: string) => void
+): Promise<UploadResult[]> {
+  let currentBatchSizeIndex = 0
+  let allResults: UploadResult[] = []
+  let photoIndex = 0
+  
+  while (photoIndex < photos.length) {
+    const batchSize = BATCH_SIZES[currentBatchSizeIndex]
+    const batch = photos.slice(photoIndex, photoIndex + batchSize)
+    
+    console.log(`[Upload] Trying batch of ${batch.length} photos with size ${batchSize}`)
+    
+    try {
+      const batchResults = await uploadBatchWithTimeout(
+        batch,
+        userId,
+        taskId,
+        UPLOAD_TIMEOUT
+      )
+      
+      // Check if any failed
+      const failures = batchResults.filter(r => !r.success)
+      if (failures.length > 0 && currentBatchSizeIndex < BATCH_SIZES.length - 1) {
+        // Some failed, try smaller batch size
+        throw new Error('Batch upload partial failure')
+      }
+      
+      // Success or last resort - accept results
+      allResults.push(...batchResults)
+      photoIndex += batch.length
+      
+      // Update progress if callback provided
+      if (onProgress) {
+        const progress = Math.round((photoIndex / photos.length) * 100)
+        onProgress(progress, `上传照片 ${photoIndex}/${photos.length}`)
+      }
+      
+    } catch (error: any) {
+      console.log(`[Upload] Batch size ${batchSize} failed: ${error.message}`)
+      
+      // Try smaller batch size
+      currentBatchSizeIndex++
+      
+      if (currentBatchSizeIndex >= BATCH_SIZES.length) {
+        // All batch sizes failed
+        throw new Error('网络连接异常，请检查网络后重试')
+      }
+      
+      console.log(`[Upload] Falling back to batch size ${BATCH_SIZES[currentBatchSizeIndex]}`)
+      // Don't increment photoIndex, retry same photos
+    }
+  }
+  
+  return allResults
 }
 
 /**
@@ -172,47 +280,61 @@ export async function submitTaskWithMedia({
         }
       }
       
-      // 上传照片到Storage with retry and progress
-      const totalPhotos = evidenceArray.length
-      let uploadedPhotos = 0
-      
-      for (let i = 0; i < evidenceArray.length; i++) {
-        const item = evidenceArray[i]
-        const photoData = item.photo || item.image
+      // NEW: Parallel upload with fallback
+      if (evidenceArray.length > 0) {
+        const photosToUpload = evidenceArray.filter(item => {
+          const photoData = item.photo || item.image
+          return photoData && photoData.startsWith('data:')
+        })
         
-        if (photoData && photoData.startsWith('data:')) {
-          console.log(`[TaskSubmissionHelper] Uploading photo ${i + 1}/${totalPhotos} for task:`, taskId)
-          
-          // Update progress
-          const progressPercent = Math.round((uploadedPhotos / totalPhotos) * 100)
-          onProgress?.(progressPercent, `上传照片 ${i + 1}/${totalPhotos}`)
-          
-          // Upload with retry
-          const uploadResult = await uploadPhotoWithRetry(
-            photoData,
-            userId,
-            taskId,
-            maxRetries,
-            (msg) => onProgress?.(progressPercent, msg)
-          )
-          
-          if (uploadResult.success && uploadResult.url) {
-            submissionData.photo_urls.push(uploadResult.url)
-            uploadedPhotos++
-          } else {
-            console.error('[TaskSubmissionHelper] Failed to upload photo after retries:', uploadResult.error)
-            // Continue with other photos even if one fails
+        const existingUrls = evidenceArray.filter(item => {
+          const photoData = item.photo || item.image
+          return photoData && photoData.startsWith('http')
+        }).map(item => item.photo || item.image)
+        
+        if (photosToUpload.length > 0) {
+          try {
+            console.log(`[Upload] Starting parallel upload of ${photosToUpload.length} photos`)
+            const uploadResults = await uploadPhotosWithFallback(
+              photosToUpload,
+              userId,
+              taskId,
+              onProgress
+            )
+            
+            // Collect successful URLs
+            const newUrls = uploadResults
+              .filter(r => r.success && r.url)
+              .map(r => r.url!)
+            
+            submissionData.photo_urls = [...existingUrls, ...newUrls]
+            
+            // Check if all uploads succeeded
+            const failures = uploadResults.filter(r => !r.success)
+            if (failures.length > 0) {
+              console.error(`[Upload] ${failures.length} photos failed to upload`)
+              // Don't throw error here, let some photos be uploaded
+              // throw new Error(`${failures.length}张照片上传失败，请重试`)
+            }
+            
+            // Update final progress
+            onProgress?.(100, `完成 ${newUrls.length}/${photosToUpload.length} 张照片上传`)
+            
+          } catch (uploadError: any) {
+            console.error('[Upload] Error:', uploadError)
+            
+            if (uploadError.message.includes('timeout')) {
+              throw new Error('上传超时（30秒），网络连接缓慢，请稍后重试')
+            } else if (uploadError.message.includes('网络连接异常')) {
+              throw uploadError
+            } else {
+              throw new Error('照片上传失败，请检查网络连接后重试')
+            }
           }
-        } else if (photoData && photoData.startsWith('http')) {
-          // 已经是URL，直接使用
-          submissionData.photo_urls.push(photoData)
-          uploadedPhotos++
+        } else {
+          // All photos are already URLs
+          submissionData.photo_urls = existingUrls
         }
-      }
-      
-      // Update final progress
-      if (totalPhotos > 0) {
-        onProgress?.(100, `完成 ${uploadedPhotos}/${totalPhotos} 张照片上传`)
       }
       
       // 添加描述文本
