@@ -49,6 +49,8 @@ import {
   Inventory as InventoryIcon,
   AttachMoney as MoneyIcon
 } from '@mui/icons-material'
+import { InventoryItemPicker } from '../InventoryItemPicker'
+import { authService } from '../../services/authService'
 
 // 视图类型
 type ViewType = 'samples' | 'camera' | 'photos'
@@ -1271,7 +1273,41 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                   return null
                 }
                 
-                if (field.type === 'select') {
+                // 使用 InventoryItemPicker 组件处理物品名称选择
+                if (field.key === 'item_name' && field.type === 'select') {
+                  const user = authService.getCurrentUser()
+                  const department = user?.role === 'chef' ? '后厨' : '前厅'
+                  
+                  return (
+                    <Box key={field.key} sx={{ mb: 2 }}>
+                      <InventoryItemPicker
+                        value={structuredData.item_name || null}
+                        onChange={(itemName) => {
+                          setStructuredData({
+                            ...structuredData,
+                            item_name: itemName
+                          })
+                        }}
+                        department={department as '前厅' | '后厨'}
+                        label={field.label}
+                        required={field.required}
+                        showQuantity={true}  // 显示库存数量
+                        showUnit={false}     // 不显示单位
+                        placeholder="搜索或选择物品..."
+                        onItemSelect={(item) => {
+                          // 自动填充单位
+                          if (item.unit) {
+                            setStructuredData(prev => ({
+                              ...prev,
+                              item_name: item.item_name,
+                              unit: item.unit
+                            }))
+                          }
+                        }}
+                      />
+                    </Box>
+                  )
+                } else if (field.type === 'select') {
                   return (
                     <FormControl fullWidth sx={{ mb: 2 }} key={field.key}>
                       <InputLabel required={field.required}>
@@ -1285,19 +1321,6 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                             ...structuredData,
                             [field.key]: value
                           })
-                          // 如果选择了物品，自动填充单位
-                          if (field.key === 'item_name') {
-                            const unitField = structuredFields.fields.find(
-                              (f: any) => f.key === 'unit'
-                            )
-                            if (unitField?.mapping && unitField.mapping[value]) {
-                              setStructuredData({
-                                ...structuredData,
-                                [field.key]: value,
-                                unit: unitField.mapping[value]
-                              })
-                            }
-                          }
                         }}
                         label={field.label}
                       >

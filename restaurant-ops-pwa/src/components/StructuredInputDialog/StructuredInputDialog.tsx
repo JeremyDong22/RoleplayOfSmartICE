@@ -37,6 +37,7 @@ import {
 import { inventoryService } from '../../services/inventoryService'
 import { authService } from '../../services/authService'
 import { restaurantConfigService } from '../../services/restaurantConfigService'
+import { InventoryItemPicker } from '../InventoryItemPicker'
 
 interface StructuredInputDialogProps {
   open: boolean
@@ -191,46 +192,15 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
   }
 
   const handleFieldChange = async (key: string, value: any) => {
-    const newFormData = { ...formData, [key]: value }
+    console.log('[handleFieldChange] key:', key, 'value:', value, 'current formData:', formData)
     
-    // 如果选择了物品，自动填充单位并检查库存
-    if (key === 'item_name' && dynamicFields?.fields) {
-      const unitField = dynamicFields.fields.find((f: any) => f.key === 'unit')
-      if (unitField?.mapping && unitField.mapping[value]) {
-        newFormData.unit = unitField.mapping[value]
-      }
+    // 使用函数式更新来确保获取最新的state
+    setFormData(prev => {
+      const newFormData = { ...prev, [key]: value }
+      console.log('[handleFieldChange] Updated formData to:', newFormData)
       
-      // 如果是损耗盘点或交割损耗，获取当前库存数量
-      if (taskName.includes('损耗') || taskName.includes('交割')) {
-        setIsCheckingInventory(true)
-        const quantity = await inventoryService.getItemQuantity(value)
-        setAvailableQuantity(quantity)
-        setIsCheckingInventory(false)
-        
-        // 如果已有数量，立即验证
-        if (formData.quantity && quantity !== null) {
-          if (formData.quantity > quantity) {
-            setErrors(prev => ({ ...prev, quantity: `库存不足，当前库存：${quantity}` }))
-          } else {
-            setErrors(prev => ({ ...prev, quantity: '' }))
-          }
-        }
-      }
-    }
-    
-    // 如果修改了数量
-    if (key === 'quantity') {
-      // 损耗盘点或交割损耗时验证数量不超过库存
-      if ((taskName.includes('损耗') || taskName.includes('交割')) && availableQuantity !== null) {
-        if (value > availableQuantity) {
-          setErrors(prev => ({ ...prev, quantity: `库存不足，当前库存：${availableQuantity}` }))
-        } else {
-          setErrors(prev => ({ ...prev, quantity: '' }))
-        }
-      }
-      
-      // 如果已有单价或总价，重新计算（收货验货时）
-      if (!taskName.includes('损耗')) {
+      // 如果修改了数量，需要更新价格相关字段
+      if (key === 'quantity' && !taskName.includes('损耗')) {
         if (unitPrice !== null && value > 0) {
           const newTotal = unitPrice * value
           setTotalPrice(Number(newTotal.toFixed(2)))
@@ -243,9 +213,21 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
           newFormData.total_price = totalPrice
         }
       }
-    }
+      
+      return newFormData
+    })
     
-    setFormData(newFormData)
+    // 如果修改了数量，验证库存
+    if (key === 'quantity') {
+      // 损耗盘点或交割损耗时验证数量不超过库存
+      if ((taskName.includes('损耗') || taskName.includes('交割')) && availableQuantity !== null) {
+        if (value > availableQuantity) {
+          setErrors(prev => ({ ...prev, quantity: `库存不足，当前库存：${availableQuantity}` }))
+        } else {
+          setErrors(prev => ({ ...prev, quantity: '' }))
+        }
+      }
+    }
     
     // 清除该字段的错误（数量字段的错误特殊处理）
     if (key !== 'quantity' && errors[key]) {
@@ -408,7 +390,52 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
                 return null
               }
               
-              if (field.type === 'select') {
+              // 使用 InventoryItemPicker 组件处理物品名称选择
+              if (field.key === 'item_name' && field.type === 'select') {
+                const user = authService.getCurrentUser()
+                const department = user?.role === 'chef' ? '后厨' : '前厅'
+                
+                console.log('[DEBUG] InventoryItemPicker - formData.item_name:', formData.item_name)
+                return (
+                  <Box key={field.key} sx={{ mb: 2 }}>
+                    <InventoryItemPicker
+                      value={formData.item_name || null}
+                      onChange={(itemName) => {
+                        console.log('[DEBUG] onChange called with:', itemName)
+                        handleFieldChange('item_name', itemName)
+                      }}
+                      department={department as '前厅' | '后厨'}
+                      label={field.label}
+                      required={field.required}
+                      error={!!errors.item_name}
+                      helperText={errors.item_name}
+                      showQuantity={taskName.includes('损耗') || taskName.includes('交割')}
+                      showUnit={false}  // 不显示单位
+                      disabled={isCheckingInventory}
+                      onItemSelect={async (item) => {
+                        // 自动填充单位
+                        if (item.unit) {
+                          handleFieldChange('unit', item.unit)
+                        }
+                        // 如果是损耗盘点或交割损耗，设置库存数量
+                        if (taskName.includes('损耗') || taskName.includes('交割')) {
+                          setAvailableQuantity(item.quantity)
+                          setIsCheckingInventory(false)
+                          
+                          // 如果已有数量，立即验证
+                          if (formData.quantity && item.quantity !== null) {
+                            if (formData.quantity > item.quantity) {
+                              setErrors(prev => ({ ...prev, quantity: `库存不足，当前库存：${item.quantity}` }))
+                            } else {
+                              setErrors(prev => ({ ...prev, quantity: '' }))
+                            }
+                          }
+                        }
+                      }}
+                    />
+                  </Box>
+                )
+              } else if (field.type === 'select') {
                 return (
                   <FormControl 
                     fullWidth 

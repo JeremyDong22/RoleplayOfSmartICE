@@ -1,6 +1,7 @@
 /**
  * FIFO价格计算服务
  * Created: 2025-01-12
+ * Updated: 2025-01-21 - Use view-based approach instead of price_history table
  * Purpose: 实现先进先出的价格计算逻辑，用于损耗盘点时自动计算成本
  */
 
@@ -8,7 +9,9 @@ import { supabase } from './supabase'
 
 interface PriceBatch {
   id: string
-  unit_price: number
+  unit_price: number | null
+  total_price: number | null
+  quantity: number
   remaining_quantity: number
   created_at: string
 }
@@ -36,34 +39,17 @@ export class FIFOCalculator {
     restaurantId: string
   ): Promise<FIFOResult> {
     try {
-      // 1. 获取inventory item ID
-      const { data: inventoryItem, error: invError } = await supabase
-        .from('roleplay_inventory')
-        .select('id')
+      // 使用新的FIFO视图获取库存批次信息
+      const { data: fifoBatches, error: fifoError } = await supabase
+        .from('roleplay_inventory_fifo_view')
+        .select('*')
         .eq('item_name', itemName)
         .eq('restaurant_id', restaurantId)
-        .single()
-
-      if (invError || !inventoryItem) {
-        console.error('[FIFOCalculator] Failed to find inventory item:', invError)
-        return {
-          unitPrice: 0,
-          totalPrice: 0,
-          batches: []
-        }
-      }
-
-      // 2. 获取价格历史（按FIFO顺序）
-      const { data: priceHistory, error: histError } = await supabase
-        .from('roleplay_inventory_price_history')
-        .select('id, unit_price, remaining_quantity, created_at')
-        .eq('inventory_item_id', inventoryItem.id)
-        .eq('transaction_type', 'purchase')
         .gt('remaining_quantity', 0)
         .order('created_at', { ascending: true }) // FIFO: 最早的先出
 
-      if (histError) {
-        console.error('[FIFOCalculator] Failed to fetch price history:', histError)
+      if (fifoError) {
+        console.error('[FIFOCalculator] Failed to fetch FIFO data:', fifoError)
         return {
           unitPrice: 0,
           totalPrice: 0,
@@ -71,8 +57,25 @@ export class FIFOCalculator {
         }
       }
 
-      if (!priceHistory || priceHistory.length === 0) {
-        console.warn('[FIFOCalculator] No price history found for:', itemName)
+      if (!fifoBatches || fifoBatches.length === 0) {
+        console.warn('[FIFOCalculator] No purchase history found for:', itemName)
+        // 如果没有历史记录，尝试从库存表获取平均价格
+        const { data: inventory } = await supabase
+          .from('roleplay_inventory')
+          .select('quantity, total_price')
+          .eq('item_name', itemName)
+          .eq('restaurant_id', restaurantId)
+          .single()
+        
+        if (inventory && inventory.quantity > 0) {
+          const avgPrice = inventory.total_price / inventory.quantity
+          return {
+            unitPrice: Number(avgPrice.toFixed(2)),
+            totalPrice: Number((avgPrice * quantity).toFixed(2)),
+            batches: [{ quantity, unitPrice: Number(avgPrice.toFixed(2)) }]
+          }
+        }
+        
         return {
           unitPrice: 0,
           totalPrice: 0,
@@ -80,39 +83,64 @@ export class FIFOCalculator {
         }
       }
 
-      // 3. 按FIFO计算成本
+      // 按FIFO计算成本
       let remainingQty = quantity
       let totalCost = 0
       const usedBatches: Array<{ quantity: number; unitPrice: number }> = []
 
-      for (const batch of priceHistory) {
+      for (const batch of fifoBatches) {
         if (remainingQty <= 0) break
 
         const useQty = Math.min(remainingQty, batch.remaining_quantity)
-        const batchCost = useQty * batch.unit_price
+        
+        // 计算单价（优先使用unit_price，否则从total_price计算）
+        let unitPrice = 0
+        if (batch.unit_price !== null) {
+          unitPrice = batch.unit_price
+        } else if (batch.total_price !== null && batch.quantity > 0) {
+          unitPrice = batch.total_price / batch.quantity
+        }
+        
+        const batchCost = useQty * unitPrice
 
         totalCost += batchCost
         remainingQty -= useQty
 
         usedBatches.push({
           quantity: useQty,
-          unitPrice: batch.unit_price
+          unitPrice: Number(unitPrice.toFixed(2))
         })
 
-        console.log(`[FIFOCalculator] Using batch: ${useQty} @ ¥${batch.unit_price} = ¥${batchCost}`)
+        console.log(`[FIFOCalculator] Using batch: ${useQty} @ ¥${unitPrice.toFixed(2)} = ¥${batchCost.toFixed(2)}`)
       }
 
-      // 4. 计算平均单价
+      // 计算平均单价
       const actualQuantityUsed = quantity - remainingQty
       const avgUnitPrice = actualQuantityUsed > 0 ? totalCost / actualQuantityUsed : 0
 
       // 如果库存不足，给出警告
       if (remainingQty > 0) {
         console.warn(`[FIFOCalculator] Insufficient inventory for ${itemName}. Short by ${remainingQty} units`)
+        // 使用库存平均价格补充剩余部分
+        const { data: inventory } = await supabase
+          .from('roleplay_inventory')
+          .select('quantity, total_price')
+          .eq('item_name', itemName)
+          .eq('restaurant_id', restaurantId)
+          .single()
+        
+        if (inventory && inventory.quantity > 0) {
+          const avgPrice = inventory.total_price / inventory.quantity
+          totalCost += remainingQty * avgPrice
+          usedBatches.push({
+            quantity: remainingQty,
+            unitPrice: Number(avgPrice.toFixed(2))
+          })
+        }
       }
 
       const result = {
-        unitPrice: Number(avgUnitPrice.toFixed(2)),
+        unitPrice: Number((totalCost / quantity).toFixed(2)),
         totalPrice: Number(totalCost.toFixed(2)),
         batches: usedBatches
       }
@@ -138,27 +166,26 @@ export class FIFOCalculator {
     restaurantId: string
   ): Promise<number> {
     try {
-      // 获取inventory item ID
-      const { data: inventoryItem } = await supabase
-        .from('roleplay_inventory')
-        .select('id')
+      // 从FIFO视图获取最新的采购记录
+      const { data: latestPurchase } = await supabase
+        .from('roleplay_inventory_fifo_view')
+        .select('unit_price, total_price, quantity')
         .eq('item_name', itemName)
         .eq('restaurant_id', restaurantId)
-        .single()
-
-      if (!inventoryItem) return 0
-
-      // 获取最新的采购记录
-      const { data: latestPrice } = await supabase
-        .from('roleplay_inventory_price_history')
-        .select('unit_price')
-        .eq('inventory_item_id', inventoryItem.id)
-        .eq('transaction_type', 'purchase')
         .order('created_at', { ascending: false })
         .limit(1)
         .single()
 
-      return latestPrice?.unit_price || 0
+      if (!latestPurchase) return 0
+      
+      // 优先使用unit_price，否则从total_price计算
+      if (latestPurchase.unit_price !== null) {
+        return latestPurchase.unit_price
+      } else if (latestPurchase.total_price !== null && latestPurchase.quantity > 0) {
+        return latestPurchase.total_price / latestPurchase.quantity
+      }
+      
+      return 0
 
     } catch (error) {
       console.error('[FIFOCalculator] Error getting latest price:', error)
