@@ -33,13 +33,14 @@ export interface CEOEmployeeStat {
   user_name: string;
   role_name: string;
   role_code: string;  // 新增：用于判断部门
-  completed_tasks: number;
-  total_tasks: number;
-  assigned_tasks: number;  // 新增：应完成的任务数（基于当前时间）
+  completed_tasks: number;  // 只包含非浮动任务
+  total_tasks: number;      // 只包含非浮动任务
+  assigned_tasks: number;   // 新增：应完成的任务数（基于当前时间）
   pending_tasks: number;    // 新增：待完成任务数
   missing_tasks: number;    // 新增：缺失任务数（超时未完成）
   on_time_rate: number;
   late_count: number;
+  floating_tasks_completed?: number; // 新增：浮动任务完成数
   current_period_progress?: { // 新增：当前时段进度
     period_name: string;
     assigned: number;
@@ -871,6 +872,7 @@ class CEODashboardService {
             missing_tasks: 0,
             on_time_rate: 100,
             late_count: 0,
+            floating_tasks_completed: 0,  // 初始化浮动任务计数
             current_period_progress: currentPeriod ? {
               period_name: currentPeriod.display_name,
               assigned: currentPeriodAssigned,
@@ -904,22 +906,34 @@ class CEODashboardService {
             pending_tasks: 0,
             missing_tasks: 0,
             on_time_rate: 100,
-            late_count: 0
+            late_count: 0,
+            floating_tasks_completed: 0  // 初始化浮动任务计数
           });
         }
         
         const stat = employeeMap.get(userId)!;
         if (record.status === 'completed' || record.status === 'submitted') {
-          stat.completed_tasks++;
-          if (record.is_late) {
-            stat.late_count++;
-          }
+          // 检查是否是浮动任务
+          const taskId = record.task_id;
+          const task = relevantTasks.find(t => t.id === taskId);
+          const isFloatingTask = task?.is_floating || false;
           
-          // 更新当前时段完成数
-          const currentPeriod = this.getCurrentPeriod(periods);
-          if (currentPeriod && record.roleplay_tasks?.period_id === currentPeriod.id) {
-            if (stat.current_period_progress) {
-              stat.current_period_progress.completed++;
+          if (isFloatingTask) {
+            // 浮动任务单独计数
+            stat.floating_tasks_completed = (stat.floating_tasks_completed || 0) + 1;
+          } else {
+            // 只有非浮动任务才计入完成统计
+            stat.completed_tasks++;
+            if (record.is_late) {
+              stat.late_count++;
+            }
+            
+            // 更新当前时段完成数
+            const currentPeriod = this.getCurrentPeriod(periods);
+            if (currentPeriod && record.roleplay_tasks?.period_id === currentPeriod.id) {
+              if (stat.current_period_progress) {
+                stat.current_period_progress.completed++;
+              }
             }
           }
         }

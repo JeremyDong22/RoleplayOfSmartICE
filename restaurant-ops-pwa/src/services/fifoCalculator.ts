@@ -49,7 +49,6 @@ export class FIFOCalculator {
         .order('created_at', { ascending: true }) // FIFO: 最早的先出
 
       if (fifoError) {
-        console.error('[FIFOCalculator] Failed to fetch FIFO data:', fifoError)
         return {
           unitPrice: 0,
           totalPrice: 0,
@@ -58,7 +57,6 @@ export class FIFOCalculator {
       }
 
       if (!fifoBatches || fifoBatches.length === 0) {
-        console.warn('[FIFOCalculator] No purchase history found for:', itemName)
         // 如果没有历史记录，尝试从库存表获取平均价格
         const { data: inventory } = await supabase
           .from('roleplay_inventory')
@@ -111,16 +109,14 @@ export class FIFOCalculator {
           unitPrice: Number(unitPrice.toFixed(2))
         })
 
-        console.log(`[FIFOCalculator] Using batch: ${useQty} @ ¥${unitPrice.toFixed(2)} = ¥${batchCost.toFixed(2)}`)
       }
 
       // 计算平均单价
       const actualQuantityUsed = quantity - remainingQty
       const avgUnitPrice = actualQuantityUsed > 0 ? totalCost / actualQuantityUsed : 0
 
-      // 如果库存不足，给出警告
+      // 如果库存不足，使用平均价格
       if (remainingQty > 0) {
-        console.warn(`[FIFOCalculator] Insufficient inventory for ${itemName}. Short by ${remainingQty} units`)
         // 使用库存平均价格补充剩余部分
         const { data: inventory } = await supabase
           .from('roleplay_inventory')
@@ -145,11 +141,9 @@ export class FIFOCalculator {
         batches: usedBatches
       }
 
-      console.log('[FIFOCalculator] Calculation result:', result)
       return result
 
     } catch (error) {
-      console.error('[FIFOCalculator] Error calculating FIFO price:', error)
       return {
         unitPrice: 0,
         totalPrice: 0,
@@ -188,7 +182,6 @@ export class FIFOCalculator {
       return 0
 
     } catch (error) {
-      console.error('[FIFOCalculator] Error getting latest price:', error)
       return 0
     }
   }
@@ -227,7 +220,6 @@ export class FIFOCalculator {
       }
 
     } catch (error) {
-      console.error('[FIFOCalculator] Error getting inventory value:', error)
       return { quantity: 0, totalValue: 0, avgUnitPrice: 0 }
     }
   }

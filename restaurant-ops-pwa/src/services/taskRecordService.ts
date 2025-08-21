@@ -2,6 +2,7 @@
 // Created: 2025-07-23
 // 负责任务提交、审核、查询等数据库操作
 // Updated: 2025-08-02 - Added test time support for date queries
+// Updated: 2025-08-21 - Changed getTodayCompletedTaskIds and getTodayTaskStatuses to filter by restaurant_id and role_code instead of user_id to ensure all managers see consistent data
 
 import { supabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
@@ -144,24 +145,10 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     throw new Error('Failed to insert task record');
   }
   
-  // 如果任务包含结构化数据（收货验货或损耗盘点），自动更新库存
+  // 库存更新现在由数据库触发器自动处理
+  // 不需要显式调用函数
   if (data && taskData.submission_metadata?.structured_data?.item_name) {
-    try {
-      // 调用数据库函数更新库存
-      const { error: updateError } = await supabase
-        .rpc('update_inventory_for_task_record', {
-          p_task_record_id: data.id
-        })
-      
-      if (updateError) {
-        console.error('Failed to update inventory:', updateError)
-        // 不阻塞主流程，只记录错误
-      } else {
-        console.log('Inventory updated successfully for task record:', data.id)
-      }
-    } catch (err) {
-      console.error('Error calling inventory update function:', err)
-    }
+    console.log('Task contains inventory data, will be processed by database trigger:', data.id)
   }
   
   return data
@@ -256,19 +243,65 @@ export async function getTaskRecords(filters: {
   return data
 }
 
-// 获取今日已完成的任务ID列表
+// 获取今日已完成的任务ID列表 - 根据餐厅和角色过滤
 export async function getTodayCompletedTaskIds(userId: string): Promise<string[]> {
   const testTime = getCurrentTestTime()
   const today = (testTime || new Date()).toISOString().split('T')[0]
   
+  // First get the user's restaurant_id and role_code
+  const { data: userData, error: userError } = await supabase
+    .from('roleplay_users')
+    .select(`
+      restaurant_id,
+      roleplay_roles!inner (
+        role_code
+      )
+    `)
+    .eq('id', userId)
+    .single()
+  
+  if (userError || !userData) {
+    console.error('[getTodayCompletedTaskIds] Error getting user data:', userError)
+    return []
+  }
+  
+  const restaurantId = userData.restaurant_id
+  const roleCode = userData.roleplay_roles?.role_code
+  
+  if (!restaurantId || !roleCode) {
+    console.error('[getTodayCompletedTaskIds] Missing restaurant_id or role_code')
+    return []
+  }
+  
+  // Get all tasks for this role in this restaurant
+  const { data: roleTasks, error: tasksError } = await supabase
+    .from('roleplay_tasks')
+    .select('id')
+    .eq('restaurant_id', restaurantId)
+    .eq('role_code', roleCode)
+  
+  if (tasksError || !roleTasks) {
+    console.error('[getTodayCompletedTaskIds] Error getting role tasks:', tasksError)
+    return []
+  }
+  
+  const roleTaskIds = roleTasks.map(t => t.id)
+  
+  if (roleTaskIds.length === 0) {
+    return []
+  }
+  
+  // Now get all completed records for these tasks in this restaurant today
   const { data, error } = await supabase
     .from('roleplay_task_records')
     .select('task_id')
-    .eq('user_id', userId)
+    .eq('restaurant_id', restaurantId)
     .eq('date', today)
+    .in('task_id', roleTaskIds)
     .in('status', ['submitted', 'completed'])
 
   if (error) {
+    console.error('[getTodayCompletedTaskIds] Error getting completed tasks:', error)
     return []
   }
 
@@ -313,21 +346,67 @@ export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Pr
   return data?.map(record => record.task_id) || []
 }
 
-// 获取指定日期范围内的已完成任务
+// 获取指定日期范围内的已完成任务 - 根据餐厅和角色过滤
 export async function getCompletedTasksInRange(
   userId: string, 
   startDate: string, 
   endDate: string
 ): Promise<string[]> {
+  // First get the user's restaurant_id and role_code
+  const { data: userData, error: userError } = await supabase
+    .from('roleplay_users')
+    .select(`
+      restaurant_id,
+      roleplay_roles!inner (
+        role_code
+      )
+    `)
+    .eq('id', userId)
+    .single()
+  
+  if (userError || !userData) {
+    console.error('[getCompletedTasksInRange] Error getting user data:', userError)
+    return []
+  }
+  
+  const restaurantId = userData.restaurant_id
+  const roleCode = userData.roleplay_roles?.role_code
+  
+  if (!restaurantId || !roleCode) {
+    console.error('[getCompletedTasksInRange] Missing restaurant_id or role_code')
+    return []
+  }
+  
+  // Get all tasks for this role in this restaurant
+  const { data: roleTasks, error: tasksError } = await supabase
+    .from('roleplay_tasks')
+    .select('id')
+    .eq('restaurant_id', restaurantId)
+    .eq('role_code', roleCode)
+  
+  if (tasksError || !roleTasks) {
+    console.error('[getCompletedTasksInRange] Error getting role tasks:', tasksError)
+    return []
+  }
+  
+  const roleTaskIds = roleTasks.map(t => t.id)
+  
+  if (roleTaskIds.length === 0) {
+    return []
+  }
+  
+  // Now get all completed records for these tasks in this restaurant in the date range
   const { data, error } = await supabase
     .from('roleplay_task_records')
     .select('task_id')
-    .eq('user_id', userId)
+    .eq('restaurant_id', restaurantId)
     .gte('date', startDate)
     .lte('date', endDate)
+    .in('task_id', roleTaskIds)
     .in('status', ['submitted', 'completed'])
 
   if (error) {
+    console.error('[getCompletedTasksInRange] Error getting completed tasks:', error)
     return []
   }
 
@@ -421,13 +500,59 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
   const testTime = getCurrentTestTime()
   const today = (testTime || new Date()).toISOString().split('T')[0]
   
+  // First get the user's restaurant_id and role_code
+  const { data: userData, error: userError } = await supabase
+    .from('roleplay_users')
+    .select(`
+      restaurant_id,
+      roleplay_roles!inner (
+        role_code
+      )
+    `)
+    .eq('id', userId)
+    .single()
+  
+  if (userError || !userData) {
+    console.error('[getTodayTaskStatuses] Error getting user data:', userError)
+    return []
+  }
+  
+  const restaurantId = userData.restaurant_id
+  const roleCode = userData.roleplay_roles?.role_code
+  
+  if (!restaurantId || !roleCode) {
+    console.error('[getTodayTaskStatuses] Missing restaurant_id or role_code')
+    return []
+  }
+  
+  // Get all tasks for this role in this restaurant
+  const { data: roleTasks, error: tasksError } = await supabase
+    .from('roleplay_tasks')
+    .select('id')
+    .eq('restaurant_id', restaurantId)
+    .eq('role_code', roleCode)
+  
+  if (tasksError || !roleTasks) {
+    console.error('[getTodayTaskStatuses] Error getting role tasks:', tasksError)
+    return []
+  }
+  
+  const roleTaskIds = roleTasks.map(t => t.id)
+  
+  if (roleTaskIds.length === 0) {
+    return []
+  }
+  
+  // Now get all task records for these tasks in this restaurant today
   const { data, error } = await supabase
     .from('roleplay_task_records')
     .select('task_id, status, created_at, submission_type, review_status')
-    .eq('user_id', userId)
+    .eq('restaurant_id', restaurantId)
     .eq('date', today)
+    .in('task_id', roleTaskIds)
   
   if (error) {
+    console.error('[getTodayTaskStatuses] Error getting task statuses:', error)
     return []
   }
   

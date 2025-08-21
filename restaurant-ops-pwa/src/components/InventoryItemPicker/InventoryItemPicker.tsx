@@ -75,13 +75,10 @@ export const InventoryItemPicker: React.FC<InventoryItemPickerProps> = ({
   
   // 查找当前选中的选项
   const selectedOption = useMemo(() => {
-    console.log('[InventoryItemPicker] Computing selectedOption - value:', value, 'type:', typeof value)
-    
     if (!value || value === '') return null
     
     // 首先尝试从选项中查找
     const found = options.find(opt => opt.value === value)
-    console.log('[InventoryItemPicker] Found option:', found)
     if (found) return found
     
     // 如果允许自定义值，返回自定义选项
@@ -101,22 +98,17 @@ export const InventoryItemPicker: React.FC<InventoryItemPickerProps> = ({
       value={selectedOption}
       options={options}
       onChange={(event, newValue) => {
-        console.log('[InventoryItemPicker] onChange - newValue:', newValue, 'type:', typeof newValue)
-        
         if (typeof newValue === 'string') {
           // 处理自由输入的情况（当 freeSolo=true）
-          console.log('[InventoryItemPicker] Handling string value:', newValue)
           onChange(newValue)
         } else if (newValue) {
           // 处理选择选项的情况
-          console.log('[InventoryItemPicker] Handling option selection:', newValue.value)
           onChange(newValue.value)
           if (onItemSelect && newValue.item) {
             onItemSelect(newValue.item)
           }
         } else {
           // 处理清空的情况
-          console.log('[InventoryItemPicker] Handling clear')
           onChange(null)
         }
       }}
@@ -125,7 +117,6 @@ export const InventoryItemPicker: React.FC<InventoryItemPickerProps> = ({
         return option.label
       }}
       isOptionEqualToValue={(option, value) => {
-        console.log('[isOptionEqualToValue] option:', option, 'value:', value)
         if (!value) return false
         if (!option) return false
         return option.value === value?.value || option.value === value

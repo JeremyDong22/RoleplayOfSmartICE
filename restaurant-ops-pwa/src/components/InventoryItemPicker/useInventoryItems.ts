@@ -30,7 +30,6 @@ export const useInventoryItems = (department: '前厅' | '后厨') => {
       } catch (err) {
         if (mounted) {
           setError('加载物品列表失败')
-          console.error('[useInventoryItems] Failed to load inventory items:', err)
         }
       } finally {
         if (mounted) {
@@ -57,7 +56,6 @@ export const useInventoryItems = (department: '前厅' | '后厨') => {
       setError(null)
     } catch (err) {
       setError('刷新物品列表失败')
-      console.error('[useInventoryItems] Failed to refresh inventory items:', err)
     } finally {
       setLoading(false)
     }

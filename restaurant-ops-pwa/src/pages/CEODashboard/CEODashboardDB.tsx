@@ -134,6 +134,7 @@ export const CEODashboardDB: React.FC = () => {
   const [alerts, setAlerts] = useState<CEOAlert[]>([]);
   const [periods, setPeriods] = useState<CEOPeriod[]>([]);
   const [loading, setLoading] = useState(true);
+  const [departmentSwitching, setDepartmentSwitching] = useState(false); // 部门切换loading状态
   const [currentPeriodId, setCurrentPeriodId] = useState('');
   const [expandedPeriods, setExpandedPeriods] = useState<Record<string, boolean>>({});
   const [expandedFloatingTasks, setExpandedFloatingTasks] = useState(false);
@@ -187,36 +188,33 @@ export const CEODashboardDB: React.FC = () => {
       // 始终显示所有警告，不根据部门过滤
       setAlerts(data.allAlerts);
       
-      // 设置默认选中的餐厅
-      const currentRestaurants = selectedDepartment === '前厅' 
-        ? data.frontOfficeData.restaurants 
-        : data.kitchenData.restaurants;
-        
-      if (!selectedRestaurantId && currentRestaurants.length > 0) {
-        // 优先选择有警告的餐厅
-        const restaurantWithAlert = currentRestaurants.find(r => 
-          data.allAlerts.some(a => a.restaurant_id === r.restaurant_id)
-        );
-        setSelectedRestaurantId(
-          restaurantWithAlert?.restaurant_id || currentRestaurants[0].restaurant_id
-        );
+      // 初始设置 - 只在没有选中餐厅时设置默认值
+      if (!selectedRestaurantId) {
+        // 默认使用前厅的第一个餐厅
+        const defaultRestaurants = data.frontOfficeData.restaurants;
+        if (defaultRestaurants.length > 0) {
+          // 优先选择有警告的餐厅
+          const restaurantWithAlert = defaultRestaurants.find(r => 
+            data.allAlerts.some(a => a.restaurant_id === r.restaurant_id)
+          );
+          setSelectedRestaurantId(
+            restaurantWithAlert?.restaurant_id || defaultRestaurants[0].restaurant_id
+          );
+          
+          // 设置当前时段并默认展开
+          const currentRestaurant = restaurantWithAlert || defaultRestaurants[0];
+          if (currentRestaurant?.current_period_id) {
+            setCurrentPeriodId(currentRestaurant.current_period_id);
+            setExpandedPeriods(prev => ({
+              ...prev,
+              [currentRestaurant.current_period_id]: true
+            }));
+          }
+          
+          // 更新时段统计 - 传入基础 periods 数据
+          updatePeriodStatistics(currentRestaurant, data.periods);
+        }
       }
-      
-      // 设置当前时段并默认展开
-      const currentRestaurant = currentRestaurants.find(r => 
-        r.restaurant_id === (selectedRestaurantId || currentRestaurants[0]?.restaurant_id)
-      );
-      
-      if (currentRestaurant?.current_period_id) {
-        setCurrentPeriodId(currentRestaurant.current_period_id);
-        setExpandedPeriods(prev => ({
-          ...prev,
-          [currentRestaurant.current_period_id]: true
-        }));
-      }
-      
-      // 更新时段统计 - 传入基础 periods 数据
-      updatePeriodStatistics(currentRestaurant, data.periods);
       
       if (showLoading) {
         setLoading(false);
@@ -227,7 +225,7 @@ export const CEODashboardDB: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [selectedRestaurantId, selectedDepartment]);
+  }, []); // 不依赖任何状态，避免重复加载
 
   useEffect(() => {
     loadData(true); // 初始加载显示loading
@@ -246,7 +244,7 @@ export const CEODashboardDB: React.FC = () => {
       clearInterval(interval);
       unsubscribe();
     };
-  }, [loadData]); // 依赖loadData函数
+  }, []); // 只在组件挂载时执行一次
 
   // 获取当前显示的餐厅列表（根据部门）
   const restaurants = selectedDepartment === '前厅' ? frontOfficeRestaurants : kitchenRestaurants;
@@ -300,16 +298,18 @@ export const CEODashboardDB: React.FC = () => {
     navigate('/role-selection');
   };
 
-  // 处理部门切换
+  // 处理部门切换 - 优化版，不触发数据重新加载
   const handleDepartmentChange = (department: '前厅' | '后厨') => {
+    if (department === selectedDepartment) return; // 如果相同则不处理
+    
+    // 添加短暂的切换动画
+    setDepartmentSwitching(true);
     setSelectedDepartment(department);
     
-    // 更新时段统计（基于新部门的数据）
-    const currentRestaurants = department === '前厅' ? frontOfficeRestaurants : kitchenRestaurants;
-    const restaurant = currentRestaurants.find(r => r.restaurant_id === selectedRestaurantId);
-    if (restaurant && periods.length > 0) {
-      updatePeriodStatistics(restaurant);
-    }
+    // 100ms后移除切换状态，提供平滑过渡
+    setTimeout(() => {
+      setDepartmentSwitching(false);
+    }, 100);
   };
 
   // 任务列表组件 - 按时段分组（使用memo优化）
@@ -1103,7 +1103,8 @@ export const CEODashboardDB: React.FC = () => {
             {/* 左侧：任务完成情况 */}
             <MotionCard
               initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
+              animate={{ opacity: departmentSwitching ? 0.7 : 1, x: 0 }}
+              transition={{ duration: 0.2 }}
             >
               <CardContent sx={{ p: isMobile ? 2 : 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -1158,7 +1159,8 @@ export const CEODashboardDB: React.FC = () => {
             {/* 右侧：员工绩效 - 增强版 */}
             <MotionCard
               initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
+              animate={{ opacity: departmentSwitching ? 0.7 : 1, x: 0 }}
+              transition={{ duration: 0.2 }}
             >
               <CardContent sx={{ p: isMobile ? 2 : 3 }}>
                 <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 3 }}>
@@ -1316,6 +1318,15 @@ export const CEODashboardDB: React.FC = () => {
                               label={`${employee.pending_tasks} 待完成`}
                               size="small"
                               variant="outlined"
+                              sx={{ height: 22, fontSize: '0.75rem' }}
+                            />
+                          )}
+                          {employee.floating_tasks_completed && employee.floating_tasks_completed > 0 && (
+                            <Chip 
+                              label={`${employee.floating_tasks_completed} 浮动`}
+                              size="small"
+                              variant="outlined"
+                              color="info"
                               sx={{ height: 22, fontSize: '0.75rem' }}
                             />
                           )}

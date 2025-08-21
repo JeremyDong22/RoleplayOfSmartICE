@@ -259,10 +259,17 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // 保存照片组到localStorage
   useEffect(() => {
-    if (taskId && photoGroups.length > 0) {
+    if (taskId) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(photoGroups))
-        // console.log('[PhotoDialog] Saved photo groups to localStorage')
+        if (photoGroups.length > 0) {
+          // 有照片时保存到localStorage
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(photoGroups))
+          // console.log('[PhotoDialog] Saved photo groups to localStorage')
+        } else {
+          // 所有照片被删除时清除localStorage
+          localStorage.removeItem(STORAGE_KEY)
+          // console.log('[PhotoDialog] Cleared photo groups from localStorage')
+        }
       } catch {
         // console.error('[PhotoDialog] Error saving photos:', err)
       }
@@ -589,15 +596,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     
     // 延迟2秒计算总价
     const currentQuantity = structuredData.quantity || 0
-    console.log('[PhotoSubmissionDialog] 准备计算，数量:', currentQuantity)
+    // console.log('[PhotoSubmissionDialog] 准备计算，数量:', currentQuantity)
     
     if (currentQuantity > 0) {
-      const timer = setTimeout(() => {
-        const total = price * currentQuantity
-        console.log(`[PhotoSubmissionDialog] 计算总价: ${price} × ${currentQuantity} = ${total}`)
-        setTotalPrice(Number(total.toFixed(2)))
-      }, 2000)
-      setPriceCalculationTimer(timer)
+      // 立即计算总价，无需延迟
+      const total = price * currentQuantity
+      // console.log(`[PhotoSubmissionDialog] 计算总价: ${price} × ${currentQuantity} = ${total}`)
+      setTotalPrice(Number(total.toFixed(2)))
     }
   }
   
@@ -629,15 +634,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     
     // 延迟2秒计算单价
     const currentQuantity = structuredData.quantity || 0
-    console.log('[PhotoSubmissionDialog] 准备计算，数量:', currentQuantity)
+    // console.log('[PhotoSubmissionDialog] 准备计算，数量:', currentQuantity)
     
     if (currentQuantity > 0) {
-      const timer = setTimeout(() => {
-        const unit = total / currentQuantity
-        console.log(`[PhotoSubmissionDialog] 计算单价: ${total} ÷ ${currentQuantity} = ${unit}`)
-        setUnitPrice(Number(unit.toFixed(2)))
-      }, 2000)
-      setPriceCalculationTimer(timer)
+      // 立即计算单价，无需延迟
+      const unit = total / currentQuantity
+      // console.log(`[PhotoSubmissionDialog] 计算单价: ${total} ÷ ${currentQuantity} = ${unit}`)
+      setUnitPrice(Number(unit.toFixed(2)))
     }
   }
   
@@ -1420,7 +1423,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                       helperText={
                         priceInputMode === 'total' ? '根据总价自动计算' :
                         priceInputMode === 'unit' ? '正在输入单价...' :
-                        '输入后2秒自动计算总价'
+                        '输入后自动计算总价'
                       }
                     />
                     
@@ -1444,7 +1447,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                       helperText={
                         priceInputMode === 'unit' ? '根据单价自动计算' :
                         priceInputMode === 'total' ? '正在输入总价...' :
-                        '输入后2秒自动计算单价'
+                        '输入后自动计算单价'
                       }
                     />
                   </Box>
