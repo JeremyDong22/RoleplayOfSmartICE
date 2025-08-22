@@ -7,8 +7,9 @@
 import { supabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
-import { getLocalDateString } from '../utils/dateFormat'
+import { getLocalDateString, getBusinessDate } from '../utils/dateFormat'
 import { isClosingPeriod } from '../utils/periodHelpers'
+import { getBusinessDateAsync, getBusinessDayCutoffHour } from './businessDayService'
 
 export interface TaskRecord {
   id?: string
@@ -246,7 +247,7 @@ export async function getTaskRecords(filters: {
 // 获取今日已完成的任务ID列表 - 根据餐厅和角色过滤
 export async function getTodayCompletedTaskIds(userId: string): Promise<string[]> {
   const testTime = getCurrentTestTime()
-  const today = (testTime || new Date()).toISOString().split('T')[0]
+  const now = testTime || new Date()
   
   // First get the user's restaurant_id and role_code
   const { data: userData, error: userError } = await supabase
@@ -272,6 +273,9 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
     console.error('[getTodayCompletedTaskIds] Missing restaurant_id or role_code')
     return []
   }
+  
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   
   // Get all tasks for this role in this restaurant
   const { data: roleTasks, error: tasksError } = await supabase
@@ -311,7 +315,9 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
 // 获取今日已审核通过的值班经理任务（用于判断审核任务是否完成）
 export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Promise<string[]> {
   const testTime = getCurrentTestTime()
-  const today = (testTime || new Date()).toISOString().split('T')[0]
+  const now = testTime || new Date()
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   
   // 第一步：获取该餐厅的所有值班经理任务ID
   const { data: dutyManagerTasks, error: tasksError } = await supabase
@@ -450,7 +456,9 @@ export async function uploadTaskMedia(
   type: 'photo' | 'audio' | 'document'
 ) {
   const testTime = getCurrentTestTime()
-  const date = (testTime || new Date()).toISOString().split('T')[0]
+  const now = testTime || new Date()
+  // 使用营业日期（凌晨0-8点算作前一天）
+  const date = getBusinessDate(now)
   const timestamp = Date.now()
   const ext = file.name.split('.').pop()
   
@@ -498,7 +506,7 @@ export interface TaskStatusDetail {
 
 export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDetail[]> {
   const testTime = getCurrentTestTime()
-  const today = (testTime || new Date()).toISOString().split('T')[0]
+  const now = testTime || new Date()
   
   // First get the user's restaurant_id and role_code
   const { data: userData, error: userError } = await supabase
@@ -524,6 +532,9 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
     console.error('[getTodayTaskStatuses] Missing restaurant_id or role_code')
     return []
   }
+  
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   
   // Get all tasks for this role in this restaurant
   const { data: roleTasks, error: tasksError } = await supabase
@@ -570,7 +581,9 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
 // 验证是否可以闭店
 export async function validateCanClose(restaurantId: string): Promise<{ canClose: boolean; reason?: string }> {
   const testTime = getCurrentTestTime()
-  const today = (testTime || new Date()).toISOString().split('T')[0]
+  const now = testTime || new Date()
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   return canCloseBusinessCycle(restaurantId, today)
 }
 
@@ -587,8 +600,8 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
 }> {
   const testTime = getCurrentTestTime()
   const now = testTime || new Date()
-  // 使用统一的日期格式化函数
-  const today = getLocalDateString(now)
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   
   // 直接使用本地时间计算当前时段（在中国就是北京时间）
   const currentHour = now.getHours()
@@ -680,6 +693,9 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
     let totalTasksDue = 0
     let totalTasksCompleted = 0
     
+    // 获取营业日切换时间
+    const cutoffHour = await getBusinessDayCutoffHour(restaurantId)
+    const cutoffMinutes = cutoffHour * 60
     
     // 对每个period检查
     for (const period of periods || []) {
@@ -694,27 +710,40 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
         // 如果不是当前时段，检查是否已经结束
         if (endInMinutes > startInMinutes) {
           // 同一天的时段（如 10:00-14:00）
-          periodEnded = currentTimeInMinutes >= endInMinutes
-        } else {
-          // 跨日时段（如 closing: 21:30-08:00）
-          // 时段结束的条件：当前时间在凌晨且已过结束时间（08:00）
-          // 或者当前时间在前一天且已经是新的一天
-          if (currentTimeInMinutes < endInMinutes) {
-            // 凌晨时间（00:00-08:00），closing时段可能已结束
+          // 在凌晨时分（0-切换时间，营业日还是昨天），所有昨天的正常时段都已结束
+          if (currentTimeInMinutes < cutoffMinutes) {
+            // 凌晨时分，昨天的所有正常时段都已结束
             periodEnded = true
-          } else if (currentTimeInMinutes < startInMinutes) {
-            // 白天时间（08:00-21:30），closing时段还未开始
-            periodEnded = false
           } else {
-            // 晚上时间（21:30-24:00），closing时段进行中
+            // 正常判断
+            periodEnded = currentTimeInMinutes >= endInMinutes
+          }
+        } else {
+          // 跨日时段（如 closing: 21:30-03:00）
+          // 对于跨日时段，需要更精确的判断
+          if (currentTimeInMinutes < endInMinutes) {
+            // 凌晨时间（00:00-03:00）
+            // 闭店时段从昨晚21:30开始，到今天凌晨03:00结束
+            // 所以在凌晨00:00-03:00期间，时段还在进行中，没有结束
+            periodEnded = false
+          } else if (currentTimeInMinutes < startInMinutes) {
+            // 白天时间（03:00-21:30）
+            // 闭店时段已经结束了
+            periodEnded = true
+          } else {
+            // 晚上时间（21:30-24:00）
+            // 闭店时段刚开始或进行中
             periodEnded = false
           }
         }
       }
       
-      // 判断时段是否已经开始
-      const periodStarted = currentTimeInMinutes >= startInMinutes || 
-                           (startInMinutes > 20 * 60 && currentTimeInMinutes < 4 * 60) // 处理跨日情况
+      // 判断时段是否已经开始（用于计算完成率）
+      // 在凌晨时分（0-切换时间），所有昨天的非跨日时段都算作已开始
+      const periodStarted = period.id === currentPeriod?.id ||  // 当前时段
+                           periodEnded ||  // 已结束的时段
+                           (currentTimeInMinutes >= startInMinutes) ||  // 正常判断
+                           (startInMinutes > 20 * 60 && currentTimeInMinutes < cutoffMinutes) // 跨日情况：晚上的时段在凌晨也算已开始
       
       // 获取这个period的任务
       const periodTasks = (allTasks || []).filter(task => task.period_id === period.id)

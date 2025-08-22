@@ -46,6 +46,7 @@ import { authService } from '../services/authService'
 import { getRestaurantId } from '../utils/restaurantSetup'
 import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
 import { isClosingPeriod, isLunchClosingPeriod } from '../utils/periodHelpers'
+import { inventoryService } from '../services/inventoryService'
 // import { submitNoticeResponse, getTodayNoticeResponses } from '../services/noticeResponseService'
 // import { recordPeriodTransition, hasManuallyClosedToday, getLatestTransition } from '../services/periodTransitionService'
 
@@ -700,6 +701,14 @@ export const ManagerDashboard: React.FC = () => {
     
     // 检查是否是审核任务
     const task = currentTasks.find(t => t.id === taskId)
+    
+    // Clear inventory cache after completing receiving/loss tasks
+    if (task && (task.title.includes('收货') || task.title.includes('验货') || 
+        task.title.includes('损耗') || task.title.includes('盘点') ||
+        task.title.includes('交割'))) {
+      inventoryService.clearCache()
+      console.log('[ManagerDashboard] Cleared inventory cache after task completion:', task.title)
+    }
     
     if (task && task.uploadRequirement === '审核' && task.linkedTasks) {
       // 处理审核通过逻辑

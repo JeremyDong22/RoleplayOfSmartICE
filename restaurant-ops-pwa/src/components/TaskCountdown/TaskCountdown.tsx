@@ -49,6 +49,7 @@ import { TaskSubmissionDialog } from '../TaskSubmissionDialog'
 import { ReviewTaskDialog } from '../ReviewTaskDialog/ReviewTaskDialog'
 import { TodayRecordsDialog } from '../TodayRecordsDialog/TodayRecordsDialog'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
+import { inventoryService } from '../../services/inventoryService'
 import RateReviewIcon from '@mui/icons-material/RateReview'
 import PendingActionsIcon from '@mui/icons-material/PendingActions'
 import HistoryIcon from '@mui/icons-material/History'
@@ -758,6 +759,13 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                               disabled={isSubmitting || isFloatingCompleted}
                               onClick={() => {
                                 if (isSubmitting) return
+                                
+                                // Clear inventory cache for receiving/loss tasks to ensure fresh data
+                                if (task.title.includes('收货') || task.title.includes('验货') || 
+                                    task.title.includes('损耗') || task.title.includes('盘点') ||
+                                    task.title.includes('交割')) {
+                                  inventoryService.clearCache()
+                                }
                                 
                                 // Check if task requires photo or audio evidence
                                 if (task.uploadRequirement === '拍照') {

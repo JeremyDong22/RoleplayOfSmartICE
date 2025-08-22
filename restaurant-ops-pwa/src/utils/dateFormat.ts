@@ -21,17 +21,18 @@ export function getLocalDateString(date?: Date): string {
 }
 
 /**
- * 获取营业日期
- * 凌晨0点到早上8点算作前一天的营业日
+ * 获取营业日期（同步版本，使用默认8小时作为后备）
+ * 凌晨0点到切换时间算作前一天的营业日
  * @param date 日期对象，默认为当前时间
+ * @param cutoffHour 营业日切换小时数，默认8点
  * @returns YYYY-MM-DD格式的营业日期
  */
-export function getBusinessDate(date?: Date): string {
+export function getBusinessDate(date?: Date, cutoffHour: number = 8): string {
   const d = date || new Date()
   const hours = d.getHours()
   
-  // 如果是凌晨0点到早上8点，算作前一天
-  if (hours < 8) {
+  // 如果当前时间小于切换时间，算作前一天
+  if (hours < cutoffHour) {
     const yesterday = new Date(d)
     yesterday.setDate(yesterday.getDate() - 1)
     return getLocalDateString(yesterday)

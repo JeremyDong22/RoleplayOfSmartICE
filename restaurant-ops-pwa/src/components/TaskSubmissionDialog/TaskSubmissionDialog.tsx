@@ -78,16 +78,22 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
         
         // Check if task needs dynamic fields
         const needsDynamicFields = task.title.includes('收货验货') || 
+          task.title.includes('损耗盘点') ||
+          task.title.includes('交割损耗') ||
           (task.structuredFields?.dynamic === true)
         
         if (needsDynamicFields) {
           setIsLoadingFields(true)
           try {
+            // Clear cache before loading to ensure fresh data
+            inventoryService.clearCache()
+            
             const user = authService.getCurrentUser()
             const department = user?.role === 'chef' ? '后厨' : '前厅'
-            const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨')
+            const isLossCount = task.title.includes('损耗盘点') || task.title.includes('交割损耗')
+            const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨', isLossCount)
             
-            // Always set enabled: true for 收货验货
+            // Always set enabled: true for these tasks
             setDynamicStructuredFields({
               ...fields,
               enabled: true

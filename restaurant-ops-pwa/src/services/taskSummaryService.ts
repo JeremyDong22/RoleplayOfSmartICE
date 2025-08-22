@@ -5,8 +5,9 @@
 
 import { supabase } from './supabase'
 import { getCurrentTestTime } from '../utils/globalTestTime'
-import { getLocalDateString } from '../utils/dateFormat'
+import { getLocalDateString, getBusinessDate } from '../utils/dateFormat'
 import { isClosingPeriod } from '../utils/periodHelpers'
+import { getBusinessDateAsync, getBusinessDayCutoffHour } from './businessDayService'
 
 export interface TaskSummaryStats {
   currentPeriodTasks: {
@@ -41,8 +42,8 @@ export async function getTaskSummaryStats(
   currentTime?: Date
 ): Promise<TaskSummaryStats> {
   const now = currentTime || new Date()
-  // 使用统一的日期格式化函数
-  const today = getLocalDateString(now)
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   
   try {
     // 1. 获取今天所有已提交/完成的任务记录
@@ -198,6 +199,10 @@ export async function getTaskSummaryStats(
     // 6. 计算之前时段的缺失任务
     const missingTasks: TaskSummaryStats['previousPeriodsMissing'] = []
     
+    // 获取营业日切换时间
+    const cutoffHour = await getBusinessDayCutoffHour(restaurantId)
+    const cutoffMinutes = cutoffHour * 60
+    
     workflowPeriods.forEach(period => {
       // 检查时段是否已经开始
       const [startHour, startMinute] = period.start_time.split(':').map(Number)
@@ -210,18 +215,29 @@ export async function getTaskSummaryStats(
       if (period.id !== currentPeriod?.id) {
         if (periodEndMinutes > periodStartMinutes) {
           // 同一天的时段（如 10:00-14:00）
-          periodEnded = currentTimeInMinutes >= periodEndMinutes
-        } else {
-          // 跨日时段（如 closing: 21:30-08:00）
-          // 时段结束的条件：当前时间在凌晨且已过结束时间（08:00）
-          if (currentTimeInMinutes < periodEndMinutes) {
-            // 凌晨时间（00:00-08:00），closing时段可能已结束
+          // 在凌晨时分（0-切换时间，营业日还是昨天），所有昨天的正常时段都已结束
+          if (currentTimeInMinutes < cutoffMinutes) {
+            // 凌晨时分，昨天的所有正常时段都已结束
             periodEnded = true
-          } else if (currentTimeInMinutes < periodStartMinutes) {
-            // 白天时间（08:00-21:30），closing时段还未开始
-            periodEnded = false
           } else {
-            // 晚上时间（21:30-24:00），closing时段进行中
+            // 正常判断
+            periodEnded = currentTimeInMinutes >= periodEndMinutes
+          }
+        } else {
+          // 跨日时段（如 closing: 21:30-03:00）
+          // 对于跨日时段，需要更精确的判断
+          if (currentTimeInMinutes < periodEndMinutes) {
+            // 凌晨时间（00:00-03:00）
+            // 闭店时段从昨晚21:30开始，到今天凌晨03:00结束
+            // 所以在凌晨00:00-03:00期间，时段还在进行中，没有结束
+            periodEnded = false
+          } else if (currentTimeInMinutes < periodStartMinutes) {
+            // 白天时间（03:00-21:30）
+            // 闭店时段已经结束了
+            periodEnded = true
+          } else {
+            // 晚上时间（21:30-24:00）
+            // 闭店时段刚开始或进行中
             periodEnded = false
           }
         }
@@ -274,14 +290,22 @@ export async function getTaskSummaryStats(
         // 判断时段是否已经结束
         if (periodEndMinutes > periodStartMinutes) {
           // 同一天的时段
-          periodStarted = currentTimeInMinutes >= periodEndMinutes
-        } else {
-          // 跨日时段（如 closing: 21:30-08:00）
-          if (currentTimeInMinutes < periodEndMinutes) {
-            // 凌晨时间（00:00-08:00），closing时段可能已结束
+          // 在凌晨时分（0-切换时间），所有昨天的正常时段都算作已开始
+          if (currentTimeInMinutes < cutoffMinutes) {
             periodStarted = true
           } else {
-            // 其他时间，closing时段还未结束
+            periodStarted = currentTimeInMinutes >= periodEndMinutes
+          }
+        } else {
+          // 跨日时段（如 closing: 21:30-03:00）
+          if (currentTimeInMinutes < periodEndMinutes) {
+            // 凌晨时间（00:00-03:00），闭店时段还在进行中
+            periodStarted = false
+          } else if (currentTimeInMinutes < periodStartMinutes) {
+            // 白天时间（03:00-21:30），闭店时段已经结束
+            periodStarted = true
+          } else {
+            // 晚上时间（21:30-24:00），闭店时段刚开始
             periodStarted = false
           }
         }
@@ -373,8 +397,8 @@ export async function getPeriodTaskDetails(
 ) {
   const testTime = getCurrentTestTime()
   const now = testTime || new Date()
-  // 使用统一的日期格式化函数
-  const today = getLocalDateString(now)
+  // 使用营业日期（从数据库获取切换时间）
+  const today = await getBusinessDateAsync(now, restaurantId)
   
   const { data, error } = await supabase
     .from('roleplay_task_records')

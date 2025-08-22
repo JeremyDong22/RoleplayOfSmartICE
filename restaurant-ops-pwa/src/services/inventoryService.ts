@@ -37,16 +37,20 @@ class InventoryService {
 
   /**
    * 获取指定部门的库存物品列表
+   * @param department 部门名称
+   * @param forceRefresh 是否强制刷新（跳过缓存）
    */
-  async getInventoryItems(department: '前厅' | '后厨'): Promise<InventoryItem[]> {
+  async getInventoryItems(department: '前厅' | '后厨', forceRefresh: boolean = false): Promise<InventoryItem[]> {
     const now = Date.now()
     const cacheKey = department
     
-    // 检查缓存
-    if (this.inventoryCache.has(cacheKey) && (now - this.lastFetchTime) < this.CACHE_DURATION) {
+    // 检查缓存（如果不是强制刷新）
+    if (!forceRefresh && this.inventoryCache.has(cacheKey) && (now - this.lastFetchTime) < this.CACHE_DURATION) {
+      console.log('[InventoryService] Using cached data for', department)
       return this.inventoryCache.get(cacheKey)!
     }
 
+    console.log('[InventoryService] Fetching fresh data for', department, forceRefresh ? '(forced refresh)' : '')
     try {
       const { data, error } = await supabase
         .from('roleplay_inventory')
@@ -70,12 +74,15 @@ class InventoryService {
 
   /**
    * 根据部门动态生成结构化字段配置
+   * @param department 部门名称
+   * @param isLossCount 是否为损耗盘点任务
+   * @param forceRefresh 是否强制刷新库存数据
    */
-  async generateStructuredFields(department: '前厅' | '后厨', isLossCount: boolean = false): Promise<{
+  async generateStructuredFields(department: '前厅' | '后厨', isLossCount: boolean = false, forceRefresh: boolean = false): Promise<{
     enabled: boolean
     fields: StructuredField[]
   }> {
-    const items = await this.getInventoryItems(department)
+    const items = await this.getInventoryItems(department, forceRefresh)
     
     if (items.length === 0) {
       console.warn(`[InventoryService] No inventory items found for department: ${department}`)
