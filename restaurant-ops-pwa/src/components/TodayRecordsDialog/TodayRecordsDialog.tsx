@@ -1,5 +1,6 @@
 // 今日上传记录查看对话框
 // 显示浮动任务的所有今日提交记录
+// Updated: 2025-01-22 - Fix timezone to Beijing time (UTC+8)
 import React, { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -26,7 +27,7 @@ import {
   ExpandMore,
   LocalShipping
 } from '@mui/icons-material'
-import { format } from 'date-fns'
+import { format, addHours } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { supabase } from '../../services/supabase'
 import { authService } from '../../services/authService'
@@ -221,7 +222,7 @@ export const TodayRecordsDialog: React.FC<TodayRecordsDialogProps> = ({
                         }}
                       >
                         <Typography variant="body2" color="text.secondary">
-                          {format(new Date(record.created_at), 'HH:mm')}
+                          {format(addHours(new Date(record.created_at), 8), 'HH:mm')}
                         </Typography>
                         
                         {structuredData && (
