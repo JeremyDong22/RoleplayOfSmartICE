@@ -24,7 +24,6 @@ import { TestRealtime } from './pages/TestRealtime'
 import { TestDatabase } from './pages/TestDatabase'
 import TestFloatingTasks from './pages/TestFloatingTasks'
 import TestTaskUpload from './pages/TestTaskUpload'
-import { TestParallelUpload } from './pages/TestParallelUpload'
 import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
@@ -184,10 +183,6 @@ const router = createBrowserRouter([
   {
     path: '/test-upload',
     element: <TestTaskUpload />,
-  },
-  {
-    path: '/test-parallel-upload',
-    element: <TestParallelUpload />,
   },
   {
     path: '/test-realtime-debug',

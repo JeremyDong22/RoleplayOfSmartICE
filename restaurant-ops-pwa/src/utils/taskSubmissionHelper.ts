@@ -158,7 +158,6 @@ async function uploadPhotosWithFallback(
     const batchSize = BATCH_SIZES[currentBatchSizeIndex]
     const batch = photos.slice(photoIndex, photoIndex + batchSize)
     
-    console.log(`[Upload] Trying batch of ${batch.length} photos with size ${batchSize}`)
     
     try {
       const batchResults = await uploadBatchWithTimeout(
@@ -186,7 +185,6 @@ async function uploadPhotosWithFallback(
       }
       
     } catch (error: any) {
-      console.log(`[Upload] Batch size ${batchSize} failed: ${error.message}`)
       
       // Try smaller batch size
       currentBatchSizeIndex++
@@ -196,7 +194,6 @@ async function uploadPhotosWithFallback(
         throw new Error('网络连接异常，请检查网络后重试')
       }
       
-      console.log(`[Upload] Falling back to batch size ${BATCH_SIZES[currentBatchSizeIndex]}`)
       // Don't increment photoIndex, retry same photos
     }
   }
@@ -294,7 +291,6 @@ export async function submitTaskWithMedia({
         
         if (photosToUpload.length > 0) {
           try {
-            console.log(`[Upload] Starting parallel upload of ${photosToUpload.length} photos`)
             const uploadResults = await uploadPhotosWithFallback(
               photosToUpload,
               userId,
