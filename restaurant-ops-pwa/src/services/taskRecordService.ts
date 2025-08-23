@@ -200,10 +200,15 @@ export async function resubmitTaskRecord(
 
   if (!original) throw new Error('Original record not found')
 
-  // 创建新的提交记录（保留原记录）
-  const newRecord = {
-    ...original,
-    ...newData,
+  // 创建新的提交记录
+  // 重要：不要继承原记录的照片数据，使用新提交的数据完全覆盖
+  const newRecord: Partial<TaskRecord> = {
+    user_id: original.user_id,
+    restaurant_id: original.restaurant_id,
+    task_id: original.task_id,
+    date: original.date,
+    period_id: original.period_id,
+    ...newData, // 新数据完全覆盖，包括photo_urls
     id: undefined, // 生成新ID
     status: 'submitted',
     review_status: 'pending',

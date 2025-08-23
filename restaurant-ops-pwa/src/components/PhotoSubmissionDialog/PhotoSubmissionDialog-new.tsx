@@ -213,36 +213,31 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   // 加载保存的照片组或使用传入的初始照片组
   useEffect(() => {
     if (open && taskId) {
-      // 优先使用传入的初始照片组（用于重新提交被驳回的任务）
+      // 注意：被驳回的任务重新提交时，不应该显示之前的照片
+      // 用户需要重新拍摄所有照片
+      // 但可以显示参考信息（如备注等）
+      
+      // 检查是否有初始照片组（被驳回的任务）
       if (initialPhotoGroups && initialPhotoGroups.length > 0) {
-        // 转换外部传入的照片组格式（string[] -> Photo[]）
-        const convertedGroups = initialPhotoGroups.map(group => ({
-          id: group.id || `group-${Date.now()}-${Math.random()}`,
-          photos: (group.photos || []).map((photoUrl, index) => ({
-            id: `photo-${Date.now()}-${index}`,
-            image: photoUrl,
-            timestamp: Date.now()
-          })),
-          sampleRef: group.sampleRef,
-          sampleIndex: group.sampleIndex,
-          comment: group.comment || '',
-          createdAt: Date.now()
-        }))
+        // 对于被驳回的任务，我们不显示旧照片，让用户重新拍摄
+        // 但可以保留一些参考信息
+        console.log(`[PhotoDialog] Rejected task detected, clearing old photos for fresh start`)
+        console.log('[PhotoDialog] Previous submission had', initialPhotoGroups.length, 'photo groups')
         
-        setPhotoGroups(convertedGroups)
-        console.log(`[PhotoDialog] Using ${initialPhotoGroups.length} initial photo groups from rejected submission`)
-        console.log('[PhotoDialog] Initial photo groups detail:', initialPhotoGroups)
-        console.log('[PhotoDialog] Converted photo groups:', convertedGroups)
-        initialPhotoGroups.forEach((group, index) => {
-          console.log(`[PhotoDialog] Group ${index + 1}:`, {
-            id: group.id,
-            photosCount: group.photos?.length || 0,
-            photos: group.photos,
-            firstPhotoUrl: group.photos?.[0]?.substring(0, 100) + '...'
-          })
-        })
+        // 清空照片组，让用户重新开始
+        setPhotoGroups([])
+        
+        // 可以保留之前的备注作为参考（可选）
+        const previousComments = initialPhotoGroups
+          .map(group => group.comment)
+          .filter(comment => comment && comment.trim())
+          .join('; ')
+        
+        if (previousComments) {
+          setCurrentComment(`之前的备注: ${previousComments}`)
+        }
       } else {
-        // 否则从localStorage加载之前保存的照片组
+        // 否则从localStorage加载之前保存的照片组（正常流程）
         try {
           const saved = localStorage.getItem(STORAGE_KEY)
           if (saved) {

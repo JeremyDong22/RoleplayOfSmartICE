@@ -768,11 +768,42 @@ const DutyManagerDashboard: React.FC = () => {
                     
                     // 添加来自Context的submissions（已提交的任务）
                     submissions.forEach(sub => {
-                      allSubmissions[sub.taskId] = {
-                        photoGroups: sub.content.photoGroups || [],
-                        photos: sub.content.photos || [],
-                        text: sub.content.text,
-                        amount: sub.content.amount
+                      // 检查是否是被驳回的任务
+                      const isRejected = reviewStatus[sub.taskId]?.status === 'rejected'
+                      
+                      if (isRejected) {
+                        // 对于被驳回的任务，转换photo_urls为photoGroups格式
+                        const photoGroups = []
+                        
+                        // 如果有photoGroups，使用它
+                        if (sub.content.photoGroups && sub.content.photoGroups.length > 0) {
+                          photoGroups.push(...sub.content.photoGroups)
+                        } 
+                        // 否则，如果有photos数组（photo_urls），转换为photoGroups格式
+                        else if (sub.content.photos && sub.content.photos.length > 0) {
+                          // 将photo_urls转换为photoGroups格式
+                          photoGroups.push({
+                            id: `group-${Date.now()}`,
+                            photos: sub.content.photos,
+                            comment: sub.content.text || '',
+                            createdAt: Date.now()
+                          })
+                        }
+                        
+                        allSubmissions[sub.taskId] = {
+                          photoGroups: photoGroups,
+                          photos: sub.content.photos || [],
+                          text: sub.content.text,
+                          amount: sub.content.amount
+                        }
+                      } else {
+                        // 正常任务保持原样
+                        allSubmissions[sub.taskId] = {
+                          photoGroups: sub.content.photoGroups || [],
+                          photos: sub.content.photos || [],
+                          text: sub.content.text,
+                          amount: sub.content.amount
+                        }
                       }
                     })
                     
