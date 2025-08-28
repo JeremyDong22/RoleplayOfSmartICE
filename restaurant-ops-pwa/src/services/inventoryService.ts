@@ -2,21 +2,28 @@
  * 库存管理服务
  * 处理库存物品的CRUD操作和动态结构化字段生成
  * Created: 2025-08-11
+ * Updated: 2025-08-26 - 更新为使用 roleplay_inventory_items 表
  * Purpose: 动态管理收货验货的物品列表和单位
  */
 
 import { supabase } from './supabase'
+import { restaurantConfigService } from './restaurantConfigService'
 
 export interface InventoryItem {
   id: string
   restaurant_id?: string
   item_name: string
-  quantity: number
   unit: string
   department: string
-  total_price?: number
-  last_updated?: string
+  category?: string
+  subcategory?: string
+  distribution_channel?: string
+  warning_quantity?: number
   created_at?: string
+  updated_at?: string
+  // 以下字段不再存储在 items 表中，而是通过 task_records 计算
+  quantity?: number  // 可选，通过计算得出
+  total_price?: number  // 可选，通过计算得出
 }
 
 interface StructuredField {
@@ -48,9 +55,34 @@ class InventoryService {
     }
 
     try {
+      // 获取当前餐厅ID
+      const restaurantId = await restaurantConfigService.getRestaurantId()
+      console.log(`[InventoryService] Fetching items for restaurant: ${restaurantId}, department: ${department}`)
+      
+      if (!restaurantId) {
+        console.warn('[InventoryService] No restaurant ID found, fetching items without restaurant filter')
+        // 如果没有餐厅ID，获取所有该部门的物品
+        const { data, error } = await supabase
+          .from('roleplay_inventory_items')
+          .select('*')
+          .eq('department', department)
+          .order('item_name')
+        
+        if (error) {
+          console.error('[InventoryService] Failed to fetch inventory:', error)
+          return []
+        }
+        
+        console.log(`[InventoryService] Found ${data?.length || 0} items for ${department} (no restaurant filter)`)
+        this.inventoryCache.set(cacheKey, data || [])
+        this.lastFetchTime = now
+        return data || []
+      }
+      
       const { data, error } = await supabase
-        .from('roleplay_inventory')
+        .from('roleplay_inventory_items')
         .select('*')
+        .eq('restaurant_id', restaurantId)
         .eq('department', department)
         .order('item_name')
 
@@ -59,6 +91,8 @@ class InventoryService {
         return []
       }
 
+      console.log(`[InventoryService] Found ${data?.length || 0} items for ${department}`)
+      
       this.inventoryCache.set(cacheKey, data || [])
       this.lastFetchTime = now
       return data || []
@@ -156,94 +190,51 @@ class InventoryService {
 
   /**
    * 获取指定物品的当前库存数量
+   * 注意：Phase 2 之后会从 task_records 中计算
+   * 目前暂时返回 null，表示不显示库存数量
    */
   async getItemQuantity(itemName: string): Promise<number | null> {
-    try {
-      const { data, error } = await supabase
-        .from('roleplay_inventory')
-        .select('quantity')
-        .eq('item_name', itemName)
-        .single()
-
-      if (error) {
-        console.error('[InventoryService] Failed to fetch item quantity:', error)
-        return null
-      }
-
-      return data?.quantity || 0
-    } catch (error) {
-      console.error('[InventoryService] Error fetching item quantity:', error)
-      return null
-    }
+    // Phase 2 之后实现
+    return null
   }
 
   /**
-   * 更新库存数量（收货时调用）
+   * 更新库存数量和价格
+   * 注意：Phase 1 中，库存变化直接记录在 task_records 中
+   * 这个方法保留是为了兼容性，但不再实际更新数据
    */
   async updateInventoryQuantity(
     itemName: string,
     quantity: number,
-    operation: 'add' | 'subtract' = 'add'
+    operation: 'add' | 'subtract' = 'add',
+    unitPrice?: number
   ): Promise<boolean> {
-    try {
-      // 先获取当前库存
-      const { data: currentItem, error: fetchError } = await supabase
-        .from('roleplay_inventory')
-        .select('id, quantity')
-        .eq('item_name', itemName)
-        .single()
-
-      if (fetchError) {
-        console.error('[InventoryService] Failed to fetch current inventory:', fetchError)
-        return false
-      }
-
-      if (!currentItem) {
-        console.error('[InventoryService] Item not found:', itemName)
-        return false
-      }
-
-      // 计算新数量
-      const currentQuantity = parseFloat(currentItem.quantity || '0')
-      const newQuantity = operation === 'add' 
-        ? currentQuantity + quantity 
-        : Math.max(0, currentQuantity - quantity)
-
-      // 更新数量
-      const { error: updateError } = await supabase
-        .from('roleplay_inventory')
-        .update({ 
-          quantity: newQuantity,
-          last_updated: new Date().toISOString()
-        })
-        .eq('id', currentItem.id)
-
-      if (updateError) {
-        console.error('[InventoryService] Failed to update inventory:', updateError)
-        return false
-      }
-
-      // 清除缓存，下次会重新获取
-      this.inventoryCache.clear()
-      
-      console.log(`[InventoryService] Updated ${itemName}: ${currentQuantity} -> ${newQuantity}`)
-      return true
-    } catch (error) {
-      console.error('[InventoryService] Error updating inventory:', error)
-      return false
-    }
+    // 库存变化会通过 task_records 自动记录
+    // 这里只返回 true 表示操作成功
+    console.log(`[InventoryService] 库存变化将记录在 task_records: ${itemName} ${operation} ${quantity}`)
+    return true
   }
 
   /**
    * 批量更新库存（处理多个物品）
    */
   async batchUpdateInventory(
-    items: Array<{ itemName: string; quantity: number; operation?: 'add' | 'subtract' }>
+    items: Array<{ 
+      itemName: string; 
+      quantity: number; 
+      operation?: 'add' | 'subtract';
+      unitPrice?: number;  // 新增：支持单价
+    }>
   ): Promise<boolean> {
     try {
       const results = await Promise.all(
         items.map(item => 
-          this.updateInventoryQuantity(item.itemName, item.quantity, item.operation || 'add')
+          this.updateInventoryQuantity(
+            item.itemName, 
+            item.quantity, 
+            item.operation || 'add',
+            item.unitPrice  // 传递单价
+          )
         )
       )
       
@@ -265,13 +256,13 @@ class InventoryService {
   ): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('roleplay_inventory')
+        .from('roleplay_inventory_items')
         .insert({
           item_name: itemName,
           unit,
           department,
-          restaurant_id: restaurantId,
-          quantity: 0
+          restaurant_id: restaurantId
+          // 不再设置 quantity，因为新表没有这个字段
         })
 
       if (error) {
@@ -286,6 +277,63 @@ class InventoryService {
       return true
     } catch (error) {
       console.error('[InventoryService] Error adding inventory item:', error)
+      return false
+    }
+  }
+
+  /**
+   * 获取所有库存物品
+   */
+  async getAllInventory(): Promise<InventoryItem[]> {
+    try {
+      const restaurantId = await restaurantConfigService.getRestaurantId()
+      
+      const { data, error } = await supabase
+        .from('roleplay_inventory_items')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('department')
+        .order('item_name')
+
+      if (error) {
+        console.error('[InventoryService] Failed to fetch all inventory:', error)
+        return []
+      }
+
+      return data || []
+    } catch (error) {
+      console.error('[InventoryService] Error fetching all inventory:', error)
+      return []
+    }
+  }
+
+  /**
+   * 更新库存物品信息
+   */
+  async updateInventory(itemId: string, updates: Partial<InventoryItem>): Promise<boolean> {
+    try {
+      // 过滤掉不应该存储在 items 表中的字段
+      const { quantity, total_price, ...validUpdates } = updates
+      
+      const { error } = await supabase
+        .from('roleplay_inventory_items')
+        .update({
+          ...validUpdates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+
+      if (error) {
+        console.error('[InventoryService] Failed to update inventory item:', error)
+        return false
+      }
+
+      // 清除缓存
+      this.inventoryCache.clear()
+      
+      return true
+    } catch (error) {
+      console.error('[InventoryService] Error updating inventory item:', error)
       return false
     }
   }

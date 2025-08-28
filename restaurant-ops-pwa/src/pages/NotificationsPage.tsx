@@ -175,9 +175,6 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ role = 'ma
           </List>
         )}
       </Paper>
-      
-      {/* Navigation Bar */}
-      <NavigationBar role={role} />
     </Box>
   )
 }

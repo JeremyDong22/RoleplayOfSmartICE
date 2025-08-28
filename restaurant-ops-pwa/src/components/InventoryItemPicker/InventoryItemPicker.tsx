@@ -1,11 +1,12 @@
 /**
  * InventoryItemPicker 组件
  * Created: 2025-08-21
+ * Updated: 2025-08-26 - 移除库存数量显示（新架构不存储库存数量）
  * Purpose: 可复用的库存物品选择器组件，支持搜索和自动完成
  * Features: 
  * - 实时搜索过滤
  * - 包含匹配（不限顺序）
- * - 可显示库存数量和单位
+ * - 可显示单位
  * - 支持多场景使用
  */
 
@@ -58,10 +59,9 @@ export const InventoryItemPicker: React.FC<InventoryItemPickerProps> = ({
     return availableItems.map(item => {
       let label = item.item_name
       
-      // 添加库存数量显示
-      if (showQuantity) {
-        label += ` (库存: ${item.quantity}${item.unit})`
-      } else if (showUnit) {
+      // 添加单位显示
+      // 注意：新架构下不再显示库存数量，showQuantity 参数已废弃但保留以便兼容
+      if (showQuantity || showUnit) {
         label += ` (${item.unit})`
       }
       

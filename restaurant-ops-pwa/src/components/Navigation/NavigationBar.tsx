@@ -13,11 +13,12 @@ import {
   Assignment,
   Person,
   Dashboard,
-  Notifications
+  Notifications,
+  Inventory
 } from '@mui/icons-material'
 
 interface NavigationBarProps {
-  role: 'manager' | 'chef' | 'duty-manager' | 'ceo'
+  role?: 'manager' | 'chef' | 'duty-manager' | 'ceo'
 }
 
 export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
@@ -34,8 +35,14 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
   
   const baseRoute = roleRoutes[role]
   
+  // Check if this is inventory page or if user can access inventory
+  const isInventoryPage = location.pathname.includes('/inventory')
+  // 除了 duty-manager 以外的所有角色都可以访问库存
+  const canAccessInventory = role !== 'duty-manager'
+  
   // Determine current value based on pathname
   const getCurrentValue = () => {
+    if (location.pathname.includes('/inventory')) return 3
     if (location.pathname.includes('/profile')) return 1
     if (location.pathname.includes('/notifications')) return 2
     return 0 // Default to tasks
@@ -44,13 +51,28 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
   const handleChange = (event: React.SyntheticEvent, newValue: number) => {
     switch (newValue) {
       case 0:
-        navigate(baseRoute)
+        if (role) {
+          navigate(baseRoute)
+        } else {
+          navigate('/role-selection')
+        }
         break
       case 1:
-        navigate(`${baseRoute}/profile`)
+        if (role) {
+          navigate(`${baseRoute}/profile`)
+        } else {
+          navigate('/role-selection')
+        }
         break
       case 2:
-        navigate(`${baseRoute}/notifications`)
+        if (role) {
+          navigate(`${baseRoute}/notifications`)
+        } else {
+          navigate('/role-selection')
+        }
+        break
+      case 3:
+        navigate('/inventory')
         break
     }
   }
@@ -87,6 +109,12 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
             </Badge>
           }
         />
+        {(canAccessInventory || isInventoryPage) && (
+          <BottomNavigationAction
+            label="库存"
+            icon={<Inventory />}
+          />
+        )}
       </BottomNavigation>
     </Paper>
   )

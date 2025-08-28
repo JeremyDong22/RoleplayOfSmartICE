@@ -8,6 +8,7 @@
 import { submitTaskRecord } from '../services/taskRecordService'
 import { uploadPhoto, uploadAudio } from '../services/storageService'
 import { compressImage, needsCompression, formatFileSize, estimateFileSize } from './imageCompressor'
+import { inventoryService } from '../services/inventoryService'
 
 // Batch sizes to try in order for parallel uploads
 const BATCH_SIZES = [10, 7, 5, 3]
@@ -232,14 +233,50 @@ export async function submitTaskWithMedia({
       dataContent: data
     })
 
-    // 准备提交数据
+    // 准备提交数据 - 不要在metadata里存储原始照片数据
+    const cleanedData = { ...data }
+    
+    // 移除原始照片数据，只保留其他元数据
+    if (cleanedData.evidence) {
+      // 清理evidence中的照片数据，只保留描述等信息
+      if (Array.isArray(cleanedData.evidence)) {
+        cleanedData.evidence = cleanedData.evidence.map(item => ({
+          ...item,
+          photo: undefined,
+          image: undefined,
+          description: item.description,
+          sampleIndex: item.sampleIndex
+        }))
+      } else if (cleanedData.evidence.evidence) {
+        // 嵌套格式
+        cleanedData.evidence = {
+          ...cleanedData.evidence,
+          evidence: cleanedData.evidence.evidence.map((item: any) => ({
+            ...item,
+            photo: undefined,
+            image: undefined,
+            description: item.description,
+            sampleIndex: item.sampleIndex
+          }))
+        }
+      }
+    }
+    
+    // 如果有photoGroups，也清理其中的照片数据
+    if (cleanedData.photoGroups) {
+      cleanedData.photoGroups = cleanedData.photoGroups.map((group: any) => ({
+        ...group,
+        photos: undefined // 移除照片数据，URL会存储在photo_urls中
+      }))
+    }
+    
     const submissionData: any = {
       user_id: userId,
       restaurant_id: restaurantId,
       task_id: taskId,
       date,
       period_id: periodId,
-      submission_metadata: data
+      submission_metadata: cleanedData
     }
     
     // If there's a late submission reason, include it and mark as late
@@ -342,53 +379,100 @@ export async function submitTaskWithMedia({
         submissionData.text_content = evidenceArray[0].description
       }
       
-      // 处理结构化数据（收货验货）
+      // 处理结构化数据（收货验货、损耗等）- 统一格式
       if (data.structured_data) {
+        // 判断action_type
+        let actionType = 'receipt' // 默认为收货
+        if (data.structured_data.reason) {
+          // 有损耗原因字段
+          if (data.structured_data.reason.includes('交割')) {
+            actionType = 'processing_loss'
+          } else {
+            actionType = 'loss'
+          }
+        } else if (data.structured_data.quality_check) {
+          actionType = 'receipt'
+        }
+        
+        // 转换为统一的多物品格式
+        const unifiedData = {
+          action_type: actionType,
+          items: Array.isArray(data.structured_data.items) 
+            ? data.structured_data.items  // 如果已经是items数组格式
+            : [{  // 转换单个物品为数组格式
+                item_name: data.structured_data.item_name,
+                quantity: data.structured_data.quantity,
+                unit: data.structured_data.unit,
+                unit_price: data.structured_data.unit_price,
+                total_price: data.structured_data.total_price,
+                quality_check: data.structured_data.quality_check,
+                loss_reason: data.structured_data.reason
+              }],
+          notes: data.note || evidenceArray?.[0]?.description || ''
+        }
+        
+        // 计算总金额（如果有多个物品）
+        if (unifiedData.items.length > 0) {
+          const totalAmount = unifiedData.items.reduce((sum, item) => {
+            return sum + (item.total_price || 0)
+          }, 0)
+          if (totalAmount > 0) {
+            unifiedData.total_amount = totalAmount
+          }
+        }
+        
+        // 保存统一格式的元数据
         submissionData.submission_metadata = {
           ...submissionData.submission_metadata,
-          structured_data: data.structured_data
+          structured_data: unifiedData
         }
         
-        // 生成可读文本格式供CEO dashboard显示
-        const structuredText = []
-        if (data.structured_data.item_name) {
-          structuredText.push(`物品名称: ${data.structured_data.item_name}`)
-        }
-        if (data.structured_data.quantity && data.structured_data.unit) {
-          structuredText.push(`数量: ${data.structured_data.quantity} ${data.structured_data.unit}`)
-        } else if (data.structured_data.quantity) {
-          structuredText.push(`数量: ${data.structured_data.quantity}`)
-        }
+        // 生成可读文本格式供显示
+        const structuredTextArray = []
+        unifiedData.items.forEach((item, index) => {
+          const itemTexts = []
+          if (item.item_name) {
+            itemTexts.push(`物品${unifiedData.items.length > 1 ? index + 1 : ''}: ${item.item_name}`)
+          }
+          if (item.quantity && item.unit) {
+            itemTexts.push(`数量: ${item.quantity} ${item.unit}`)
+          } else if (item.quantity) {
+            itemTexts.push(`数量: ${item.quantity}`)
+          }
+          
+          // 价格信息
+          if (item.unit_price) {
+            itemTexts.push(`单价: ¥${item.unit_price}`)
+          }
+          if (item.total_price) {
+            const priceLabel = actionType === 'loss' || actionType === 'processing_loss' ? '损耗价值' : '总价'
+            itemTexts.push(`${priceLabel}: ¥${item.total_price}`)
+          }
+          
+          // 质量检查或损耗原因
+          if (item.quality_check) {
+            itemTexts.push(`质量检查: ${item.quality_check}`)
+          }
+          if (item.loss_reason) {
+            itemTexts.push(`损耗原因: ${item.loss_reason}`)
+          }
+          
+          structuredTextArray.push(itemTexts.join(', '))
+        })
         
-        // 添加价格信息
-        if (data.structured_data.unit_price && data.structured_data.total_price) {
-          structuredText.push(`单价: ¥${data.structured_data.unit_price}`)
-          structuredText.push(`总价: ¥${data.structured_data.total_price}`)
-        } else if (data.structured_data.unit_price) {
-          structuredText.push(`单价: ¥${data.structured_data.unit_price}`)
-        } else if (data.structured_data.total_price) {
-          structuredText.push(`总价: ¥${data.structured_data.total_price}`)
+        // 合并文本
+        let finalText = structuredTextArray.join('\n')
+        if (unifiedData.notes) {
+          finalText += `\n备注: ${unifiedData.notes}`
         }
+        submissionData.text_content = finalText
         
-        if (data.structured_data.quality_check) {
-          structuredText.push(`质量检查: ${data.structured_data.quality_check}`)
-        }
-        
-        // 将结构化文本与备注合并
-        const finalText = structuredText.join(', ')
-        const existingDescription = evidenceArray.length > 0 && evidenceArray[0]?.description 
-          ? evidenceArray[0].description 
-          : ''
-        
-        // 如果有备注，添加到结构化文本后面
-        if (existingDescription) {
-          submissionData.text_content = `${finalText}\n备注: ${existingDescription}`
-        } else {
-          submissionData.text_content = finalText
-        }
-        
-        // 库存更新将由后端触发器处理，前端只负责格式化文本
-        console.log('[TaskSubmissionHelper] Structured data formatted as text, inventory will be updated by backend trigger')
+        // 日志记录（不再直接更新库存）
+        console.log('[TaskSubmissionHelper] Processing inventory action:', {
+          action: actionType,
+          itemCount: unifiedData.items.length,
+          totalAmount: unifiedData.total_amount
+        })
       } else if (evidenceArray.length > 0 && evidenceArray[0]?.description) {
         // 如果没有结构化数据但有描述文本，直接使用描述文本
         submissionData.text_content = evidenceArray[0].description
@@ -408,52 +492,100 @@ export async function submitTaskWithMedia({
       submissionData.submission_type = 'text'
       submissionData.text_content = data.textInput
     } else if (data?.type === 'structured_text' && data?.structured_data) {
-      // 处理结构化文本输入（如损耗盘点）
+      // 处理结构化文本输入（如损耗盘点）- 统一格式
       submissionData.submission_type = 'text'
       
-      // 生成可读文本格式供CEO dashboard显示
-      const structuredText = []
-      if (data.structured_data.item_name) {
-        structuredText.push(`物品名称: ${data.structured_data.item_name}`)
-      }
-      if (data.structured_data.quantity && data.structured_data.unit) {
-        structuredText.push(`数量: ${data.structured_data.quantity} ${data.structured_data.unit}`)
-      } else if (data.structured_data.quantity) {
-        structuredText.push(`数量: ${data.structured_data.quantity}`)
-      }
-      
-      // 添加价格信息（损耗盘点会有FIFO计算的价格）
-      if (data.structured_data.unit_price && data.structured_data.total_price) {
-        structuredText.push(`单价: ¥${data.structured_data.unit_price}`)
-        structuredText.push(`损耗价值: ¥${data.structured_data.total_price}`)
-      } else if (data.structured_data.total_price) {
-        structuredText.push(`损耗价值: ¥${data.structured_data.total_price}`)
+      // 判断action_type - 如果已经有action_type则使用，否则根据字段判断
+      let actionType = data.structured_data.action_type || 'loss' // 优先使用传入的action_type
+      if (!data.structured_data.action_type) {
+        // 只有在没有明确action_type时才自动判断
+        if (data.structured_data.reason) {
+          if (data.structured_data.reason.includes('交割')) {
+            actionType = 'processing_loss'
+          } else {
+            actionType = 'loss'
+          }
+        } else if (data.structured_data.quality_check) {
+          actionType = 'receipt'
+        }
       }
       
-      // 添加损耗原因
-      if (data.structured_data.reason) {
-        structuredText.push(`损耗原因: ${data.structured_data.reason}`)
+      // 转换为统一的多物品格式
+      const unifiedData = {
+        action_type: actionType,
+        items: Array.isArray(data.structured_data.items) 
+          ? data.structured_data.items  // 如果已经是items数组格式
+          : [{  // 转换单个物品为数组格式
+              item_name: data.structured_data.item_name,
+              quantity: data.structured_data.quantity,
+              unit: data.structured_data.unit,
+              unit_price: data.structured_data.unit_price,
+              total_price: data.structured_data.total_price,
+              quality_check: data.structured_data.quality_check,
+              loss_reason: data.structured_data.reason
+            }],
+        notes: data.note || ''
       }
       
-      if (data.structured_data.quality_check) {
-        structuredText.push(`质量检查: ${data.structured_data.quality_check}`)
+      // 计算总金额（如果有多个物品）
+      if (unifiedData.items.length > 0) {
+        const totalAmount = unifiedData.items.reduce((sum, item) => {
+          return sum + (item.total_price || 0)
+        }, 0)
+        if (totalAmount > 0) {
+          unifiedData.total_amount = totalAmount
+        }
       }
       
-      // 将结构化文本与备注合并
-      const finalText = structuredText.join(', ')
-      if (data.note) {
-        submissionData.text_content = `${finalText}\n备注: ${data.note}`
-      } else {
-        submissionData.text_content = finalText
-      }
-      
+      // 保存统一格式的元数据
       submissionData.submission_metadata = {
         ...submissionData.submission_metadata,
-        structured_data: data.structured_data
+        structured_data: unifiedData
       }
       
-      // 库存更新将由后端触发器处理，前端只负责格式化文本
-      console.log('[TaskSubmissionHelper] Structured text formatted, inventory will be updated by backend trigger')
+      // 生成可读文本格式供显示
+      const structuredTextArray = []
+      unifiedData.items.forEach((item, index) => {
+        const itemTexts = []
+        if (item.item_name) {
+          itemTexts.push(`物品${unifiedData.items.length > 1 ? index + 1 : ''}: ${item.item_name}`)
+        }
+        if (item.quantity && item.unit) {
+          itemTexts.push(`数量: ${item.quantity} ${item.unit}`)
+        } else if (item.quantity) {
+          itemTexts.push(`数量: ${item.quantity}`)
+        }
+        
+        // 价格信息
+        if (item.unit_price) {
+          itemTexts.push(`单价: ¥${item.unit_price}`)
+        }
+        if (item.total_price) {
+          const priceLabel = actionType === 'loss' || actionType === 'processing_loss' ? '损耗价值' : '总价'
+          itemTexts.push(`${priceLabel}: ¥${item.total_price}`)
+        }
+        
+        // 损耗原因
+        if (item.loss_reason) {
+          itemTexts.push(`损耗原因: ${item.loss_reason}`)
+        }
+        
+        structuredTextArray.push(itemTexts.join(', '))
+      })
+      
+      // 合并文本
+      let finalText = structuredTextArray.join('\n')
+      if (unifiedData.notes) {
+        finalText += `\n备注: ${unifiedData.notes}`
+      }
+      submissionData.text_content = finalText
+      
+      // 日志记录（不再直接更新库存）
+      console.log('[TaskSubmissionHelper] Processing inventory action:', {
+        action: actionType,
+        itemCount: unifiedData.items.length,
+        totalAmount: unifiedData.total_amount
+      })
     } else if (uploadRequirement === '列表' && data) {
       submissionData.submission_type = 'list'
       submissionData.text_content = JSON.stringify(data)

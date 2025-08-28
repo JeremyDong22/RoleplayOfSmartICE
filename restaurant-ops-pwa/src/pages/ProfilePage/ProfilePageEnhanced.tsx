@@ -1290,9 +1290,6 @@ const ProfilePageEnhanced: React.FC = () => {
         </DialogActions>
       </Dialog>
     </Container>
-    
-    {/* Navigation Bar */}
-    <NavigationBar role={currentRole} />
   </>
   )
 }

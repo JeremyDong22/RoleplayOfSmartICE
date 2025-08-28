@@ -25,6 +25,7 @@ import { TestDatabase } from './pages/TestDatabase'
 import TestFloatingTasks from './pages/TestFloatingTasks'
 import TestTaskUpload from './pages/TestTaskUpload'
 import { TestParallelUpload } from './pages/TestParallelUpload'
+import { TestFIFO } from './pages/TestFIFO'
 import { initializeStorage } from './utils/initializeStorage'
 import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
@@ -43,6 +44,11 @@ import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboar
 import { DebugAuth } from './pages/DebugAuth'
 import { NotificationsPage } from './pages/NotificationsPage'
 
+// Inventory Management import
+import { InventoryManagement } from './pages/InventoryManagement/InventoryManagement'
+import { AppLayout } from './components/Layout/AppLayout'
+import { RefreshProvider } from './contexts/RefreshContext'
+
 const theme = createTheme({
   palette: {
     primary: {
@@ -54,7 +60,7 @@ const theme = createTheme({
   },
 })
 
-// Create router with React Router v7 syntax
+// Create router with React Router v7 syntax - using nested routes for shared layout
 const router = createBrowserRouter([
   {
     path: '/',
@@ -68,102 +74,112 @@ const router = createBrowserRouter([
       </PrivateRoute>
     ),
   },
+  // Manager routes with shared layout
   {
     path: '/manager',
     element: (
       <PrivateRoute path="/manager">
-        <ManagerDashboard />
+        <AppLayout />
       </PrivateRoute>
     ),
+    children: [
+      {
+        index: true,
+        element: <ManagerDashboard />,
+      },
+      {
+        path: 'profile',
+        element: <ProfilePageEnhanced />,
+      },
+      {
+        path: 'notifications',
+        element: <NotificationsPage role="manager" />,
+      },
+    ],
   },
-  {
-    path: '/manager/profile',
-    element: (
-      <PrivateRoute path="/manager/profile">
-        <ProfilePageEnhanced />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/manager/notifications',
-    element: (
-      <PrivateRoute path="/manager/notifications">
-        <NotificationsPage role="manager" />
-      </PrivateRoute>
-    ),
-  },
+  // Chef routes with shared layout
   {
     path: '/chef',
     element: (
       <PrivateRoute path="/chef">
-        <ChefDashboard />
+        <AppLayout />
       </PrivateRoute>
     ),
+    children: [
+      {
+        index: true,
+        element: <ChefDashboard />,
+      },
+      {
+        path: 'profile',
+        element: <ProfilePageEnhanced />,
+      },
+      {
+        path: 'notifications',
+        element: <NotificationsPage role="chef" />,
+      },
+    ],
   },
-  {
-    path: '/chef/profile',
-    element: (
-      <PrivateRoute path="/chef/profile">
-        <ProfilePageEnhanced />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/chef/notifications',
-    element: (
-      <PrivateRoute path="/chef/notifications">
-        <NotificationsPage role="chef" />
-      </PrivateRoute>
-    ),
-  },
+  // Duty Manager routes with shared layout
   {
     path: '/duty-manager',
     element: (
       <PrivateRoute path="/duty-manager">
-        <DutyManagerDashboard />
+        <AppLayout />
       </PrivateRoute>
     ),
+    children: [
+      {
+        index: true,
+        element: <DutyManagerDashboard />,
+      },
+      {
+        path: 'profile',
+        element: <ProfilePageEnhanced />,
+      },
+      {
+        path: 'notifications',
+        element: <NotificationsPage role="duty-manager" />,
+      },
+    ],
   },
-  {
-    path: '/duty-manager/profile',
-    element: (
-      <PrivateRoute path="/duty-manager/profile">
-        <ProfilePageEnhanced />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/duty-manager/notifications',
-    element: (
-      <PrivateRoute path="/duty-manager/notifications">
-        <NotificationsPage role="duty-manager" />
-      </PrivateRoute>
-    ),
-  },
-  // CEO Dashboard routes
+  // CEO routes with shared layout
   {
     path: '/ceo',
     element: (
       <PrivateRoute path="/ceo">
-        <CEODashboard />
+        <AppLayout />
       </PrivateRoute>
     ),
+    children: [
+      {
+        index: true,
+        element: <CEODashboard />,
+      },
+      {
+        path: 'profile',
+        element: <ProfilePageEnhanced />,
+      },
+      {
+        path: 'notifications',
+        element: <NotificationsPage role="ceo" />,
+      },
+    ],
   },
+  // Inventory Management route with shared layout
   {
-    path: '/ceo/profile',
+    path: '/inventory',
     element: (
-      <PrivateRoute path="/ceo/profile">
-        <ProfilePageEnhanced />
+      <PrivateRoute path="/inventory">
+        <AppLayout />
       </PrivateRoute>
     ),
-  },
-  {
-    path: '/ceo/notifications',
-    element: (
-      <PrivateRoute path="/ceo/notifications">
-        <NotificationsPage role="ceo" />
-      </PrivateRoute>
-    ),
+    children: [
+      {
+        index: true,
+        element: <InventoryManagement />,
+      },
+    ],
   },
   {
     path: '/test-camera',
@@ -192,6 +208,10 @@ const router = createBrowserRouter([
   {
     path: '/test-realtime-debug',
     element: <TestRealtimeDebug />,
+  },
+  {
+    path: '/test-fifo',
+    element: <TestFIFO />,
   },
   {
     path: '/debug-auth',
@@ -308,14 +328,16 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <TaskDataProvider>
-        <DutyManagerProvider>
-          <RouterProvider router={router} />
-          <NotificationPermission />
-          <CacheManagerUI />
-          <ClearCacheButton />
-        </DutyManagerProvider>
-      </TaskDataProvider>
+      <RefreshProvider>
+        <TaskDataProvider>
+          <DutyManagerProvider>
+            <RouterProvider router={router} />
+            <NotificationPermission />
+            <CacheManagerUI />
+            <ClearCacheButton />
+          </DutyManagerProvider>
+        </TaskDataProvider>
+      </RefreshProvider>
       <Snackbar 
         open={showNotification} 
         autoHideDuration={3000} 

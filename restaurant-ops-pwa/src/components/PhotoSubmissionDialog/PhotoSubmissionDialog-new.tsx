@@ -51,6 +51,7 @@ import {
 } from '@mui/icons-material'
 import { InventoryItemPicker } from '../InventoryItemPicker'
 import { authService } from '../../services/authService'
+import { inventoryService } from '../../services/inventoryService'
 
 // 视图类型
 type ViewType = 'samples' | 'camera' | 'photos'
@@ -503,6 +504,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     if (!currentComment && sampleList[selectedSampleIndex]?.text && !structuredFields?.enabled) {
       setCurrentComment(sampleList[selectedSampleIndex].text)
     }
+    
+    // 如果是收货验货任务，清除库存缓存以获取最新数据
+    if ((taskName.includes('收货') || taskName.includes('验货')) && structuredFields?.enabled) {
+      console.log('[PhotoSubmissionDialog] 清除库存缓存，准备加载最新数据')
+      inventoryService.clearCache()
+    }
+    
     setSaveDialogOpen(true)
   }
   
@@ -540,10 +548,32 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     
     // 如果有结构化数据，添加到提交数据中
     if (structuredFields?.enabled && photoGroups.length > 0) {
-      // 获取最后一个照片组的结构化数据（通常只有一个）
-      const lastGroup = photoGroups[photoGroups.length - 1]
-      if (lastGroup.structuredData) {
-        submitData.structured_data = lastGroup.structuredData
+      // 收集所有photoGroups的结构化数据
+      const allItems: any[] = []
+      
+      photoGroups.forEach(group => {
+        if (group.structuredData) {
+          // 每个group的structuredData包含一个物品的信息
+          allItems.push({
+            item_name: group.structuredData.item_name,
+            quantity: group.structuredData.quantity,
+            unit: group.structuredData.unit,
+            unit_price: group.structuredData.unit_price,
+            total_price: group.structuredData.total_price,
+            quality_check: group.structuredData.quality_check,
+            loss_reason: group.structuredData.reason
+          })
+        }
+      })
+      
+      // 构建包含所有物品的structured_data
+      if (allItems.length > 0) {
+        submitData.structured_data = {
+          items: allItems,  // 使用items数组格式
+          // 保留第一个group的其他字段作为整体信息
+          ...photoGroups[0].structuredData,
+          items: allItems  // 确保items数组覆盖单个物品字段
+        }
       }
     }
     

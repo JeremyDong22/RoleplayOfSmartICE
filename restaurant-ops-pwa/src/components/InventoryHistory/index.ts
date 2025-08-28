@@ -1,0 +1,1 @@
+export { InventoryHistoryPanel } from './InventoryHistoryPanel'

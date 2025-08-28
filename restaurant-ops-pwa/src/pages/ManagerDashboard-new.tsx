@@ -8,6 +8,7 @@
 // duty manager submissions. Previously only worked for evening period.
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useRefreshable } from '../contexts/RefreshContext'
 import { 
   Container, 
   AppBar, 
@@ -1313,9 +1314,6 @@ export const ManagerDashboard: React.FC = () => {
           )}
         </Grid>
       </Container>
-      
-      {/* Navigation Bar */}
-      <NavigationBar role="manager" />
     </>
   )
 }
