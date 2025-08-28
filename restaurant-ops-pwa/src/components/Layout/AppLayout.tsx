@@ -30,7 +30,13 @@ export const AppLayout: React.FC = () => {
     if (location.pathname.includes('/duty-manager')) return 'duty-manager'
     if (location.pathname.includes('/ceo')) return 'ceo'
     
-    // For inventory and other shared routes, use the user's role from session
+    // For inventory and other shared routes, check localStorage first (for administrators)
+    const selectedRole = localStorage.getItem('selectedRole')
+    if (selectedRole && ['manager', 'chef', 'duty-manager', 'ceo'].includes(selectedRole)) {
+      return selectedRole as 'manager' | 'chef' | 'duty-manager' | 'ceo'
+    }
+    
+    // Otherwise use the user's role from session
     if (currentUser?.roleCode) {
       return roleCodeMap[currentUser.roleCode]
     }
