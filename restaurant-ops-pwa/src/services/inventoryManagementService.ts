@@ -1,8 +1,8 @@
 /**
  * Inventory Management Service
  * Created: 2025-08-22
- * Updated: 2025-08-26 - Connected to roleplay_inventory_realtime_view
- * Purpose: 库存管理核心服务，连接到实时库存视图
+ * Updated: 2025-08-28 - Fixed all placeholder methods to connect to real database
+ * Purpose: 库存管理核心服务，连接到实时库存视图和其他数据库表
  */
 
 import { supabase } from './supabase'
@@ -68,85 +68,126 @@ interface ReceiptRecord {
 
 class InventoryManagementService {
   /**
-   * 获取所有库存物品（占位符数据）
+   * 获取所有库存物品（从数据库查询）
    */
   async getInventoryItems(department?: '前厅' | '后厨'): Promise<InventoryItem[]> {
-    // Placeholder data
-    const mockItems: InventoryItem[] = [
-      {
-        id: '1',
-        restaurant_id: 'placeholder',
-        item_name: '示例物品1',
-        quantity: 100,
-        unit: '个',
-        department: '前厅',
-        category: '餐具',
-        total_price: 500,
-        unit_price: 5,
-        warning_quantity: 20,
-        distribution_channel: '本地',
-        last_updated: new Date().toISOString(),
-        is_ignored: false
-      },
-      {
-        id: '2',
-        restaurant_id: 'placeholder',
-        item_name: '示例物品2',
-        quantity: 50,
-        unit: 'kg',
-        department: '后厨',
-        category: '食材',
-        total_price: 1000,
-        unit_price: 20,
-        warning_quantity: 10,
-        distribution_channel: '网购',
-        last_updated: new Date().toISOString(),
-        is_ignored: false
-      },
-      {
-        id: '3',
-        restaurant_id: 'placeholder',
-        item_name: '示例物品3',
-        quantity: 200,
-        unit: '瓶',
-        department: '前厅',
-        category: '饮料',
-        total_price: 800,
-        unit_price: 4,
-        warning_quantity: 50,
-        distribution_channel: '本地',
-        last_updated: new Date().toISOString(),
-        is_ignored: false
+    try {
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      if (!restaurantConfig) {
+        console.warn('[InventoryManagementService] No restaurant config found')
+        return []
       }
-    ]
-      
-    // Filter by department if specified
-    if (department) {
-      return mockItems.filter(item => item.department === department)
+
+      let query = supabase
+        .from('roleplay_inventory_items')
+        .select('*')
+        .eq('restaurant_id', restaurantConfig.id)
+        .order('item_name')
+
+      if (department) {
+        query = query.eq('department', department)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('[InventoryManagementService] Error fetching inventory items:', error)
+        throw error
+      }
+
+      // Transform to match interface
+      const items: InventoryItem[] = data?.map(item => ({
+        id: item.id,
+        restaurant_id: item.restaurant_id,
+        item_name: item.item_name,
+        quantity: 0, // Will be calculated from realtime view if needed
+        unit: item.unit,
+        department: item.department,
+        category: item.category,
+        subcategory: item.subcategory,
+        total_price: 0, // Will be calculated from realtime view if needed
+        unit_price: 0, // Will be calculated from realtime view if needed
+        warning_quantity: item.warning_quantity,
+        distribution_channel: item.distribution_channel,
+        last_updated: item.updated_at || item.created_at,
+        is_ignored: false
+      })) || []
+
+      return items
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to get inventory items:', error)
+      return []
     }
-    
-    return mockItems
   }
 
   /**
-   * 创建库存快照（占位符）
+   * 创建库存快照（通过任务记录系统）
    */
   async createSnapshot(itemId: string, quantity: number, notes?: string): Promise<InventorySnapshot> {
-    // Placeholder implementation
-    return {
-      id: `snapshot-${Date.now()}`,
-      item_id: itemId,
-      restaurant_id: 'placeholder',
-      snapshot_quantity: quantity,
-      snapshot_date: new Date().toISOString(),
-      created_by: 'placeholder-user',
-      notes: notes,
-      created_at: new Date().toISOString()
+    try {
+      const user = await authService.getCurrentUser()
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      
+      if (!user || !restaurantConfig) {
+        throw new Error('User or restaurant configuration not found')
+      }
+
+      // Get item name from item ID
+      const { data: item } = await supabase
+        .from('roleplay_inventory_items')
+        .select('item_name')
+        .eq('id', itemId)
+        .single()
+
+      if (!item) {
+        throw new Error('Item not found')
+      }
+
+      const snapshotId = `snapshot-${Date.now()}`
+      const snapshotDate = new Date().toISOString()
+
+      // Create a task record for the snapshot
+      const { error } = await supabase
+        .from('roleplay_task_records')
+        .insert({
+          id: snapshotId,
+          restaurant_id: restaurantConfig.id,
+          user_id: user.id,
+          task_id: 'inventory-snapshot',
+          date: snapshotDate.split('T')[0],
+          text_content: notes || `库存快照: ${item.item_name}`,
+          submission_metadata: {
+            type: 'inventory_snapshot',
+            item_id: itemId,
+            item_name: item.item_name,
+            quantity: quantity,
+            notes: notes
+          },
+          approval_status: 'approved'
+        })
+
+      if (error) {
+        throw error
+      }
+
+      return {
+        id: snapshotId,
+        item_id: itemId,
+        restaurant_id: restaurantConfig.id,
+        snapshot_quantity: quantity,
+        snapshot_date: snapshotDate,
+        created_by: user.id,
+        notes: notes,
+        created_at: snapshotDate
+      }
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to create snapshot:', error)
+      throw error
     }
   }
 
   /**
-   * 批量创建库存快照（占位符）
+   * 批量创建库存快照
    */
   async batchCreateSnapshots(items: Array<{
     itemId: string
@@ -154,24 +195,136 @@ class InventoryManagementService {
     notes?: string
     previousQuantity?: number
   }>): Promise<void> {
-    console.log('[Placeholder] Batch creating snapshots:', items.length, 'items')
-    // Placeholder - no actual database operation
+    try {
+      const user = await authService.getCurrentUser()
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      
+      if (!user || !restaurantConfig) {
+        throw new Error('User or restaurant configuration not found')
+      }
+
+      const records = []
+      const batchId = `batch-${Date.now()}`
+      const snapshotDate = new Date().toISOString()
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        
+        // Get item name
+        const { data: itemData } = await supabase
+          .from('roleplay_inventory_items')
+          .select('item_name')
+          .eq('id', item.itemId)
+          .single()
+
+        if (!itemData) continue
+
+        records.push({
+          id: `${batchId}-${i}`,
+          restaurant_id: restaurantConfig.id,
+          user_id: user.id,
+          task_id: 'inventory-batch-snapshot',
+          date: snapshotDate.split('T')[0],
+          text_content: item.notes || `批量库存快照: ${itemData.item_name}`,
+          submission_metadata: {
+            type: 'inventory_snapshot',
+            batch_id: batchId,
+            item_id: item.itemId,
+            item_name: itemData.item_name,
+            quantity: item.quantity,
+            previous_quantity: item.previousQuantity,
+            notes: item.notes
+          },
+          approval_status: 'approved'
+        })
+      }
+
+      if (records.length > 0) {
+        const { error } = await supabase
+          .from('roleplay_task_records')
+          .insert(records)
+
+        if (error) {
+          throw error
+        }
+      }
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to batch create snapshots:', error)
+      throw error
+    }
   }
 
   /**
-   * 获取物品的历史快照（占位符）
+   * 获取物品的历史快照
    */
   async getSnapshotHistory(itemId: string, limit = 10): Promise<InventorySnapshot[]> {
-    // Return empty array as placeholder
-    return []
+    try {
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      if (!restaurantConfig) {
+        return []
+      }
+
+      const { data, error } = await supabase
+        .from('roleplay_task_records')
+        .select('*')
+        .eq('restaurant_id', restaurantConfig.id)
+        .contains('submission_metadata', { type: 'inventory_snapshot', item_id: itemId })
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (error) {
+        throw error
+      }
+
+      return data?.map(record => ({
+        id: record.id,
+        item_id: itemId,
+        restaurant_id: record.restaurant_id,
+        snapshot_quantity: record.submission_metadata?.quantity || 0,
+        snapshot_date: record.date || record.created_at,
+        created_by: record.user_id,
+        notes: record.submission_metadata?.notes || record.text_content,
+        created_at: record.created_at
+      })) || []
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to get snapshot history:', error)
+      return []
+    }
   }
 
   /**
-   * 获取入库记录（占位符）
+   * 获取入库记录
    */
   async getReceiptRecords(itemName: string, startDate: string, endDate: string): Promise<ReceiptRecord[]> {
-    // Return empty array as placeholder
-    return []
+    try {
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      if (!restaurantConfig) {
+        return []
+      }
+
+      const { data, error } = await supabase
+        .from('roleplay_inventory_records_view')
+        .select('*')
+        .eq('restaurant_id', restaurantConfig.id)
+        .eq('operation_type', 'receipt')
+        .eq('item_name', itemName)
+        .gte('record_date', startDate)
+        .lte('record_date', endDate)
+        .order('record_date', { ascending: false })
+
+      if (error) {
+        throw error
+      }
+
+      return data?.map(record => ({
+        item_name: record.item_name,
+        quantity: record.quantity || 0,
+        receipt_date: record.record_date
+      })) || []
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to get receipt records:', error)
+      return []
+    }
   }
 
   /**
@@ -188,51 +341,17 @@ class InventoryManagementService {
     department?: '前厅' | '后厨',
     alertOnly = false
   ): Promise<InventoryPrediction[]> {
-    try {
-      // Get real-time data from our view
-      const items = await inventoryRealtimeService.getRealtimeInventory(department)
-      
-      // Format for UI
-      const predictions = inventoryRealtimeService.formatForUI(items)
-      
-      if (alertOnly) {
-        return predictions.filter(p => p.need_alert)
-      }
-      
-      return predictions
-    } catch (error) {
-      console.error('Failed to get inventory predictions:', error)
-      
-      // Fallback to placeholder data if database fails
-      const items = await this.getInventoryItems(department)
-      
-      const predictions: InventoryPrediction[] = items.map(item => ({
-        item_id: item.id,
-        item_name: item.item_name,
-        current_quantity: item.quantity,
-        predicted_quantity: item.quantity - Math.floor(Math.random() * 10),
-        unit: item.unit,
-        department: item.department,
-        category: item.category,
-        subcategory: item.subcategory,
-        total_price: item.total_price,
-        unit_price: item.unit_price,
-        daily_consumption: Math.random() * 5,
-        days_remaining: Math.floor(Math.random() * 30),
-        need_alert: item.quantity < (item.warning_quantity || 0),
-        alert_message: item.quantity < (item.warning_quantity || 0) ? '库存不足，需要补货' : undefined,
-        suggested_order_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        distribution_channel: item.distribution_channel,
-        confidence_level: 0.8,
-        last_updated: item.last_updated
-      }))
-      
-      if (alertOnly) {
-        return predictions.filter(p => p.need_alert)
-      }
-      
-      return predictions
+    // Get real-time data from our view
+    const items = await inventoryRealtimeService.getRealtimeInventory(department)
+    
+    // Format for UI
+    const predictions = inventoryRealtimeService.formatForUI(items)
+    
+    if (alertOnly) {
+      return predictions.filter(p => p.need_alert)
     }
+    
+    return predictions
   }
 
   /**
@@ -262,67 +381,232 @@ class InventoryManagementService {
   }
 
   /**
-   * 更新库存数量（占位符）
+   * 更新库存数量（通过创建快照记录）
    */
   async updateInventoryQuantity(itemId: string, quantity: number): Promise<void> {
-    console.log(`[Placeholder] Updating inventory ${itemId} to quantity ${quantity}`)
-    // Placeholder - no actual database operation
-  }
-
-  /**
-   * 添加新物品（占位符）
-   */
-  async addInventoryItem(item: Partial<InventoryItem>): Promise<InventoryItem> {
-    return {
-      id: `item-${Date.now()}`,
-      restaurant_id: 'placeholder',
-      item_name: item.item_name || '新物品',
-      quantity: item.quantity || 0,
-      unit: item.unit || '个',
-      department: item.department || '前厅',
-      category: item.category || '其他',
-      total_price: item.total_price || 0,
-      unit_price: item.unit_price || 0,
-      warning_quantity: item.warning_quantity || 10,
-      distribution_channel: item.distribution_channel || '本地',
-      last_updated: new Date().toISOString(),
-      is_ignored: false
+    try {
+      await this.createSnapshot(itemId, quantity, '库存数量更新')
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to update inventory quantity:', error)
+      throw error
     }
   }
 
   /**
-   * 获取消耗率统计（占位符）
+   * 添加新物品
+   */
+  async addInventoryItem(item: Partial<InventoryItem>): Promise<InventoryItem> {
+    try {
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      if (!restaurantConfig) {
+        throw new Error('Restaurant configuration not found')
+      }
+
+      const newItem = {
+        restaurant_id: restaurantConfig.id,
+        item_name: item.item_name || '新物品',
+        unit: item.unit || '个',
+        department: item.department || '前厅',
+        category: item.category || '其他',
+        subcategory: item.subcategory,
+        distribution_channel: item.distribution_channel || '本地',
+        warning_quantity: item.warning_quantity || 10
+      }
+
+      const { data, error } = await supabase
+        .from('roleplay_inventory_items')
+        .insert(newItem)
+        .select()
+        .single()
+
+      if (error) {
+        throw error
+      }
+
+      return {
+        id: data.id,
+        restaurant_id: data.restaurant_id,
+        item_name: data.item_name,
+        quantity: 0,
+        unit: data.unit,
+        department: data.department,
+        category: data.category,
+        subcategory: data.subcategory,
+        total_price: 0,
+        unit_price: 0,
+        warning_quantity: data.warning_quantity,
+        distribution_channel: data.distribution_channel,
+        last_updated: data.updated_at || data.created_at,
+        is_ignored: false
+      }
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to add inventory item:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 获取消耗率统计
    */
   async getConsumptionStats(itemId: string, days = 30): Promise<{
     averageDaily: number
     trend: 'increasing' | 'decreasing' | 'stable'
     predictedStockout: Date | null
   }> {
-    return {
-      averageDaily: Math.random() * 10,
-      trend: 'stable',
-      predictedStockout: null
+    try {
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      if (!restaurantConfig) {
+        return { averageDaily: 0, trend: 'stable', predictedStockout: null }
+      }
+
+      // Get consumption records from the last X days
+      const endDate = new Date().toISOString().split('T')[0]
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+      // Get item name
+      const { data: itemData } = await supabase
+        .from('roleplay_inventory_items')
+        .select('item_name')
+        .eq('id', itemId)
+        .single()
+
+      if (!itemData) {
+        return { averageDaily: 0, trend: 'stable', predictedStockout: null }
+      }
+
+      const { data: records } = await supabase
+        .from('roleplay_inventory_records_view')
+        .select('*')
+        .eq('restaurant_id', restaurantConfig.id)
+        .eq('item_name', itemData.item_name)
+        .in('operation_type', ['consumption', 'loss'])
+        .gte('record_date', startDate)
+        .lte('record_date', endDate)
+        .order('record_date')
+
+      if (!records || records.length === 0) {
+        return { averageDaily: 0, trend: 'stable', predictedStockout: null }
+      }
+
+      const totalConsumption = records.reduce((sum, record) => 
+        sum + (record.loss_quantity || 0), 0)
+      const averageDaily = totalConsumption / days
+
+      // Simple trend analysis (compare first half vs second half)
+      const midpoint = Math.floor(records.length / 2)
+      const firstHalf = records.slice(0, midpoint)
+      const secondHalf = records.slice(midpoint)
+      
+      const firstHalfAvg = firstHalf.reduce((sum, r) => sum + (r.loss_quantity || 0), 0) / Math.max(firstHalf.length, 1)
+      const secondHalfAvg = secondHalf.reduce((sum, r) => sum + (r.loss_quantity || 0), 0) / Math.max(secondHalf.length, 1)
+      
+      let trend: 'increasing' | 'decreasing' | 'stable' = 'stable'
+      if (secondHalfAvg > firstHalfAvg * 1.1) {
+        trend = 'increasing'
+      } else if (secondHalfAvg < firstHalfAvg * 0.9) {
+        trend = 'decreasing'
+      }
+
+      return {
+        averageDaily,
+        trend,
+        predictedStockout: null // Would need current stock to predict
+      }
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to get consumption stats:', error)
+      return { averageDaily: 0, trend: 'stable', predictedStockout: null }
     }
   }
 
   /**
-   * 忽略/取消忽略物品（占位符）
+   * 忽略/取消忽略物品（通过任务记录系统）
    */
   async toggleIgnoreItem(itemId: string, ignore: boolean): Promise<void> {
-    console.log(`[Placeholder] ${ignore ? 'Ignoring' : 'Un-ignoring'} item ${itemId}`)
-    // Placeholder - no actual database operation
+    try {
+      const user = await authService.getCurrentUser()
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      
+      if (!user || !restaurantConfig) {
+        throw new Error('User or restaurant configuration not found')
+      }
+
+      // Get item name
+      const { data: item } = await supabase
+        .from('roleplay_inventory_items')
+        .select('item_name')
+        .eq('id', itemId)
+        .single()
+
+      if (!item) {
+        throw new Error('Item not found')
+      }
+
+      // Create a task record for the ignore/unignore action
+      const { error } = await supabase
+        .from('roleplay_task_records')
+        .insert({
+          restaurant_id: restaurantConfig.id,
+          user_id: user.id,
+          task_id: 'inventory-ignore-toggle',
+          date: new Date().toISOString().split('T')[0],
+          text_content: `${ignore ? '忽略' : '取消忽略'}物品: ${item.item_name}`,
+          submission_metadata: {
+            type: 'inventory_ignore',
+            item_id: itemId,
+            item_name: item.item_name,
+            ignored: ignore
+          },
+          approval_status: 'approved'
+        })
+
+      if (error) {
+        throw error
+      }
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to toggle ignore item:', error)
+      throw error
+    }
   }
 
   /**
-   * 重置所有被忽略的物品（占位符）
+   * 重置所有被忽略的物品
    */
   async resetAllIgnored(): Promise<void> {
-    console.log('[Placeholder] Resetting all ignored items')
-    // Placeholder - no actual database operation
+    try {
+      const user = await authService.getCurrentUser()
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      
+      if (!user || !restaurantConfig) {
+        throw new Error('User or restaurant configuration not found')
+      }
+
+      // Create a task record for the reset action
+      const { error } = await supabase
+        .from('roleplay_task_records')
+        .insert({
+          restaurant_id: restaurantConfig.id,
+          user_id: user.id,
+          task_id: 'inventory-reset-ignored',
+          date: new Date().toISOString().split('T')[0],
+          text_content: '重置所有被忽略的物品',
+          submission_metadata: {
+            type: 'inventory_reset_ignored',
+            action: 'reset_all_ignored'
+          },
+          approval_status: 'approved'
+        })
+
+      if (error) {
+        throw error
+      }
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to reset all ignored items:', error)
+      throw error
+    }
   }
 
   /**
-   * 获取预警物品（占位符）
+   * 获取预警物品
    */
   async getAlertItems(): Promise<Array<{
     item_id: string
@@ -330,14 +614,19 @@ class InventoryManagementService {
     message: string
     level: 'critical' | 'warning'
   }>> {
-    return [
-      {
-        item_id: '1',
-        item_name: '示例物品1',
-        message: '库存低于警戒线',
-        level: 'warning'
-      }
-    ]
+    try {
+      const alerts = await inventoryRealtimeService.getAlertItems()
+      
+      return alerts.map(alert => ({
+        item_id: alert.id,
+        item_name: alert.item_name,
+        message: alert.alert_message,
+        level: alert.days_left <= 1 ? 'critical' : 'warning'
+      }))
+    } catch (error) {
+      console.error('[InventoryManagementService] Failed to get alert items:', error)
+      return []
+    }
   }
 }
 
