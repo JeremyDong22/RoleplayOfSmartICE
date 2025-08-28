@@ -1,6 +1,7 @@
 // CEO Dashboard - 数据库版本：完全基于真实数据
 // 性能优化版本：减少查询，使用React.memo，添加加载骨架
 import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import { useRefreshable } from '../../contexts/RefreshContext';
 import {
   Box,
   Container,
@@ -226,6 +227,11 @@ export const CEODashboardDB: React.FC = () => {
       }
     }
   }, []); // 不依赖任何状态，避免重复加载
+
+  // 注册刷新回调
+  useRefreshable(async () => {
+    await loadData(false); // 刷新时不显示loading
+  }, [selectedDate, department]);
 
   useEffect(() => {
     loadData(true); // 初始加载显示loading
@@ -1589,9 +1595,6 @@ export const CEODashboardDB: React.FC = () => {
           </DialogActions>
         )}
       </Dialog>
-      
-      {/* 底部导航栏 - 为CEO添加 */}
-      <NavigationBar role="ceo" />
       
       {/* 为底部导航栏留出空间 */}
       <Box sx={{ pb: 8 }} />

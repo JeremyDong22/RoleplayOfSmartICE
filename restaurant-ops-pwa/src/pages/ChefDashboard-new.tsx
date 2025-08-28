@@ -1051,9 +1051,6 @@ export const ChefDashboard: React.FC = () => {
           )}
         </Grid>
       </Container>
-      
-      {/* Navigation Bar */}
-      <NavigationBar role="chef" />
     </>
   )
   } catch (error) {

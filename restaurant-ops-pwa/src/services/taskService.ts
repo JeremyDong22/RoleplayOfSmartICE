@@ -365,23 +365,39 @@ class TaskService {
   }
 
   /**
+   * Check if a task should be hidden from the main tasks UI
+   */
+  private shouldHideFromTasksUI(task: DatabaseTask): boolean {
+    // Hide manual closing tasks (they have dedicated buttons)
+    if (task.manual_closing) return true;
+    
+    // Hide inventory counting task (it has its own module)
+    if (task.id === 'inventory-count-task-bc61c086-6b59-431c-8ae8-cc4b1e0fb9f0' || 
+        task.title === '库存盘点') {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * 获取格式化的工作流期间（兼容现有代码）
    */
   getWorkflowPeriods(): WorkflowPeriod[] {
     return this.periodsCache.map(period => {
       const tasks = this.tasksCache.get(period.id) || []
       
-      // 按角色分组任务，排除manual_closing任务（它们只作为按钮显示）
+      // 按角色分组任务，排除manual_closing任务和库存盘点任务
       const managerTasks = tasks
-        .filter(t => t.role_code === 'manager' && !t.manual_closing)
+        .filter(t => t.role_code === 'manager' && !this.shouldHideFromTasksUI(t))
         .map(t => this.convertTask(t))
       
       const chefTasks = tasks
-        .filter(t => t.role_code === 'chef' && !t.manual_closing)
+        .filter(t => t.role_code === 'chef' && !this.shouldHideFromTasksUI(t))
         .map(t => this.convertTask(t))
       
       const dutyManagerTasks = tasks
-        .filter(t => t.role_code === 'duty_manager' && !t.manual_closing)
+        .filter(t => t.role_code === 'duty_manager' && !this.shouldHideFromTasksUI(t))
         .map(t => this.convertTask(t))
 
       const convertedPeriod = {
@@ -414,7 +430,7 @@ class TaskService {
     const floatingTasks = this.tasksCache.get('floating') || []
     
     const result = floatingTasks
-      .filter(t => (!role || t.role_code === role.toLowerCase()) && !t.manual_closing)
+      .filter(t => (!role || t.role_code === role.toLowerCase()) && !this.shouldHideFromTasksUI(t))
       .map(t => this.convertTask(t))
     
     return result
@@ -444,7 +460,7 @@ class TaskService {
     const tasks = this.tasksCache.get(periodId) || []
     
     return tasks
-      .filter(t => (!role || t.role_code === role.toLowerCase()) && !t.manual_closing)
+      .filter(t => (!role || t.role_code === role.toLowerCase()) && !this.shouldHideFromTasksUI(t))
       .map(t => this.convertTask(t))
   }
 
