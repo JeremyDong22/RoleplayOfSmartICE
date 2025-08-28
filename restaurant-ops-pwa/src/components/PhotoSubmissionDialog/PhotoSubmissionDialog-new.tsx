@@ -569,10 +569,9 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       // 构建包含所有物品的structured_data
       if (allItems.length > 0) {
         submitData.structured_data = {
-          items: allItems,  // 使用items数组格式
           // 保留第一个group的其他字段作为整体信息
           ...photoGroups[0].structuredData,
-          items: allItems  // 确保items数组覆盖单个物品字段
+          items: allItems  // 使用items数组格式，覆盖单个物品字段
         }
       }
     }
