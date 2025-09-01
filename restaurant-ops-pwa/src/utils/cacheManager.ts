@@ -9,7 +9,7 @@
  * 4. HTTP请求缓存控制
  */
 
-import { initializeHttpInterceptor } from './httpInterceptor'
+// httpInterceptor removed - no longer needed
 
 // 应用版本号 - 每次部署时更新此版本号
 export const APP_VERSION = '1.0.1' // 更新版本号会触发缓存清理
@@ -167,10 +167,7 @@ export async function initializeCacheManager(): Promise<void> {
   // Auto cache refresh disabled for debugging
   return
   
-  // 初始化HTTP拦截器（仅在开发模式下）
-  if (import.meta.env.DEV) {
-    initializeHttpInterceptor()
-  }
+  // HTTP interceptor initialization removed - no longer needed
   
   // 检查并清理缓存
   const cleaned = await checkAndClearCacheIfNeeded()

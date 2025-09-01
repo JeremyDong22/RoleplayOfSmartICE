@@ -60,7 +60,7 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
     try {
       // 获取用户部门
       const user = authService.getCurrentUser()
-      const department = user?.role === 'chef' ? '后厨' : '前厅'
+      const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
       
       // 生成动态结构化字段
       const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨')

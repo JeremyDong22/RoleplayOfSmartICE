@@ -40,6 +40,7 @@ import type {
   InventoryPrediction
 } from '../../types/inventory.types'
 import { InventoryOverview } from './components/InventoryOverview'
+import { PredictionAnalysis } from './components/PredictionAnalysis'
 import { InventorySnapshot } from './components/InventorySnapshot'
 import { HistoryRecords } from './components/HistoryRecords'
 
@@ -241,6 +242,11 @@ export const InventoryManagement: React.FC = () => {
                 iconPosition="start"
               />
               <Tab 
+                label="预测分析" 
+                icon={<TrendingUpIcon />} 
+                iconPosition="start"
+              />
+              <Tab 
                 label="库存盘点"
                 icon={<AddCircleIcon />} 
                 iconPosition="start"
@@ -255,19 +261,25 @@ export const InventoryManagement: React.FC = () => {
 
           <TabPanel value={tabValue} index={0}>
             <InventoryOverview 
+              onRefresh={loadData}
+            />
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={1}>
+            <PredictionAnalysis 
               inventoryPredictions={inventoryPredictions}
               alertItems={alertItems}
               onRefresh={loadData}
             />
           </TabPanel>
 
-          <TabPanel value={tabValue} index={1}>
+          <TabPanel value={tabValue} index={2}>
             <InventorySnapshot 
               onComplete={loadData}
             />
           </TabPanel>
 
-          <TabPanel value={tabValue} index={2}>
+          <TabPanel value={tabValue} index={3}>
             <HistoryRecords />
           </TabPanel>
         </Paper>

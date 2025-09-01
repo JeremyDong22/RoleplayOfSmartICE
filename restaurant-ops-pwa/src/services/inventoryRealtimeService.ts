@@ -20,9 +20,12 @@ export interface InventoryRealtimeItem {
   department: '前厅' | '后厨'
   warning_quantity: number
   distribution_channel: '本地' | '网购' | null
+  specifications?: string | null  // 规格 (e.g., "500ml", "1kg")
+  shelf_life?: number | null  // 保质期（天数）
   
   // Calculated metrics from view
-  current_stock: number | null
+  last_count_quantity: number | null  // Actual physical count from last inventory
+  predicted_current_stock: number | null  // Predicted stock (last count + receipts - losses)
   daily_consumption: number | null
   days_left: number | null
   is_warning: boolean
@@ -94,7 +97,7 @@ class InventoryRealtimeService {
       const items = await this.getRealtimeInventory()
       
       return items
-        .filter(item => item.is_warning && item.current_stock !== null)
+        .filter(item => item.is_warning && item.predicted_current_stock !== null)
         .map(item => {
           const daysThreshold = item.distribution_channel === '网购' ? 3 : 1
           const orderDate = new Date()
@@ -103,7 +106,7 @@ class InventoryRealtimeService {
           return {
             id: item.id,
             item_name: item.item_name,
-            current_stock: item.current_stock || 0,
+            current_stock: item.predicted_current_stock || 0,
             daily_consumption: item.daily_consumption || 0,
             days_left: item.days_left || 0,
             distribution_channel: item.distribution_channel || '本地',
@@ -171,12 +174,13 @@ class InventoryRealtimeService {
       subcategory: item.subcategory,
       
       // Stock info
-      current_quantity: item.current_stock || 0,
-      predicted_quantity: item.current_stock, // Same as current for now
+      current_quantity: item.predicted_current_stock || 0,  // For compatibility with existing UI
+      predicted_quantity: item.predicted_current_stock || 0,
+      last_count_quantity: item.last_count_quantity,  // Actual physical count
       
       // Pricing
       unit_price: item.unit_price,
-      total_price: item.total_price || ((item.current_stock || 0) * (item.unit_price || 0)),
+      total_price: item.total_price || ((item.predicted_current_stock || 0) * (item.unit_price || 0)),
       
       // Consumption and alerts
       daily_consumption: item.daily_consumption,

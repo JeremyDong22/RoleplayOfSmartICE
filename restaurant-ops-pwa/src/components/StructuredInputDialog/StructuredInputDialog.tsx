@@ -88,7 +88,7 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
       setIsLoadingFields(true)
       try {
         const user = authService.getCurrentUser()
-        const department = user?.role === 'chef' ? '后厨' : '前厅'
+        const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
         const isLossCount = taskName.includes('损耗盘点') || taskName.includes('交割损耗')
         
         // 生成动态字段（损耗类任务不需要质量检查）
@@ -393,9 +393,8 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
               // 使用 InventoryItemPicker 组件处理物品名称选择
               if (field.key === 'item_name' && field.type === 'select') {
                 const user = authService.getCurrentUser()
-                const department = user?.role === 'chef' ? '后厨' : '前厅'
+                const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
                 
-                console.log('[DEBUG] InventoryItemPicker - formData.item_name:', formData.item_name)
                 return (
                   <Box key={field.key} sx={{ mb: 2 }}>
                     <InventoryItemPicker

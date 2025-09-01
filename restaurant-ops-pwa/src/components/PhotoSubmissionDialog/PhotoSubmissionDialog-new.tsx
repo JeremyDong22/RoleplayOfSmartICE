@@ -1303,7 +1303,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                 // 使用 InventoryItemPicker 组件处理物品名称选择
                 if (field.key === 'item_name' && field.type === 'select') {
                   const user = authService.getCurrentUser()
-                  const department = user?.role === 'chef' ? '后厨' : '前厅'
+                  const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
                   
                   return (
                     <Box key={field.key} sx={{ mb: 2 }}>

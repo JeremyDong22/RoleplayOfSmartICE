@@ -1,7 +1,8 @@
 /**
  * Inventory Edit Dialog Component
  * Created: 2025-08-22
- * Purpose: Dialog for editing inventory items (add/delete)
+ * Updated: 2025-08-31 - 增强编辑功能，支持修改物品名称和其他属性
+ * Purpose: Dialog for editing inventory items (add/edit/delete)
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
@@ -53,9 +54,14 @@ interface InventoryItem {
   category: string
   subcategory?: string
   distribution_channel?: '本地' | '网购'
+  warning_quantity?: number
+  specifications?: string  // 规格
+  shelf_life?: number  // 保质期（天）
   total_price?: number
   isNew?: boolean
   isDeleted?: boolean
+  isEditing?: boolean  // 新增：是否正在编辑
+  originalData?: Partial<InventoryItem>  // 新增：原始数据备份
 }
 
 interface InventoryEditDialogProps {
@@ -73,6 +79,7 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAddingNew, setIsAddingNew] = useState(false)
+  const [editingItem, setEditingItem] = useState<Partial<InventoryItem> | null>(null)
   
   // 新物品表单状态
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
@@ -82,7 +89,10 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
     department: '前厅',
     category: '',
     subcategory: '',
-    distribution_channel: '本地'
+    distribution_channel: '本地',
+    warning_quantity: 10,
+    specifications: '',
+    shelf_life: undefined
     // 注意：新物品不设置 total_price，由系统自动管理
   })
   
@@ -126,6 +136,39 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
     ))
   }, [])
 
+  // 开始编辑物品
+  const handleStartEdit = useCallback((item: InventoryItem) => {
+    setItems(prev => prev.map(i => 
+      i.id === item.id 
+        ? { ...i, isEditing: true, originalData: { ...i } }
+        : i
+    ))
+    setEditingItem({ ...item })
+  }, [])
+
+  // 取消编辑
+  const handleCancelEdit = useCallback((id: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.id === id && item.originalData) {
+        return { ...item.originalData, isEditing: false, originalData: undefined }
+      }
+      return item
+    }))
+    setEditingItem(null)
+  }, [])
+
+  // 保存编辑
+  const handleSaveEdit = useCallback((id: string) => {
+    if (!editingItem) return
+    
+    setItems(prev => prev.map(item => 
+      item.id === id 
+        ? { ...editingItem, id, isEditing: false, originalData: undefined }
+        : item
+    ))
+    setEditingItem(null)
+  }, [editingItem])
+
   // 验证新物品表单
   const validateNewItem = (): boolean => {
     const errors: Record<string, string> = {}
@@ -160,6 +203,9 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
       category: newItem.category!,
       subcategory: newItem.subcategory,
       distribution_channel: newItem.distribution_channel as '本地' | '网购',
+      warning_quantity: newItem.warning_quantity,
+      specifications: newItem.specifications,
+      shelf_life: newItem.shelf_life,
       total_price: 0,  // 新物品总价固定为0
       isNew: true,
       isDeleted: false
@@ -175,7 +221,10 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
       department: '前厅',
       category: '',
       subcategory: '',
-      distribution_channel: '本地'
+      distribution_channel: '本地',
+      warning_quantity: 10,
+      specifications: '',
+      shelf_life: undefined
     })
     setFormErrors({})
     setIsAddingNew(false)
@@ -189,20 +238,47 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
       
       const restaurantId = await restaurantConfigService.getRestaurantId()
       
-      // 分离要删除和要添加的项目
+      // 分离要删除、添加和更新的项目
       const itemsToDelete = items.filter(item => item.isDeleted && !item.isNew)
       const itemsToAdd = items.filter(item => item.isNew && !item.isDeleted)
+      const itemsToUpdate = items.filter(item => 
+        !item.isNew && !item.isDeleted && item.originalData
+      )
       
       // 执行删除操作
       if (itemsToDelete.length > 0) {
         const deleteIds = itemsToDelete.map(item => item.id)
         const { error: deleteError } = await supabase
-          .from('roleplay_inventory')
+          .from('roleplay_inventory_items')
           .delete()
           .in('id', deleteIds)
           .eq('restaurant_id', restaurantId)
         
         if (deleteError) throw deleteError
+      }
+      
+      // 执行更新操作
+      if (itemsToUpdate.length > 0) {
+        for (const item of itemsToUpdate) {
+          const { error: updateError } = await supabase
+            .from('roleplay_inventory_items')
+            .update({
+              item_name: item.item_name,
+              unit: item.unit,
+              department: item.department,
+              category: item.category,
+              subcategory: item.subcategory,
+              distribution_channel: item.distribution_channel,
+              warning_quantity: item.warning_quantity,
+              specifications: item.specifications,
+              shelf_life: item.shelf_life,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', item.id)
+            .eq('restaurant_id', restaurantId)
+          
+          if (updateError) throw updateError
+        }
       }
       
       // 执行添加操作
@@ -216,12 +292,16 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
           category: item.category,
           subcategory: item.subcategory,
           distribution_channel: item.distribution_channel,
+          warning_quantity: item.warning_quantity,
+          specifications: item.specifications,
+          shelf_life: item.shelf_life,
           total_price: 0,  // 新物品总价始终为0
-          last_updated: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }))
         
         const { error: insertError } = await supabase
-          .from('roleplay_inventory')
+          .from('roleplay_inventory_items')
           .insert(newItems)
         
         if (insertError) throw insertError
@@ -452,13 +532,13 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
             <TableHead>
               <TableRow>
                 <TableCell>物品名称</TableCell>
-                <TableCell align="right">当前库存</TableCell>
+                <TableCell>单位</TableCell>
                 <TableCell>部门</TableCell>
                 <TableCell>类别</TableCell>
                 <TableCell>子类别</TableCell>
                 <TableCell>采购渠道</TableCell>
-                <TableCell align="right">总价</TableCell>
-                <TableCell align="right">单价</TableCell>
+                <TableCell>规格</TableCell>
+                <TableCell>保质期</TableCell>
                 <TableCell align="center">操作</TableCell>
               </TableRow>
             </TableHead>
@@ -469,26 +549,124 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
                   sx={{ 
                     opacity: item.isDeleted ? 0.5 : 1,
                     textDecoration: item.isDeleted ? 'line-through' : 'none',
-                    bgcolor: item.isNew ? 'success.light' : 'inherit'
+                    bgcolor: item.isNew ? 'success.light' : item.isEditing ? 'action.hover' : 'inherit'
                   }}
                 >
                   <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {item.item_name}
-                      {item.isNew && <Chip label="新增" size="small" color="success" />}
-                      {item.isDeleted && <Chip label="待删除" size="small" color="error" />}
-                    </Box>
+                    {item.isEditing ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={editingItem?.item_name || ''}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, item_name: e.target.value} : null)}
+                      />
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {item.item_name}
+                        {item.isNew && <Chip label="新增" size="small" color="success" />}
+                        {item.isDeleted && <Chip label="待删除" size="small" color="error" />}
+                      </Box>
+                    )}
                   </TableCell>
-                  <TableCell align="right">{item.quantity} {item.unit}</TableCell>
-                  <TableCell>{item.department}</TableCell>
-                  <TableCell>{item.category}</TableCell>
-                  <TableCell>{item.subcategory || '-'}</TableCell>
-                  <TableCell>{item.distribution_channel || '本地'}</TableCell>
-                  <TableCell align="right">
-                    {item.total_price ? `¥${item.total_price.toFixed(2)}` : '-'}
+                  <TableCell>
+                    {item.isEditing ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={editingItem?.unit || ''}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, unit: e.target.value} : null)}
+                        sx={{ minWidth: 60 }}
+                      />
+                    ) : (
+                      item.unit
+                    )}
                   </TableCell>
-                  <TableCell align="right">
-                    {getUnitPrice(item) !== '-' ? `¥${getUnitPrice(item)}` : '-'}
+                  <TableCell>
+                    {item.isEditing ? (
+                      <Select
+                        size="small"
+                        fullWidth
+                        value={editingItem?.department || '前厅'}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, department: e.target.value as '前厅' | '后厨'} : null)}
+                        sx={{ minWidth: 70 }}
+                      >
+                        <MenuItem value="前厅">前厅</MenuItem>
+                        <MenuItem value="后厨">后厨</MenuItem>
+                      </Select>
+                    ) : (
+                      item.department
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.isEditing ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={editingItem?.category || ''}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, category: e.target.value} : null)}
+                        sx={{ minWidth: 80 }}
+                      />
+                    ) : (
+                      item.category
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.isEditing ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={editingItem?.subcategory || ''}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, subcategory: e.target.value} : null)}
+                        sx={{ minWidth: 80 }}
+                      />
+                    ) : (
+                      item.subcategory || '-'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.isEditing ? (
+                      <Select
+                        size="small"
+                        fullWidth
+                        value={editingItem?.distribution_channel || '本地'}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, distribution_channel: e.target.value as '本地' | '网购'} : null)}
+                        sx={{ minWidth: 80 }}
+                      >
+                        <MenuItem value="本地">本地</MenuItem>
+                        <MenuItem value="网购">网购</MenuItem>
+                      </Select>
+                    ) : (
+                      item.distribution_channel || '本地'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.isEditing ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={editingItem?.specifications || ''}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, specifications: e.target.value} : null)}
+                        placeholder="500ml"
+                        sx={{ minWidth: 80 }}
+                      />
+                    ) : (
+                      item.specifications || '-'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.isEditing ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        type="number"
+                        value={editingItem?.shelf_life || ''}
+                        onChange={(e) => setEditingItem(prev => prev ? {...prev, shelf_life: e.target.value ? parseInt(e.target.value) : undefined} : null)}
+                        placeholder="天数"
+                        sx={{ minWidth: 60 }}
+                      />
+                    ) : (
+                      item.shelf_life ? `${item.shelf_life}天` : '-'
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     {item.isDeleted ? (
@@ -498,14 +676,43 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
                       >
                         恢复
                       </Button>
+                    ) : item.isEditing ? (
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton 
+                          size="small" 
+                          color="primary"
+                          onClick={() => handleSaveEdit(item.id)}
+                          title="保存"
+                        >
+                          <CheckIcon />
+                        </IconButton>
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleCancelEdit(item.id)}
+                          title="取消"
+                        >
+                          <CancelIcon />
+                        </IconButton>
+                      </Box>
                     ) : (
-                      <IconButton 
-                        size="small" 
-                        color="error"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton 
+                          size="small" 
+                          color="primary"
+                          onClick={() => handleStartEdit(item)}
+                          title="编辑"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={() => handleDelete(item.id)}
+                          title="删除"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
                     )}
                   </TableCell>
                 </TableRow>
@@ -522,7 +729,7 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
         <Button 
           variant="contained" 
           onClick={handleSave} 
-          disabled={loading || (items.filter(i => i.isNew || i.isDeleted).length === 0)}
+          disabled={loading || (items.filter(i => i.isNew || i.isDeleted || i.originalData).length === 0)}
           startIcon={<SaveIcon />}
         >
           保存更改
