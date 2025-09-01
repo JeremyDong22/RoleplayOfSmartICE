@@ -292,14 +292,14 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {records.map((record) => {
+                {records.map((record, index) => {
                   const isIn = record.movement_type === '入库'
                   const quantity = record.quantity || record.quantity_in || record.quantity_out
                   const value = record.total_price || record.value_in || record.value_out
                   
                   return (
                     <TableRow 
-                      key={record.record_id}
+                      key={`${record.record_id}-${index}`}
                       sx={{ 
                         backgroundColor: isIn ? 'rgba(76, 175, 80, 0.05)' : 'rgba(244, 67, 54, 0.05)',
                         '&:hover': { backgroundColor: 'action.hover' }

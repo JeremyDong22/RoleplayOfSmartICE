@@ -5,7 +5,7 @@
  * Purpose: Display inventory predictions, consumption analysis and alerts
  */
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import {
   Box,
   TextField,
@@ -49,7 +49,7 @@ interface PredictionAnalysisProps {
   onRefresh: () => void
 }
 
-export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = ({
+export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = React.memo(({
   inventoryPredictions,
   alertItems,
   onRefresh
@@ -117,7 +117,7 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = ({
     return items
   }, [inventoryPredictions, searchTerm, department, stockFilter, sortBy, sortOrder])
 
-  const handleSort = (column: 'quantity' | 'consumption' | 'days' | 'category' | 'subcategory') => {
+  const handleSort = useCallback((column: 'quantity' | 'consumption' | 'days' | 'category' | 'subcategory') => {
     if (sortBy === column) {
       if (sortOrder === 'asc') {
         setSortOrder('desc')
@@ -129,7 +129,7 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = ({
       setSortBy(column)
       setSortOrder('asc')
     }
-  }
+  }, [sortBy, sortOrder])
   
   const getSortIcon = (column: 'quantity' | 'consumption' | 'days' | 'category' | 'subcategory') => {
     if (sortBy !== column) {
@@ -140,14 +140,14 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = ({
       : <ArrowDownIcon fontSize="small" sx={{ ml: 0.5, cursor: 'pointer' }} />
   }
 
-  const handleIgnoreAlert = async (itemId: string) => {
+  const handleIgnoreAlert = useCallback(async (itemId: string) => {
     try {
       await inventoryManagementService.ignoreItem(itemId)
       onRefresh() // 刷新数据
     } catch (error) {
       console.error('Failed to ignore item:', error)
     }
-  }
+  }, [onRefresh])
 
   const getStockStatusChip = (needAlert: boolean) => {
     if (needAlert) {
@@ -453,4 +453,4 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = ({
       )}
     </Box>
   )
-}
+})

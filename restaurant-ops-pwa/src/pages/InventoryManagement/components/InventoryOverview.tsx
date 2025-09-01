@@ -54,10 +54,10 @@ export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ onRefresh 
   const [sortBy, setSortBy] = useState<'none' | 'name' | 'quantity' | 'category' | 'subcategory' | 'date'>('none')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
 
-  // Don't load data on mount - data is passed from parent
-  // React.useEffect(() => {
-  //   loadInventoryData()
-  // }, [])
+  // Load inventory data on mount
+  React.useEffect(() => {
+    loadInventoryData()
+  }, [])
 
   const loadInventoryData = async () => {
     try {
