@@ -47,6 +47,10 @@ import { InventoryManagement } from './pages/InventoryManagement/InventoryManage
 import { AppLayout } from './components/Layout/AppLayout'
 import { RefreshProvider } from './contexts/RefreshContext'
 
+// Puppeteer import
+import { Puppeteer } from './pages/Puppeteer'
+import { TestListSample } from './pages/TestListSample'
+
 const theme = createTheme({
   palette: {
     primary: {
@@ -206,6 +210,10 @@ const router = createBrowserRouter([
   {
     path: '/debug-auth',
     element: <DebugAuth />,
+  },
+  {
+    path: '/puppeteer',
+    element: <Puppeteer />,
   },
   // Catch-all redirect for incorrect profile routes
   {
