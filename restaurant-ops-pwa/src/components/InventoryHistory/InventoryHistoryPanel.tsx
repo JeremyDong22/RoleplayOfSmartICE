@@ -66,16 +66,20 @@ interface InventoryHistoryPanelProps {
   restaurantId: string
   defaultItemName?: string
   onClose?: () => void
+  initialRecords?: InventoryHistoryRecord[]
+  initialUniqueItems?: string[]
 }
 
 export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
   restaurantId,
   defaultItemName,
-  onClose
+  onClose,
+  initialRecords,
+  initialUniqueItems
 }) => {
-  const [loading, setLoading] = useState(true)
-  const [records, setRecords] = useState<InventoryHistoryRecord[]>([])
-  const [uniqueItems, setUniqueItems] = useState<string[]>([])
+  const [loading, setLoading] = useState(!initialRecords)
+  const [records, setRecords] = useState<InventoryHistoryRecord[]>(initialRecords || [])
+  const [uniqueItems, setUniqueItems] = useState<string[]>(initialUniqueItems || [])
   
   // Initialize with current month range
   const now = new Date()
@@ -92,13 +96,13 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
     restaurant_id: restaurantId
   })
 
-  // Load data
+  // Load data - only if not provided
   useEffect(() => {
-    if (restaurantId) {
+    if (restaurantId && !initialRecords) {
       loadHistory()
       loadUniqueItems()
     }
-  }, [restaurantId, filter])
+  }, [restaurantId, filter, initialRecords])
 
   const loadHistory = async () => {
     console.log('[InventoryHistoryPanel] Loading history with filter:', filter)

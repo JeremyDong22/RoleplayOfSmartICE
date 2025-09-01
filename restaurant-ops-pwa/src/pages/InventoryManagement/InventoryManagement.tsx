@@ -31,6 +31,8 @@ import {
 import { NavigationBar } from '../../components/Navigation/NavigationBar'
 import { inventoryManagementService } from '../../services/inventoryManagementService'
 import { inventoryService } from '../../services/inventoryService'
+import { inventoryRealtimeService } from '../../services/inventoryRealtimeService'
+import { inventoryHistoryService } from '../../services/inventoryHistoryService'
 import { authService } from '../../services/authService'
 import { restaurantConfigService } from '../../services/restaurantConfigService'
 import { useRefreshable } from '../../contexts/RefreshContext'
@@ -88,6 +90,9 @@ export const InventoryManagement: React.FC = () => {
   const [alertItems, setAlertItems] = useState<InventoryPrediction[]>([])
   const [restaurantId, setRestaurantId] = useState<string>('')
   const [inventoryItems, setInventoryItems] = useState<any[]>([]) // 库存盘点需要的数据
+  const [realtimeInventory, setRealtimeInventory] = useState<any[]>([]) // 库存概览需要的数据
+  const [historyRecords, setHistoryRecords] = useState<any[]>([]) // 历史记录数据
+  const [uniqueHistoryItems, setUniqueHistoryItems] = useState<string[]>([]) // 历史记录物品列表
   const [dataLoaded, setDataLoaded] = useState(false) // 标记数据是否已加载
   
   // Filter state
@@ -112,18 +117,30 @@ export const InventoryManagement: React.FC = () => {
       
       // Load restaurant ID first
       const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      let currentRestaurantId = ''
       if (restaurantConfig?.id) {
-        setRestaurantId(restaurantConfig.id)
+        currentRestaurantId = restaurantConfig.id
+        setRestaurantId(currentRestaurantId)
       }
       
       // Load all data in parallel for better performance
-      const [predictions, items] = await Promise.all([
+      const [predictions, items, realtimeData, historyData, uniqueItems] = await Promise.all([
         inventoryManagementService.getAllPredictions(),
-        inventoryService.getAllInventory()
+        inventoryService.getAllInventory(),
+        inventoryRealtimeService.getRealtimeInventory(),
+        currentRestaurantId ? inventoryHistoryService.getInventoryHistory({
+          restaurant_id: currentRestaurantId,
+          operation_type: 'all',
+          department: 'all'
+        }) : Promise.resolve([]),
+        currentRestaurantId ? inventoryHistoryService.getUniqueItemNames(currentRestaurantId) : Promise.resolve([])
       ])
       
       setInventoryPredictions(predictions)
       setInventoryItems(items)
+      setRealtimeInventory(realtimeData)
+      setHistoryRecords(historyData)
+      setUniqueHistoryItems(uniqueItems)
       
       // Filter alert items
       const alerts = predictions.filter(p => p.need_alert)
@@ -279,6 +296,7 @@ export const InventoryManagement: React.FC = () => {
 
           <TabPanel value={tabValue} index={0}>
             <InventoryOverview 
+              inventoryItems={realtimeInventory}
               onRefresh={loadData}
             />
           </TabPanel>
@@ -300,7 +318,11 @@ export const InventoryManagement: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={tabValue} index={3}>
-            <HistoryRecords restaurantId={restaurantId} />
+            <HistoryRecords 
+              restaurantId={restaurantId}
+              historyRecords={historyRecords}
+              uniqueItems={uniqueHistoryItems}
+            />
           </TabPanel>
         </Paper>
 

@@ -13,9 +13,15 @@ import { InventoryHistoryPanel } from '../../../components/InventoryHistory'
 
 interface HistoryRecordsProps {
   restaurantId: string
+  historyRecords?: any[]
+  uniqueItems?: string[]
 }
 
-export const HistoryRecords: React.FC<HistoryRecordsProps> = ({ restaurantId }) => {
+export const HistoryRecords: React.FC<HistoryRecordsProps> = ({ 
+  restaurantId, 
+  historyRecords,
+  uniqueItems 
+}) => {
   console.log('HistoryRecords render - restaurantId:', restaurantId)
   
   if (!restaurantId) {
@@ -24,7 +30,11 @@ export const HistoryRecords: React.FC<HistoryRecordsProps> = ({ restaurantId }) 
   
   return (
     <Box sx={{ height: '100%' }}>
-      <InventoryHistoryPanel restaurantId={restaurantId} />
+      <InventoryHistoryPanel 
+        restaurantId={restaurantId}
+        initialRecords={historyRecords}
+        initialUniqueItems={uniqueItems}
+      />
     </Box>
   )
 }

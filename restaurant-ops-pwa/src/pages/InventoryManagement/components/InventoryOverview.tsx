@@ -41,10 +41,11 @@ import { inventoryRealtimeService } from '../../../services/inventoryRealtimeSer
 import type { InventoryRealtimeItem } from '../../../services/inventoryRealtimeService'
 
 interface InventoryOverviewProps {
+  inventoryItems?: InventoryRealtimeItem[]
   onRefresh: () => void
 }
 
-export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ onRefresh }) => {
+export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ inventoryItems, onRefresh }) => {
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<InventoryRealtimeItem[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -54,10 +55,14 @@ export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ onRefresh 
   const [sortBy, setSortBy] = useState<'none' | 'name' | 'quantity' | 'category' | 'subcategory' | 'date'>('none')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
 
-  // Load inventory data on mount
+  // Use provided data or load on mount
   React.useEffect(() => {
-    loadInventoryData()
-  }, [])
+    if (inventoryItems && inventoryItems.length > 0) {
+      setItems(inventoryItems)
+    } else {
+      loadInventoryData()
+    }
+  }, [inventoryItems])
 
   const loadInventoryData = async () => {
     try {
