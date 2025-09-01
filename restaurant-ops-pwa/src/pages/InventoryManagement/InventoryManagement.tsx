@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material'
 import { NavigationBar } from '../../components/Navigation/NavigationBar'
 import { inventoryManagementService } from '../../services/inventoryManagementService'
+import { inventoryService } from '../../services/inventoryService'
 import { authService } from '../../services/authService'
 import { restaurantConfigService } from '../../services/restaurantConfigService'
 import { useRefreshable } from '../../contexts/RefreshContext'
@@ -86,6 +87,8 @@ export const InventoryManagement: React.FC = () => {
   const [inventoryPredictions, setInventoryPredictions] = useState<InventoryPrediction[]>([])
   const [alertItems, setAlertItems] = useState<InventoryPrediction[]>([])
   const [restaurantId, setRestaurantId] = useState<string>('')
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]) // 库存盘点需要的数据
+  const [dataLoaded, setDataLoaded] = useState(false) // 标记数据是否已加载
   
   // Filter state
   const [filter, setFilter] = useState<InventoryFilter>({
@@ -113,9 +116,14 @@ export const InventoryManagement: React.FC = () => {
         setRestaurantId(restaurantConfig.id)
       }
       
-      // Load predictions (which includes all data)
-      const predictions = await inventoryManagementService.getAllPredictions()
+      // Load all data in parallel for better performance
+      const [predictions, items] = await Promise.all([
+        inventoryManagementService.getAllPredictions(),
+        inventoryService.getAllInventory()
+      ])
+      
       setInventoryPredictions(predictions)
+      setInventoryItems(items)
       
       // Filter alert items
       const alerts = predictions.filter(p => p.need_alert)
@@ -138,6 +146,8 @@ export const InventoryManagement: React.FC = () => {
         totalValue, // 使用实际计算的总值
         alertCount: criticalCount
       })
+      
+      setDataLoaded(true) // 标记数据已加载
     } catch (err) {
       console.error('Error loading inventory data:', err)
       setError('加载库存数据失败，请刷新重试')
@@ -284,6 +294,8 @@ export const InventoryManagement: React.FC = () => {
           <TabPanel value={tabValue} index={2}>
             <InventorySnapshot 
               onComplete={loadData}
+              initialData={inventoryItems}
+              skipInitialLoad={!dataLoaded}
             />
           </TabPanel>
 

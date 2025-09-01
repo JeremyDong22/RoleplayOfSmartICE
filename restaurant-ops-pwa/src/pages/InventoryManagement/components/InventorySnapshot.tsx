@@ -50,6 +50,8 @@ import type { InventoryItem } from '../../../services/inventoryService'
 
 interface InventorySnapshotProps {
   onComplete: () => void
+  initialData?: any[] // 预加载的库存数据
+  skipInitialLoad?: boolean // 是否跳过初始加载
 }
 
 interface EditableItem {
@@ -68,7 +70,9 @@ interface EditableItem {
 const LOCALSTORAGE_KEY = 'inventory_snapshot_edits'
 
 export const InventorySnapshot: React.FC<InventorySnapshotProps> = ({
-  onComplete
+  onComplete,
+  initialData,
+  skipInitialLoad = false
 }) => {
   const [editableItems, setEditableItems] = useState<EditableItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -85,8 +89,16 @@ export const InventorySnapshot: React.FC<InventorySnapshotProps> = ({
 
   // Initialize editable items from inventory predictions
   useEffect(() => {
-    loadInventoryItems()
-  }, [])
+    if (!skipInitialLoad) {
+      if (initialData && initialData.length > 0) {
+        // 使用传入的数据
+        processInventoryData(initialData)
+      } else {
+        // 如果没有传入数据，才加载
+        loadInventoryItems()
+      }
+    }
+  }, [skipInitialLoad, initialData])
 
   // Click outside to close edit - 优化性能
   useEffect(() => {
@@ -113,36 +125,39 @@ export const InventorySnapshot: React.FC<InventorySnapshotProps> = ({
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
+  const processInventoryData = (items: any[]) => {
+    // Load saved edits from localStorage
+    const savedEdits = localStorage.getItem(LOCALSTORAGE_KEY)
+    const editsMap = savedEdits ? JSON.parse(savedEdits) : {}
+    
+    // Convert to editable items
+    const editableData: EditableItem[] = items.map(item => ({
+      item_id: item.id || item.item_id,
+      item_name: item.item_name,
+      department: item.department,
+      category: item.category || '',
+      subcategory: item.subcategory,
+      unit: item.unit,
+      distribution_channel: item.distribution_channel,
+      edited_quantity: editsMap[item.id || item.item_id] ?? null,
+      isEditing: false,
+      hasChanged: editsMap[item.id || item.item_id] !== undefined
+    }))
+    
+    setEditableItems(editableData)
+    
+    // Extract unique categories
+    const uniqueCategories = [...new Set(items.filter(item => item.category).map(item => item.category!))].sort()
+    setCategories(uniqueCategories)
+  }
+
   const loadInventoryItems = async () => {
     try {
       setLoading(true)
       
       // Get all inventory items from roleplay_inventory_items table
       const items = await inventoryService.getAllInventory()
-      
-      // Load saved edits from localStorage
-      const savedEdits = localStorage.getItem(LOCALSTORAGE_KEY)
-      const editsMap = savedEdits ? JSON.parse(savedEdits) : {}
-      
-      // Convert to editable items (no current_quantity from items table)
-      const editableData: EditableItem[] = items.map(item => ({
-        item_id: item.id,
-        item_name: item.item_name,
-        department: item.department,
-        category: item.category || '',
-        subcategory: item.subcategory,
-        unit: item.unit,
-        distribution_channel: item.distribution_channel,
-        edited_quantity: editsMap[item.id] ?? null,
-        isEditing: false,
-        hasChanged: editsMap[item.id] !== undefined
-      }))
-      
-      setEditableItems(editableData)
-      
-      // Extract unique categories
-      const uniqueCategories = [...new Set(items.filter(item => item.category).map(item => item.category!))].sort()
-      setCategories(uniqueCategories)
+      processInventoryData(items)
     } catch (error) {
       console.error('Error loading inventory items:', error)
       setSnackbar({
