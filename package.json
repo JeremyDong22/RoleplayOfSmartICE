@@ -1,4 +1,12 @@
 {
+  "name": "roleplay-of-smartice",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd restaurant-ops-pwa && npm install && npm run build",
+    "dev": "cd restaurant-ops-pwa && npm run dev",
+    "install": "cd restaurant-ops-pwa && npm install"
+  },
   "dependencies": {
     "@mui/icons-material": "^7.2.0",
     "@mui/x-charts": "^8.9.2",
