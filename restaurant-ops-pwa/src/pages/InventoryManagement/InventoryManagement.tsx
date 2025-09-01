@@ -31,6 +31,7 @@ import {
 import { NavigationBar } from '../../components/Navigation/NavigationBar'
 import { inventoryManagementService } from '../../services/inventoryManagementService'
 import { authService } from '../../services/authService'
+import { restaurantConfigService } from '../../services/restaurantConfigService'
 import { useRefreshable } from '../../contexts/RefreshContext'
 import type { 
   InventoryStatus, 
@@ -84,6 +85,7 @@ export const InventoryManagement: React.FC = () => {
   // Data states
   const [inventoryPredictions, setInventoryPredictions] = useState<InventoryPrediction[]>([])
   const [alertItems, setAlertItems] = useState<InventoryPrediction[]>([])
+  const [restaurantId, setRestaurantId] = useState<string>('')
   
   // Filter state
   const [filter, setFilter] = useState<InventoryFilter>({
@@ -104,6 +106,12 @@ export const InventoryManagement: React.FC = () => {
     try {
       setLoading(true)
       setError(null)
+      
+      // Load restaurant ID first
+      const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
+      if (restaurantConfig?.id) {
+        setRestaurantId(restaurantConfig.id)
+      }
       
       // Load predictions (which includes all data)
       const predictions = await inventoryManagementService.getAllPredictions()
@@ -280,7 +288,7 @@ export const InventoryManagement: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={tabValue} index={3}>
-            <HistoryRecords />
+            <HistoryRecords restaurantId={restaurantId} />
           </TabPanel>
         </Paper>
 
