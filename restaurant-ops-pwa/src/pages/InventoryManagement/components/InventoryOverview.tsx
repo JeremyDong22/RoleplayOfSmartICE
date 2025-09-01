@@ -25,7 +25,8 @@ import {
   MenuItem,
   Select,
   FormControl,
-  InputLabel
+  InputLabel,
+  CircularProgress
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -46,8 +47,8 @@ interface InventoryOverviewProps {
 }
 
 export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ inventoryItems, onRefresh }) => {
-  const [loading, setLoading] = useState(false)
-  const [items, setItems] = useState<InventoryRealtimeItem[]>([])
+  const [loading, setLoading] = useState(!inventoryItems || inventoryItems.length === 0)
+  const [items, setItems] = useState<InventoryRealtimeItem[]>(inventoryItems || [])
   const [searchTerm, setSearchTerm] = useState('')
   const [department, setDepartment] = useState<'all' | '前厅' | '后厨'>('all')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -59,7 +60,8 @@ export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ inventoryI
   React.useEffect(() => {
     if (inventoryItems && inventoryItems.length > 0) {
       setItems(inventoryItems)
-    } else {
+      setLoading(false)
+    } else if (!inventoryItems) {
       loadInventoryData()
     }
   }, [inventoryItems])
@@ -167,6 +169,15 @@ export const InventoryOverview: React.FC<InventoryOverviewProps> = ({ inventoryI
     if (!dateStr) return '-'
     const date = new Date(dateStr)
     return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+  }
+
+  // Show loading state if data is loading
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <CircularProgress />
+      </Box>
+    )
   }
 
   return (

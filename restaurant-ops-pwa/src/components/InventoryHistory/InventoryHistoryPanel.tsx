@@ -77,7 +77,7 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
   initialRecords,
   initialUniqueItems
 }) => {
-  const [loading, setLoading] = useState(!initialRecords)
+  const [loading, setLoading] = useState(true)
   const [records, setRecords] = useState<InventoryHistoryRecord[]>(initialRecords || [])
   const [uniqueItems, setUniqueItems] = useState<string[]>(initialUniqueItems || [])
   
@@ -98,11 +98,17 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
 
   // Load data - only if not provided
   useEffect(() => {
-    if (restaurantId && !initialRecords) {
-      loadHistory()
-      loadUniqueItems()
+    if (restaurantId) {
+      if (initialRecords && initialRecords.length > 0) {
+        setRecords(initialRecords)
+        setUniqueItems(initialUniqueItems || [])
+        setLoading(false)
+      } else {
+        loadHistory()
+        loadUniqueItems()
+      }
     }
-  }, [restaurantId, filter, initialRecords])
+  }, [restaurantId, filter, initialRecords, initialUniqueItems])
 
   const loadHistory = async () => {
     console.log('[InventoryHistoryPanel] Loading history with filter:', filter)

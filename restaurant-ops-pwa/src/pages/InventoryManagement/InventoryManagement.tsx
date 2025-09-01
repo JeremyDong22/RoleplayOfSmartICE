@@ -1,7 +1,9 @@
 /**
  * Inventory Management Main Page
  * Created: 2025-08-22
+ * Updated: 2025-09-01
  * Purpose: Main interface for the inventory management system
+ * Changes: Optimized loading behavior - framework loads first, data loads in parallel once and caches
  */
 
 import React, { useState, useEffect } from 'react'
@@ -72,7 +74,8 @@ function TabPanel(props: TabPanelProps) {
 
 export const InventoryManagement: React.FC = () => {
   const [tabValue, setTabValue] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [frameworkLoaded, setFrameworkLoaded] = useState(false) // 框架是否加载
+  const [dataLoading, setDataLoading] = useState(true) // 数据是否正在加载
   const [error, setError] = useState<string | null>(null)
   
   // Get current user role and convert from database format (duty_manager) to route format (duty-manager)
@@ -94,6 +97,7 @@ export const InventoryManagement: React.FC = () => {
   const [historyRecords, setHistoryRecords] = useState<any[]>([]) // 历史记录数据
   const [uniqueHistoryItems, setUniqueHistoryItems] = useState<string[]>([]) // 历史记录物品列表
   const [dataLoaded, setDataLoaded] = useState(false) // 标记数据是否已加载
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false) // 标记初始加载是否完成
   
   // Filter state
   const [filter, setFilter] = useState<InventoryFilter>({
@@ -110,9 +114,14 @@ export const InventoryManagement: React.FC = () => {
   })
 
   // Load data function
-  const loadData = async () => {
+  const loadData = async (forceReload = false) => {
+    // 如果数据已经加载且不是强制刷新，直接返回
+    if (initialLoadComplete && !forceReload) {
+      return
+    }
+    
     try {
-      setLoading(true)
+      setDataLoading(true)
       setError(null)
       
       // Load restaurant ID first
@@ -124,7 +133,7 @@ export const InventoryManagement: React.FC = () => {
       }
       
       // Load all data in parallel for better performance
-      const [predictions, items, realtimeData, historyData, uniqueItems] = await Promise.all([
+      const [predictions, items, realtimeData, historyData] = await Promise.all([
         inventoryManagementService.getAllPredictions(),
         inventoryService.getAllInventory(),
         inventoryRealtimeService.getRealtimeInventory(),
@@ -132,14 +141,16 @@ export const InventoryManagement: React.FC = () => {
           restaurant_id: currentRestaurantId,
           operation_type: 'all',
           department: 'all'
-        }) : Promise.resolve([]),
-        currentRestaurantId ? inventoryHistoryService.getUniqueItemNames(currentRestaurantId) : Promise.resolve([])
+        }) : Promise.resolve([])
       ])
       
       setInventoryPredictions(predictions)
       setInventoryItems(items)
       setRealtimeInventory(realtimeData)
       setHistoryRecords(historyData)
+      
+      // Extract unique item names from history records
+      const uniqueItems = [...new Set(historyData.map(record => record.item_name).filter(Boolean))]
       setUniqueHistoryItems(uniqueItems)
       
       // Filter alert items
@@ -165,33 +176,43 @@ export const InventoryManagement: React.FC = () => {
       })
       
       setDataLoaded(true) // 标记数据已加载
+      setInitialLoadComplete(true) // 标记初始加载完成
     } catch (err) {
       console.error('Error loading inventory data:', err)
       setError('加载库存数据失败，请刷新重试')
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
-  // Register refresh callback
+  // Register refresh callback - force reload on manual refresh
   useRefreshable(async () => {
-    await loadData()
+    await loadData(true) // 强制刷新
   }, [])
 
-  // Load initial data
+  // Show framework immediately
   useEffect(() => {
-    loadData()
+    setFrameworkLoaded(true)
   }, [])
+
+  // Load initial data once
+  useEffect(() => {
+    if (frameworkLoaded && !initialLoadComplete) {
+      loadData(false)
+    }
+  }, [frameworkLoaded, initialLoadComplete])
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
+    // 不重新加载数据，使用缓存的数据
   }
 
   const getCriticalAlerts = () => {
     return alertItems
   }
 
-  if (loading) {
+  // 如果框架还未加载，显示加载中
+  if (!frameworkLoaded) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress />
@@ -211,12 +232,16 @@ export const InventoryManagement: React.FC = () => {
             </Typography>
           </Box>
           
-          {/* Statistics Cards */}
+          {/* Statistics Cards - Show skeleton while loading */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid size={{ xs: 6, sm: 3 }}>
               <Card>
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="h4" color="primary">{stats.totalItems}</Typography>
+                  {dataLoading ? (
+                    <CircularProgress size={24} />
+                  ) : (
+                    <Typography variant="h4" color="primary">{stats.totalItems}</Typography>
+                  )}
                   <Typography variant="body2" color="text.secondary">库存品项</Typography>
                 </CardContent>
               </Card>
@@ -224,9 +249,13 @@ export const InventoryManagement: React.FC = () => {
             <Grid size={{ xs: 6, sm: 3 }}>
               <Card sx={{ bgcolor: stats.criticalItems > 0 ? 'error.light' : 'background.paper' }}>
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="h4" color={stats.criticalItems > 0 ? 'error.contrastText' : 'text.primary'}>
-                    {stats.criticalItems}
-                  </Typography>
+                  {dataLoading ? (
+                    <CircularProgress size={24} sx={{ color: 'inherit' }} />
+                  ) : (
+                    <Typography variant="h4" color={stats.criticalItems > 0 ? 'error.contrastText' : 'text.primary'}>
+                      {stats.criticalItems}
+                    </Typography>
+                  )}
                   <Typography variant="body2" color={stats.criticalItems > 0 ? 'error.contrastText' : 'text.secondary'}>
                     紧急补货
                   </Typography>
@@ -236,9 +265,13 @@ export const InventoryManagement: React.FC = () => {
             <Grid size={{ xs: 6, sm: 3 }}>
               <Card sx={{ bgcolor: stats.warningItems > 0 ? 'warning.light' : 'background.paper' }}>
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="h4" color={stats.warningItems > 0 ? 'warning.contrastText' : 'text.primary'}>
-                    {stats.warningItems}
-                  </Typography>
+                  {dataLoading ? (
+                    <CircularProgress size={24} sx={{ color: 'inherit' }} />
+                  ) : (
+                    <Typography variant="h4" color={stats.warningItems > 0 ? 'warning.contrastText' : 'text.primary'}>
+                      {stats.warningItems}
+                    </Typography>
+                  )}
                   <Typography variant="body2" color={stats.warningItems > 0 ? 'warning.contrastText' : 'text.secondary'}>
                     预警物品
                   </Typography>
@@ -248,12 +281,16 @@ export const InventoryManagement: React.FC = () => {
             <Grid size={{ xs: 6, sm: 3 }}>
               <Card>
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="h4" color="primary">
-                    {stats.totalValue >= 10000 
-                      ? `¥${(stats.totalValue / 10000).toFixed(1)}万`
-                      : `¥${stats.totalValue.toFixed(0)}`
-                    }
-                  </Typography>
+                  {dataLoading ? (
+                    <CircularProgress size={24} />
+                  ) : (
+                    <Typography variant="h4" color="primary">
+                      {stats.totalValue >= 10000 
+                        ? `¥${(stats.totalValue / 10000).toFixed(1)}万`
+                        : `¥${stats.totalValue.toFixed(0)}`
+                      }
+                    </Typography>
+                  )}
                   <Typography variant="body2" color="text.secondary">库存总值</Typography>
                 </CardContent>
               </Card>
@@ -295,34 +332,58 @@ export const InventoryManagement: React.FC = () => {
           </Box>
 
           <TabPanel value={tabValue} index={0}>
-            <InventoryOverview 
-              inventoryItems={realtimeInventory}
-              onRefresh={loadData}
-            />
+            {dataLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <InventoryOverview 
+                inventoryItems={realtimeInventory}
+                onRefresh={() => loadData(true)}
+              />
+            )}
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
-            <PredictionAnalysis 
-              inventoryPredictions={inventoryPredictions}
-              alertItems={alertItems}
-              onRefresh={loadData}
-            />
+            {dataLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <PredictionAnalysis 
+                inventoryPredictions={inventoryPredictions}
+                alertItems={alertItems}
+                onRefresh={() => loadData(true)}
+              />
+            )}
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            <InventorySnapshot 
-              onComplete={loadData}
-              initialData={inventoryItems}
-              skipInitialLoad={!dataLoaded}
-            />
+            {dataLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <InventorySnapshot 
+                onComplete={() => loadData(true)}
+                initialData={inventoryItems}
+                skipInitialLoad={false}
+              />
+            )}
           </TabPanel>
 
           <TabPanel value={tabValue} index={3}>
-            <HistoryRecords 
-              restaurantId={restaurantId}
-              historyRecords={historyRecords}
-              uniqueItems={uniqueHistoryItems}
-            />
+            {dataLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <HistoryRecords 
+                restaurantId={restaurantId}
+                historyRecords={historyRecords}
+                uniqueItems={uniqueHistoryItems}
+              />
+            )}
           </TabPanel>
         </Paper>
 

@@ -25,7 +25,8 @@ import {
   Alert,
   Button,
   useMediaQuery,
-  useTheme
+  useTheme,
+  CircularProgress
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -44,8 +45,8 @@ import type { InventoryPrediction } from '../../../types/inventory.types'
 import { inventoryManagementService } from '../../../services/inventoryManagementService'
 
 interface PredictionAnalysisProps {
-  inventoryPredictions: InventoryPrediction[]
-  alertItems: InventoryPrediction[]
+  inventoryPredictions?: InventoryPrediction[]
+  alertItems?: InventoryPrediction[]
   onRefresh: () => void
 }
 
@@ -56,6 +57,7 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = React.memo(
 }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const [loading, setLoading] = useState(!inventoryPredictions)
   
   const [searchTerm, setSearchTerm] = useState('')
   const [department, setDepartment] = useState<'all' | '前厅' | '后厨'>('all')
@@ -63,8 +65,16 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = React.memo(
   const [sortBy, setSortBy] = useState<'none' | 'quantity' | 'consumption' | 'days' | 'category' | 'subcategory'>('none')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
 
+  // Set loading to false when data arrives
+  React.useEffect(() => {
+    if (inventoryPredictions) {
+      setLoading(false)
+    }
+  }, [inventoryPredictions])
+
   // Filter items based on search and filters
   const filteredItems = useMemo(() => {
+    if (!inventoryPredictions) return []
     let items = inventoryPredictions.filter(item => {
       // Search filter
       if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm.toLowerCase())) {
@@ -180,6 +190,15 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = React.memo(
     return <StoreIcon fontSize="small" color="action" />
   }
 
+  // Show loading state if data is loading
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
+
   return (
     <Box>
       {/* Filters */}
@@ -242,7 +261,7 @@ export const PredictionAnalysis: React.FC<PredictionAnalysisProps> = React.memo(
       </Box>
 
       {/* Active Alerts Summary */}
-      {alertItems.length > 0 && (
+      {alertItems && alertItems.length > 0 && (
         <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
           <Typography variant="subtitle2" gutterBottom>
             补货提醒 ({alertItems.length})

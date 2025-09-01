@@ -89,14 +89,12 @@ export const InventorySnapshot: React.FC<InventorySnapshotProps> = ({
 
   // Initialize editable items from inventory predictions
   useEffect(() => {
-    if (!skipInitialLoad) {
-      if (initialData && initialData.length > 0) {
-        // 使用传入的数据
-        processInventoryData(initialData)
-      } else {
-        // 如果没有传入数据，才加载
-        loadInventoryItems()
-      }
+    if (initialData && initialData.length > 0) {
+      // 使用传入的数据
+      processInventoryData(initialData)
+    } else if (!skipInitialLoad) {
+      // 如果没有传入数据且不跳过加载，才加载
+      loadInventoryItems()
     }
   }, [skipInitialLoad, initialData])
 
