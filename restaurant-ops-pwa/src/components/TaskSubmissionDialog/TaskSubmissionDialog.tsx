@@ -6,6 +6,7 @@
 // 3. Added support for list/checklist tasks with ListSubmissionDialog
 // 4. Temporarily disabled face recognition verification - testing phase
 // 5. Tasks now submit directly without face verification requirement
+// 6. Fixed 交割损耗称重 to use PhotoSubmissionDialog instead of StructuredInputDialog for proper UI flow
 import React, { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -89,7 +90,7 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
             inventoryService.clearCache()
             
             const user = authService.getCurrentUser()
-            const department = user?.role === 'chef' ? '后厨' : '前厅'
+            const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
             const isLossCount = task.title.includes('损耗盘点') || task.title.includes('交割损耗')
             const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨', isLossCount)
             
@@ -290,36 +291,25 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
 
   // Show appropriate submission dialog based on task requirements
   if (showSubmissionDialog || !isLateSubmission) {
-    // Special case: 交割损耗称重 needs both structured fields AND photo
+    // Special case: 交割损耗称重 should use PhotoSubmissionDialog like receiving inspection tasks
     if (task.title === '交割损耗称重' && task.structuredFields?.enabled) {
+      // Use dynamic fields if available, otherwise use task's structured fields
+      const fieldsToUse = dynamicStructuredFields || task.structuredFields
+        
       return (
         <>
-          <StructuredInputDialog
-            open={open && !showFaceVerification}
+          <PhotoSubmissionDialog
+            open={open}
             taskName={task.title}
             taskId={task.id}
-            structuredFields={task.structuredFields}
-            isFloatingTask={task.isFloating}
-            requiresPhoto={true}  // This task needs photo
+            initialPhotoGroups={initialPhotoGroups}
+            samples={task.samples}
+            structuredFields={fieldsToUse} // Use dynamic fields for proper inventory management
             onClose={handleClose}
             onSubmit={(data) => {
-              handleTaskSubmit(data)
+              handleTaskSubmit({ ...data, type: 'photo' })
             }}
           />
-          {showFaceVerification && currentUser && (
-            <FaceVerificationDialogFree
-              open={showFaceVerification}
-              userId={currentUser.id}
-              userName={currentUser.name || currentUser.email}
-              taskTitle={task?.title || ''}
-              onVerified={handleFaceVerified}
-              onClose={() => {
-                setShowFaceVerification(false)
-                setPendingSubmissionData(null)
-              }}
-              mode={isUserEnrolled ? 'verification' : 'enrollment'}
-            />
-          )}
         </>
       )
     }
