@@ -22,7 +22,7 @@ import {
   Close as CloseIcon,
   CameraAlt,
   Refresh,
-  CameraSwitch,
+  FlipCameraAndroid,
   ZoomIn
 } from '@mui/icons-material'
 import {
@@ -312,7 +312,7 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
                         }
                       }}
                     >
-                      <CameraSwitch />
+                      <FlipCameraAndroid />
                     </IconButton>
                   </Tooltip>
                 )}
