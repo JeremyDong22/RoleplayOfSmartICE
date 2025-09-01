@@ -128,7 +128,7 @@ export const InventoryManagement: React.FC = () => {
         inventoryManagementService.getAllPredictions(),
         inventoryService.getAllInventory(),
         inventoryRealtimeService.getRealtimeInventory(),
-        currentRestaurantId ? inventoryHistoryService.getInventoryHistory({
+        currentRestaurantId ? inventoryHistoryService.getHistoryRecords({
           restaurant_id: currentRestaurantId,
           operation_type: 'all',
           department: 'all'
