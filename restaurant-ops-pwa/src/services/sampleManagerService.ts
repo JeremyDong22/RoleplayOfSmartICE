@@ -1,8 +1,11 @@
 // Sample Manager Service
 // Service for managing task samples in the database
 // Updated: 2025-09-02 - Added caching for restaurant data to improve loading performance
+// Updated: 2025-09-02 - Added security improvements and input validation
 
 import { supabase } from './supabase'
+import { validateSqlParam, sanitizeInput, sanitizeFileName } from '../utils/sanitizer'
+import { FILE_UPLOAD_CONSTANTS, CACHE_CONFIG, QUERY_CONFIG } from '../constants/sampleManager.constants'
 
 // Cache for restaurant data
 interface CacheEntry<T> {
@@ -10,17 +13,16 @@ interface CacheEntry<T> {
   timestamp: number
 }
 
-const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes cache
 const cache: Map<string, CacheEntry<any>> = new Map()
 
 export class SampleManagerService {
   // Fetch all restaurants with caching
   static async getRestaurants() {
-    const cacheKey = 'restaurants'
+    const cacheKey = CACHE_CONFIG.RESTAURANT_KEY
     const cached = cache.get(cacheKey)
     
     // Return cached data if still valid
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    if (cached && Date.now() - cached.timestamp < CACHE_CONFIG.DURATION) {
       return cached.data
     }
     
@@ -30,7 +32,7 @@ export class SampleManagerService {
       .select('id, name, city, address, icon, is_active')
       .eq('is_active', true)
       .order('name')
-      .abortSignal(AbortSignal.timeout(10000)) // 10 second timeout
+      .abortSignal(AbortSignal.timeout(QUERY_CONFIG.TIMEOUT))
 
     if (error) throw error
     
@@ -47,11 +49,11 @@ export class SampleManagerService {
 
   // Fetch all roles with caching
   static async getRoles() {
-    const cacheKey = 'roles'
+    const cacheKey = CACHE_CONFIG.ROLES_KEY
     const cached = cache.get(cacheKey)
     
     // Return cached data if still valid
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    if (cached && Date.now() - cached.timestamp < CACHE_CONFIG.DURATION) {
       return cached.data
     }
     
@@ -60,7 +62,7 @@ export class SampleManagerService {
       .select('*')
       .eq('is_active', true)
       .order('sort_order')
-      .abortSignal(AbortSignal.timeout(10000)) // 10 second timeout
+      .abortSignal(AbortSignal.timeout(QUERY_CONFIG.TIMEOUT))
 
     if (error) throw error
     
@@ -93,18 +95,23 @@ export class SampleManagerService {
 
   // Fetch tasks for a specific role and period
   static async getTasks(roleCode: string, periodId?: string, restaurantId?: string) {
+    // Validate parameters to prevent SQL injection
+    const validatedRoleCode = validateSqlParam(roleCode)
+    
     let query = supabase
       .from('roleplay_tasks')
       .select('*')
-      .eq('role_code', roleCode)
+      .eq('role_code', validatedRoleCode)
       .eq('is_active', true)
 
     if (periodId) {
-      query = query.eq('period_id', periodId)
+      query = query.eq('period_id', validateSqlParam(periodId))
     }
 
     if (restaurantId) {
-      query = query.or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)
+      // Use proper parameterized query instead of string interpolation
+      const validatedRestaurantId = validateSqlParam(restaurantId)
+      query = query.or(`restaurant_id.eq.${validatedRestaurantId},restaurant_id.is.null`)
     }
 
     const { data, error } = await query.order('sort_order')
@@ -139,9 +146,21 @@ export class SampleManagerService {
     return data
   }
 
-  // Upload image to storage
+  // Upload image to storage with validation
   static async uploadImage(file: File, path: string) {
-    const fileName = `${Date.now()}-${file.name}`
+    // Validate file size
+    if (file.size > FILE_UPLOAD_CONSTANTS.MAX_FILE_SIZE) {
+      throw new Error(`File size exceeds ${FILE_UPLOAD_CONSTANTS.MAX_FILE_SIZE / (1024 * 1024)}MB limit`)
+    }
+
+    // Validate file type
+    if (!FILE_UPLOAD_CONSTANTS.ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      throw new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed')
+    }
+
+    // Sanitize file name
+    const sanitizedName = sanitizeFileName(file.name)
+    const fileName = `${Date.now()}-${sanitizedName}`
     const fullPath = `${path}/${fileName}`
 
     const { data, error } = await supabase.storage
@@ -183,7 +202,7 @@ export class SampleManagerService {
     return { success: true }
   }
 
-  // Create a new task
+  // Create a new task with input sanitization
   static async createTask(task: {
     title: string
     description?: string
@@ -193,10 +212,20 @@ export class SampleManagerService {
     submission_type?: string
     samples?: any
   }) {
+    // Sanitize user inputs to prevent XSS
+    const sanitizedTask = {
+      ...task,
+      title: sanitizeInput(task.title),
+      description: task.description ? sanitizeInput(task.description) : undefined,
+      role_code: validateSqlParam(task.role_code),
+      period_id: task.period_id ? validateSqlParam(task.period_id) : undefined,
+      restaurant_id: task.restaurant_id ? validateSqlParam(task.restaurant_id) : undefined
+    }
+
     const { data, error } = await supabase
       .from('roleplay_tasks')
       .insert({
-        ...task,
+        ...sanitizedTask,
         id: crypto.randomUUID(),
         is_active: true,
         created_at: new Date().toISOString(),

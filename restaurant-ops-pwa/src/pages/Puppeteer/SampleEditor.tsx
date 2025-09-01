@@ -50,6 +50,7 @@ import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import type { Task, Restaurant, Role } from '../../types/sampleManager.types'
 import { SampleManagerService } from '../../services/sampleManagerService'
 import { CameraDialog } from './CameraDialog'
+import { SnackbarAlert } from '../../components/CustomAlert'
 
 interface SampleEditorProps {
   task: Task
@@ -87,6 +88,11 @@ export const SampleEditor: React.FC<SampleEditorProps> = ({
   const [newChecklistItem, setNewChecklistItem] = useState<{[key: number]: string}>({})
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false)
   const [cameraSessionIndex, setCameraSessionIndex] = useState<number | null>(null)
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error' | 'warning' | 'info'
+  })
 
   useEffect(() => {
     // Load existing samples
@@ -141,7 +147,11 @@ export const SampleEditor: React.FC<SampleEditorProps> = ({
       }))
     } catch (error) {
       console.error('Failed to upload images:', error)
-      alert('上传图片失败')
+      setSnackbar({
+        open: true,
+        message: '上传图片失败',
+        severity: 'error'
+      })
     } finally {
       setUploadingImage(null)
     }
@@ -176,7 +186,11 @@ export const SampleEditor: React.FC<SampleEditorProps> = ({
       }))
     } catch (error) {
       console.error('Failed to upload captured photo:', error)
-      alert('上传照片失败')
+      setSnackbar({
+        open: true,
+        message: '上传照片失败',
+        severity: 'error'
+      })
     } finally {
       setUploadingImage(null)
       setCameraDialogOpen(false)
@@ -324,10 +338,18 @@ export const SampleEditor: React.FC<SampleEditorProps> = ({
       }
 
       onSave({ ...taskData, samples: formattedSamples })
-      alert('保存成功！')
+      setSnackbar({
+        open: true,
+        message: '保存成功！',
+        severity: 'success'
+      })
     } catch (error) {
       console.error('Failed to save:', error)
-      alert('保存失败')
+      setSnackbar({
+        open: true,
+        message: '保存失败',
+        severity: 'error'
+      })
     } finally {
       setSaving(false)
     }
@@ -686,6 +708,14 @@ export const SampleEditor: React.FC<SampleEditorProps> = ({
         }}
         onCapture={handleCameraCapture}
         title="拍摄样本照片"
+      />
+
+      {/* Snackbar */}
+      <SnackbarAlert
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
       />
     </Box>
   )

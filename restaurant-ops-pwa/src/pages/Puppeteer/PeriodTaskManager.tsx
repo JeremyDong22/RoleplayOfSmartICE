@@ -41,6 +41,7 @@ import ImageIcon from '@mui/icons-material/Image'
 import ChecklistIcon from '@mui/icons-material/Checklist'
 import type { Role, Restaurant, WorkflowPeriod, Task } from '../../types/sampleManager.types'
 import { SampleManagerService } from '../../services/sampleManagerService'
+import { ConfirmDialog, SnackbarAlert } from '../../components/CustomAlert'
 
 interface PeriodTaskManagerProps {
   restaurant: Restaurant
@@ -67,6 +68,19 @@ export const PeriodTaskManager: React.FC<PeriodTaskManagerProps> = ({
     title: '',
     description: '',
     submission_type: 'photo' as string
+  })
+  
+  // Alert states
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  })
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error' | 'warning' | 'info'
   })
 
   useEffect(() => {
@@ -100,16 +114,31 @@ export const PeriodTaskManager: React.FC<PeriodTaskManagerProps> = ({
     return tasks.filter(task => task.period_id === periodId)
   }
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('确定要删除这个任务吗？')) return
-    
-    try {
-      await SampleManagerService.deleteTask(taskId)
-      setTasks(tasks.filter(t => t.id !== taskId))
-    } catch (err) {
-      console.error('Failed to delete task:', err)
-      alert('删除任务失败')
-    }
+  const handleDeleteTask = (taskId: string) => {
+    setConfirmDialog({
+      open: true,
+      title: '删除任务',
+      message: '确定要删除这个任务吗？',
+      onConfirm: async () => {
+        try {
+          await SampleManagerService.deleteTask(taskId)
+          setTasks(tasks.filter(t => t.id !== taskId))
+          setSnackbar({
+            open: true,
+            message: '任务已删除',
+            severity: 'success'
+          })
+        } catch (err) {
+          console.error('Failed to delete task:', err)
+          setSnackbar({
+            open: true,
+            message: '删除任务失败',
+            severity: 'error'
+          })
+        }
+        setConfirmDialog({ ...confirmDialog, open: false })
+      }
+    })
   }
 
   const getPeriodColor = (index: number) => {
@@ -152,7 +181,11 @@ export const PeriodTaskManager: React.FC<PeriodTaskManagerProps> = ({
 
   const handleSaveTask = async () => {
     if (!taskForm.title.trim()) {
-      alert('请输入任务标题')
+      setSnackbar({
+        open: true,
+        message: '请输入任务标题',
+        severity: 'warning'
+      })
       return
     }
 
@@ -178,9 +211,18 @@ export const PeriodTaskManager: React.FC<PeriodTaskManagerProps> = ({
         setTasks([...tasks, newTask])
       }
       handleCloseTaskDialog()
+      setSnackbar({
+        open: true,
+        message: editingTask ? '任务已更新' : '任务已创建',
+        severity: 'success'
+      })
     } catch (err) {
       console.error('Failed to save task:', err)
-      alert('保存任务失败')
+      setSnackbar({
+        open: true,
+        message: '保存任务失败',
+        severity: 'error'
+      })
     }
   }
 
@@ -438,6 +480,23 @@ export const PeriodTaskManager: React.FC<PeriodTaskManagerProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, open: false })}
+      />
+
+      {/* Snackbar */}
+      <SnackbarAlert
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      />
     </>
   )
 }

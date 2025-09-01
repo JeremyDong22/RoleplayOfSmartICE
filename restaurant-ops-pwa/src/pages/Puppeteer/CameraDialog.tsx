@@ -38,6 +38,7 @@ import {
   compressToSize,
   formatFileSize
 } from '../../utils/imageCompressor'
+import { CAMERA_CONFIG, FILE_UPLOAD_CONSTANTS } from '../../constants/sampleManager.constants'
 
 interface CameraDialogProps {
   open: boolean
@@ -70,11 +71,31 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
+  // Cleanup function for camera stream
+  const cleanupCamera = useCallback(() => {
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop()
+        })
+        streamRef.current = null
+      } catch (error) {
+        console.error('Error cleaning up camera stream:', error)
+      }
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+  }, [])
+
   // Initialize camera
   const startCamera = useCallback(async (deviceId?: string) => {
     try {
       setLoading(true)
       setCameraError(false)
+
+      // Clean up any existing stream first
+      cleanupCamera()
 
       if (videoRef.current) {
         const stream = await initializeCamera(videoRef.current, deviceId)
@@ -89,8 +110,10 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
       console.error('Camera initialization error:', error)
       setCameraError(true)
       setLoading(false)
+      // Ensure cleanup on error
+      cleanupCamera()
     }
-  }, [])
+  }, [cleanupCamera])
 
   // Load available cameras
   const loadCameras = useCallback(async () => {
@@ -116,16 +139,18 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
   useEffect(() => {
     if (open) {
       loadCameras()
+    } else {
+      // Cleanup when dialog closes
+      setTimeout(() => {
+        cleanupCamera()
+      }, CAMERA_CONFIG.CLEANUP_DELAY)
     }
     
     return () => {
-      // Cleanup camera stream
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop())
-        streamRef.current = null
-      }
+      // Cleanup on unmount
+      cleanupCamera()
     }
-  }, [open, loadCameras])
+  }, [open, loadCameras, cleanupCamera])
 
   // Handle camera switch
   const handleCameraSwitch = async (deviceId: string) => {
@@ -167,7 +192,7 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
             if (needsCompression(blob.size)) {
               setIsCompressing(true)
               try {
-                const compressedBlob = await compressToSize(blob, 2 * 1024 * 1024) // 2MB target
+                const compressedBlob = await compressToSize(blob, FILE_UPLOAD_CONSTANTS.COMPRESSED_TARGET_SIZE)
                 setPreviewImage(URL.createObjectURL(compressedBlob))
               } catch (error) {
                 console.error('Compression failed:', error)
@@ -204,7 +229,7 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
         if (needsCompression(blob.size)) {
           setIsCompressing(true)
           try {
-            finalBlob = await compressToSize(blob, 2 * 1024 * 1024)
+            finalBlob = await compressToSize(blob, FILE_UPLOAD_CONSTANTS.COMPRESSED_TARGET_SIZE)
           } catch (error) {
             console.error('Compression failed:', error)
           } finally {
@@ -220,12 +245,13 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
 
   // Handle dialog close
   const handleClose = () => {
-    // Cleanup
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
+    // Cleanup camera
+    cleanupCamera()
+    // Reset state
     setPreviewImage('')
+    setCameraError(false)
+    setLoading(false)
+    // Call parent close handler
     onClose()
   }
 
@@ -354,9 +380,9 @@ export const CameraDialog: React.FC<CameraDialogProps> = ({
                   <Slider
                     value={zoomLevel}
                     onChange={(_, value) => handleZoomChange(value as number)}
-                    min={1}
-                    max={3}
-                    step={0.1}
+                    min={CAMERA_CONFIG.ZOOM_MIN}
+                    max={CAMERA_CONFIG.ZOOM_MAX}
+                    step={CAMERA_CONFIG.ZOOM_STEP}
                     sx={{ color: 'white' }}
                   />
                 </Box>
