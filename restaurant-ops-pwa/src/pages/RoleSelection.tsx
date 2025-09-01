@@ -8,6 +8,7 @@ import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 import NightlightIcon from '@mui/icons-material/Nightlight'
 import LogoutIcon from '@mui/icons-material/Logout'
 import BusinessIcon from '@mui/icons-material/Business'
+import SmartToyIcon from '@mui/icons-material/SmartToy'
 import { authService } from '../services/authService'
 import { useState } from 'react'
 
@@ -21,14 +22,15 @@ export const RoleSelection = () => {
   
   // Debug: Log current user info
 
-  const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager' | 'ceo') => {
+  const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager' | 'ceo' | 'puppeteer') => {
     
     // Check if user has permission to access this role
     const roleCodeMap: Record<string, string> = {
       'manager': 'manager',
       'chef': 'chef',
       'duty-manager': 'duty_manager',
-      'ceo': 'ceo'
+      'ceo': 'ceo',
+      'puppeteer': 'puppeteer'
     }
     
     const requiredRole = roleCodeMap[role]
@@ -48,6 +50,9 @@ export const RoleSelection = () => {
         setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
         return
       }
+    // Puppeteer is accessible to all users
+    } else if (role === 'puppeteer') {
+      // Everyone can access Puppeteer
     } else if (currentUser?.roleCode !== requiredRole) {
       setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
       return
@@ -175,7 +180,8 @@ export const RoleSelection = () => {
             gridTemplateColumns: { 
               xs: '1fr', 
               sm: 'repeat(2, 1fr)', 
-              lg: 'repeat(4, 1fr)' 
+              md: 'repeat(3, 1fr)',
+              lg: 'repeat(5, 1fr)' 
             },
             gap: { xs: 2, sm: 3, md: 4 },
             maxWidth: 1400,
@@ -443,6 +449,102 @@ export const RoleSelection = () => {
                 onClick={(e) => {
                   e.stopPropagation()
                   handleRoleSelect('ceo')
+                }}
+              >
+                选择此角色 / Select
+              </Button>
+            </Paper>
+          </Box>
+
+          {/* Puppeteer Role Card */}
+          <Box sx={{ flex: 1 }}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: { xs: 2, sm: 3, md: 4 },
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: 8,
+                  background: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)',
+                },
+              }}
+              onClick={() => handleRoleSelect('puppeteer')}
+            >
+              <SmartToyIcon 
+                sx={{ 
+                  fontSize: { xs: 48, sm: 64, md: 80 }, 
+                  mb: 1,
+                  color: '#fff'
+                }} 
+              />
+              <Typography 
+                variant="h4" 
+                gutterBottom 
+                sx={{ 
+                  fontSize: { xs: '1.25rem', sm: '1.75rem', md: '2.125rem' },
+                  color: '#fff'
+                }}
+              >
+                Puppeteer
+              </Typography>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '1.25rem' },
+                  color: '#fff'
+                }}
+              >
+                任务样本管理
+              </Typography>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  mt: 1, 
+                  opacity: 0.9, 
+                  fontSize: { xs: '0.75rem', sm: '0.875rem', md: '1rem' }, 
+                  display: { xs: 'none', sm: 'block' },
+                  color: '#fff'
+                }}
+              >
+                管理任务样本和参考资料
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  opacity: 0.8, 
+                  fontSize: { xs: '0.625rem', sm: '0.75rem', md: '0.875rem' }, 
+                  display: { xs: 'none', sm: 'block' },
+                  color: '#fff'
+                }}
+              >
+                Task Sample Management
+              </Typography>
+              <Button
+                variant="contained"
+                size="large"
+                sx={{ 
+                  mt: { xs: 2, sm: 3 },
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
+                  py: { xs: 1, sm: 1.5 },
+                  px: { xs: 2, sm: 3 },
+                  bgcolor: 'rgba(255,255,255,0.2)',
+                  color: '#fff',
+                  '&:hover': {
+                    bgcolor: 'rgba(255,255,255,0.3)'
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleRoleSelect('puppeteer')
                 }}
               >
                 选择此角色 / Select
