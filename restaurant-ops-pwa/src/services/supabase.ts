@@ -40,16 +40,28 @@ const createSupabaseClient = (): SupabaseClient<Database> => {
   return client
 }
 
-// Create Supabase instance immediately
-const supabaseInstance = createSupabaseClient()
+// Lazy initialization to avoid immediate instantiation issues
+let supabaseInstance: SupabaseClient<Database> | null = null;
 
 // Export function to get current Supabase instance
 export const getSupabase = (): SupabaseClient<Database> => {
-  return supabaseInstance
+  if (!supabaseInstance) {
+    supabaseInstance = createSupabaseClient();
+  }
+  return supabaseInstance;
 }
 
-// For backward compatibility
-export const supabase = supabaseInstance
+// For backward compatibility - use getter to ensure lazy initialization
+export const supabase = (() => {
+  // Return a proxy object that delegates to the lazy instance
+  return new Proxy({} as SupabaseClient<Database>, {
+    get(target, prop) {
+      const instance = getSupabase();
+      const value = (instance as any)[prop];
+      return typeof value === 'function' ? value.bind(instance) : value;
+    }
+  });
+})();
 
 // Reset function to create a fresh Supabase client
 export const resetSupabaseClient = (): SupabaseClient<Database> => {

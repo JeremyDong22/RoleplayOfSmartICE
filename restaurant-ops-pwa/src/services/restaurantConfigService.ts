@@ -15,9 +15,21 @@ interface RestaurantConfig {
 }
 
 class RestaurantConfigService {
+  private static instance: RestaurantConfigService | null = null;
   private currentRestaurant: RestaurantConfig | null = null
   private initialized: boolean = false
   private initializationPromise: Promise<RestaurantConfig | null> | null = null
+  
+  private constructor() {
+    // Private constructor for singleton
+  }
+  
+  static getInstance(): RestaurantConfigService {
+    if (!RestaurantConfigService.instance) {
+      RestaurantConfigService.instance = new RestaurantConfigService();
+    }
+    return RestaurantConfigService.instance;
+  }
 
   /**
    * 初始化餐厅配置
@@ -259,10 +271,19 @@ class RestaurantConfigService {
   }
 }
 
-// 创建单例
-export const restaurantConfigService = new RestaurantConfigService()
+// Export singleton getter to avoid immediate instantiation
+export const getRestaurantConfigService = () => RestaurantConfigService.getInstance();
+
+// For backward compatibility - use Proxy for truly lazy loading
+export const restaurantConfigService = new Proxy({} as RestaurantConfigService, {
+  get(target, prop) {
+    const instance = RestaurantConfigService.getInstance();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 
 // 导出便捷函数
-export const getRestaurantId = () => restaurantConfigService.getRestaurantId()
-export const getRestaurantName = () => restaurantConfigService.getRestaurantName()
-export const getCurrentRestaurant = () => restaurantConfigService.getCurrentRestaurant()
+export const getRestaurantId = () => getRestaurantConfigService().getRestaurantId()
+export const getRestaurantName = () => getRestaurantConfigService().getRestaurantName()
+export const getCurrentRestaurant = () => getRestaurantConfigService().getCurrentRestaurant()

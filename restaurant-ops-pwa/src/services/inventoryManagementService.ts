@@ -6,7 +6,7 @@
  */
 
 import { supabase } from './supabase'
-import { authService } from './authService'
+import { getAuthService } from './authService'
 import { restaurantConfigService } from './restaurantConfigService'
 import { inventoryRealtimeService } from './inventoryRealtimeService'
 
@@ -125,7 +125,7 @@ class InventoryManagementService {
    */
   async createSnapshot(itemId: string, quantity: number, notes?: string): Promise<InventorySnapshot> {
     try {
-      const user = await authService.getCurrentUser()
+      const user = getAuthService().getCurrentUser()
       const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
       
       if (!user || !restaurantConfig) {
@@ -196,7 +196,7 @@ class InventoryManagementService {
     previousQuantity?: number
   }>): Promise<void> {
     try {
-      const user = await authService.getCurrentUser()
+      const user = getAuthService().getCurrentUser()
       const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
       
       if (!user || !restaurantConfig) {
@@ -523,7 +523,7 @@ class InventoryManagementService {
    */
   async toggleIgnoreItem(itemId: string, ignore: boolean): Promise<void> {
     try {
-      const user = await authService.getCurrentUser()
+      const user = getAuthService().getCurrentUser()
       const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
       
       if (!user || !restaurantConfig) {
@@ -573,7 +573,7 @@ class InventoryManagementService {
    */
   async resetAllIgnored(): Promise<void> {
     try {
-      const user = await authService.getCurrentUser()
+      const user = getAuthService().getCurrentUser()
       const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
       
       if (!user || !restaurantConfig) {

@@ -7,7 +7,7 @@
 import { supabase } from './supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { restaurantConfigService } from './restaurantConfigService'
-import { authService } from './authService'
+import { getAuthService } from './authService'
 import type { TaskTemplate, WorkflowPeriod } from '../types/task.types'
 
 export interface DatabaseTask {
@@ -48,6 +48,7 @@ export interface DatabasePeriod {
 }
 
 class TaskService {
+  private static instance: TaskService | null = null;
   private tasksChannel: RealtimeChannel | null = null
   private periodsChannel: RealtimeChannel | null = null
   private tasksCache: Map<string, DatabaseTask[]> = new Map()
@@ -55,6 +56,17 @@ class TaskService {
   private listeners: Map<string, (data: any) => void> = new Map()
   private isInitialized: boolean = false
   private initializingPromise: Promise<boolean> | null = null
+  
+  private constructor() {
+    // Private constructor for singleton
+  }
+  
+  static getInstance(): TaskService {
+    if (!TaskService.instance) {
+      TaskService.instance = new TaskService();
+    }
+    return TaskService.instance;
+  }
 
   /**
    * 初始化服务并订阅实时更新
@@ -81,9 +93,12 @@ class TaskService {
     console.log('[TaskService] Starting initialization...')
     
     try {
+      // Add delay to ensure other services are initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
       // This checks our custom authentication from authService
-      const currentUser = authService.getCurrentUser()
+      const currentUser = getAuthService().getCurrentUser()
       if (!currentUser) {
         console.log('[TaskService] No auth session, skipping initialization')
         return false
@@ -515,10 +530,19 @@ class TaskService {
   }
 }
 
-// 创建单例
-export const taskService = new TaskService()
+// Export singleton getter to avoid immediate instantiation
+export const getTaskService = () => TaskService.getInstance();
+
+// For backward compatibility - use Proxy for truly lazy loading
+export const taskService = new Proxy({} as TaskService, {
+  get(target, prop) {
+    const instance = TaskService.getInstance();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 
 // 导出兼容函数（方便迁移）
-export const getWorkflowPeriods = () => taskService.getWorkflowPeriods()
-export const getFloatingTasks = (role?: string) => taskService.getFloatingTasks(role)
-export const getManualClosingTask = (role?: string) => taskService.getManualClosingTask(role)
+export const getWorkflowPeriods = () => getTaskService().getWorkflowPeriods()
+export const getFloatingTasks = (role?: string) => getTaskService().getFloatingTasks(role)
+export const getManualClosingTask = (role?: string) => getTaskService().getManualClosingTask(role)

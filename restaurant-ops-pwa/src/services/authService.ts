@@ -28,6 +28,19 @@ export interface AuthUser {
 }
 
 class AuthService {
+  private static instance: AuthService | null = null;
+  
+  private constructor() {
+    // Private constructor for singleton
+  }
+  
+  static getInstance(): AuthService {
+    if (!AuthService.instance) {
+      AuthService.instance = new AuthService();
+    }
+    return AuthService.instance;
+  }
+  
   // Check if user is authenticated
   isAuthenticated(): boolean {
     return !!Cookies.get('authToken')
@@ -215,4 +228,14 @@ class AuthService {
   }
 }
 
-export const authService = new AuthService()
+// Export singleton getter to avoid immediate instantiation
+export const getAuthService = () => AuthService.getInstance();
+
+// For backward compatibility - use Proxy for truly lazy loading
+export const authService = new Proxy({} as AuthService, {
+  get(target, prop) {
+    const instance = AuthService.getInstance();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

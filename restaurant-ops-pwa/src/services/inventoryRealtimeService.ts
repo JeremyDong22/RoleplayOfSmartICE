@@ -6,7 +6,7 @@
  */
 
 import { supabase } from './supabase'
-import { authService } from './authService'
+import { getAuthService } from './authService'
 import { restaurantConfigService } from './restaurantConfigService'
 
 // Types matching our view structure
