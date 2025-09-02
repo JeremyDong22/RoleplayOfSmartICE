@@ -135,13 +135,8 @@ class AuthService {
     // Note: Removed supabase.auth.signOut() because we don't use Supabase Auth
     
     // Perform complete face detection cleanup
-    // Import dynamically to avoid circular dependencies
-    try {
-      const { faceDetectionCleanup } = await import('./faceDetectionCleanup')
-      await faceDetectionCleanup.performCompleteCleanup()
-    } catch (error) {
-      // Cleanup failed but continue logout
-    }
+    // Note: Face detection cleanup is now handled by components themselves
+    // to avoid circular dependencies in production builds
   }
 
   // Check if user has specific role

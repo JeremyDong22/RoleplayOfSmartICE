@@ -51,8 +51,16 @@ export const getSupabase = (): SupabaseClient<Database> => {
   return supabaseInstance
 }
 
-// For backward compatibility - this will be deprecated
-export const supabase = getSupabase()
+// For backward compatibility - use lazy initialization to avoid initialization issues
+let _supabase: SupabaseClient<Database> | null = null
+export const supabase: SupabaseClient<Database> = new Proxy({} as SupabaseClient<Database>, {
+  get(target, prop, receiver) {
+    if (!_supabase) {
+      _supabase = getSupabase()
+    }
+    return Reflect.get(_supabase, prop, receiver)
+  }
+})
 
 // Reset function to create a fresh Supabase client
 export const resetSupabaseClient = (): SupabaseClient<Database> => {
