@@ -37,7 +37,6 @@ import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
 import { getSupabase, resetSupabaseClient } from '../../services/supabase'
 import { faceModelManager } from '../../services/faceModelManager'
-import { faceDetectionCleanup } from '../../services/faceDetectionCleanup'
 
 export const LoginPageEnhanced = () => {
   const navigate = useNavigate()
@@ -165,12 +164,22 @@ export const LoginPageEnhanced = () => {
       
       streamRef.current = stream
       // Register stream with cleanup service
-      faceDetectionCleanup.registerStream(stream)
+      try {
+        const { faceDetectionCleanup } = await import('../../services/faceDetectionCleanup')
+        faceDetectionCleanup.registerStream(stream)
+      } catch (err) {
+        console.warn('Failed to register stream with cleanup service:', err)
+      }
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         // Register video with cleanup service
-        faceDetectionCleanup.registerVideo(videoRef.current)
+        try {
+          const { faceDetectionCleanup } = await import('../../services/faceDetectionCleanup')
+          faceDetectionCleanup.registerVideo(videoRef.current)
+        } catch (err) {
+          console.warn('Failed to register video with cleanup service:', err)
+        }
         
         videoRef.current.onloadedmetadata = async () => {
           try {
@@ -460,7 +469,12 @@ export const LoginPageEnhanced = () => {
     setDetectedUser(null)
     
     // Use centralized cleanup service
-    await faceDetectionCleanup.performCompleteCleanup()
+    try {
+      const { faceDetectionCleanup } = await import('../../services/faceDetectionCleanup')
+      await faceDetectionCleanup.performCompleteCleanup()
+    } catch (err) {
+      console.warn('Failed to perform cleanup:', err)
+    }
   }
 
   // Clean up on unmount
