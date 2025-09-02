@@ -256,4 +256,34 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+  
+  // Handle force refresh message
+  if (event.data && event.data.type === 'FORCE_REFRESH') {
+    console.log('[SW] Received FORCE_REFRESH message');
+    
+    // Clear all caches
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          console.log('[SW] Deleting cache:', cacheName);
+          return caches.delete(cacheName);
+        })
+      );
+    }).then(() => {
+      console.log('[SW] All caches cleared');
+      
+      // Skip waiting and claim all clients
+      self.skipWaiting();
+      
+      // Notify all clients to refresh
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'CACHE_CLEARED',
+            message: 'All caches have been cleared'
+          });
+        });
+      });
+    });
+  }
 });

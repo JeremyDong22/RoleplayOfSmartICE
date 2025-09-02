@@ -432,16 +432,24 @@ export const InventorySnapshot: React.FC<InventorySnapshotProps> = ({
       </Alert>
 
       {/* Inventory Table */}
-      <TableContainer component={Paper}>
-        <Table size="small" sx={{ tableLayout: 'fixed' }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          overflowX: 'auto',
+          '& .MuiTable-root': {
+            minWidth: 650 // Ensures table has minimum width for proper column spacing
+          }
+        }}
+      >
+        <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: '30%' }}>物品名称</TableCell>
-              <TableCell sx={{ width: '10%' }}>部门</TableCell>
-              <TableCell sx={{ width: '15%' }}>类别</TableCell>
-              <TableCell sx={{ width: '15%' }}>采购渠道</TableCell>
-              <TableCell sx={{ width: '20%' }}>盘点数量</TableCell>
-              <TableCell sx={{ width: '10%' }}>单位</TableCell>
+              <TableCell sx={{ minWidth: 150 }}>物品名称</TableCell>
+              <TableCell sx={{ minWidth: 80 }}>部门</TableCell>
+              <TableCell sx={{ minWidth: 100 }}>类别</TableCell>
+              <TableCell sx={{ minWidth: 120 }}>采购渠道</TableCell>
+              <TableCell sx={{ minWidth: 130 }}>盘点数量</TableCell>
+              <TableCell sx={{ minWidth: 70 }}>单位</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

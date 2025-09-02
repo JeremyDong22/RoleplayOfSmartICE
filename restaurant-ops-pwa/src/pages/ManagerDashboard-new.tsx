@@ -44,6 +44,7 @@ import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuse
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { supabase } from '../services/supabase'
 import { authService } from '../services/authService'
+import { taskService } from '../services/taskService'
 import { getRestaurantId } from '../utils/restaurantSetup'
 import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
 import { isClosingPeriod, isLunchClosingPeriod } from '../utils/periodHelpers'
@@ -163,6 +164,35 @@ export const ManagerDashboard: React.FC = () => {
   
   // 从数据库获取任务数据
   const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
+  
+  // 注册刷新回调 - 软刷新时重新加载数据
+  const handleRefresh = useCallback(async () => {
+    console.log('[ManagerDashboard] Refreshing data...')
+    
+    try {
+      // 1. 刷新 DutyManagerContext 的数据
+      await refreshFromDatabase()
+      
+      // 2. 重新初始化 TaskService
+      await taskService.initialize()
+      
+      // 3. 重新加载任务完成状态
+      if (currentUserId) {
+        const completedIds = await getTodayCompletedTaskIds(currentUserId)
+        setCompletedTaskIds(completedIds)
+        
+        const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
+        setDbTaskStatuses(updatedTaskStatuses)
+      }
+      
+      console.log('[ManagerDashboard] Data refresh completed')
+    } catch (error) {
+      console.error('[ManagerDashboard] Error refreshing data:', error)
+      throw error
+    }
+  }, [refreshFromDatabase, currentUserId])
+  
+  useRefreshable(handleRefresh, [refreshFromDatabase, currentUserId])
   
   // 移除频繁的 submissions 监听
   

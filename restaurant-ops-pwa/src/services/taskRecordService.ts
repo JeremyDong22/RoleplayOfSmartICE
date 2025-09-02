@@ -715,14 +715,8 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
         // 如果不是当前时段，检查是否已经结束
         if (endInMinutes > startInMinutes) {
           // 同一天的时段（如 10:00-14:00）
-          // 在凌晨时分（0-切换时间，营业日还是昨天），所有昨天的正常时段都已结束
-          if (currentTimeInMinutes < cutoffMinutes) {
-            // 凌晨时分，昨天的所有正常时段都已结束
-            periodEnded = true
-          } else {
-            // 正常判断
-            periodEnded = currentTimeInMinutes >= endInMinutes
-          }
+          // 只有当前时间超过结束时间才算已结束
+          periodEnded = currentTimeInMinutes >= endInMinutes
         } else {
           // 跨日时段（如 closing: 21:30-03:00）
           // 对于跨日时段，需要更精确的判断
