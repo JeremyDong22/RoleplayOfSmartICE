@@ -6,7 +6,7 @@
  */
 
 import { supabase } from './supabase'
-import { authService } from './authService'
+import Cookies from 'js-cookie'
 
 interface RestaurantConfig {
   id: string
@@ -55,22 +55,23 @@ class RestaurantConfigService {
    */
   private async _doInitialize(): Promise<RestaurantConfig | null> {
     try {
-      // 使用 authService 获取当前用户信息（从 cookies）
-      const currentUser = authService.getCurrentUser()
+      // 直接从 Cookies 获取用户信息，避免循环依赖
+      const userId = Cookies.get('userId')
+      const restaurantId = Cookies.get('restaurantId')
       
       // 如果没有认证用户，静默返回
-      if (!currentUser) {
+      if (!userId) {
         // 不输出日志，避免重复日志
         return null
       }
       
       // 首先检查用户是否有餐厅ID
-      if (currentUser.restaurantId) {
+      if (restaurantId) {
         // 获取餐厅详情
         const { data: restaurant, error: restaurantError } = await supabase
           .from('roleplay_restaurants')
           .select('id, name, is_active')
-          .eq('id', currentUser.restaurantId)
+          .eq('id', restaurantId)
           .single()
         
         if (restaurantError) {
@@ -90,11 +91,11 @@ class RestaurantConfigService {
       }
       
       // 如果用户没有分配餐厅，尝试从用户profile获取
-      if (currentUser.id) {
+      if (userId) {
         const { data: userProfile, error: profileError } = await supabase
           .from('roleplay_users')
           .select('restaurant_id')
-          .eq('id', currentUser.id)
+          .eq('id', userId)
           .single()
         
         if (profileError) {

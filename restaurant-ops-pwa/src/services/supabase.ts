@@ -10,9 +10,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
-// Singleton instance to prevent multiple clients
-let supabaseInstance: SupabaseClient<Database> | null = null
-
 // Function to create or get the Supabase client
 const createSupabaseClient = (): SupabaseClient<Database> => {
   // Create client without custom fetch - use Supabase's built-in timeout handling
@@ -43,33 +40,22 @@ const createSupabaseClient = (): SupabaseClient<Database> => {
   return client
 }
 
+// Create Supabase instance immediately
+const supabaseInstance = createSupabaseClient()
+
 // Export function to get current Supabase instance
 export const getSupabase = (): SupabaseClient<Database> => {
-  if (!supabaseInstance) {
-    supabaseInstance = createSupabaseClient()
-  }
   return supabaseInstance
 }
 
-// For backward compatibility - use lazy initialization to avoid initialization issues
-let _supabase: SupabaseClient<Database> | null = null
-export const supabase: SupabaseClient<Database> = new Proxy({} as SupabaseClient<Database>, {
-  get(target, prop, receiver) {
-    if (!_supabase) {
-      _supabase = getSupabase()
-    }
-    return Reflect.get(_supabase, prop, receiver)
-  }
-})
+// For backward compatibility
+export const supabase = supabaseInstance
 
 // Reset function to create a fresh Supabase client
 export const resetSupabaseClient = (): SupabaseClient<Database> => {
-  // Clear the existing instance
-  supabaseInstance = null
-  
-  // Create and return a fresh instance
-  supabaseInstance = createSupabaseClient()
-  
+  // Note: Cannot reset singleton instance after initialization
+  // This would require reloading the module
+  console.warn('resetSupabaseClient called but instance cannot be reset')
   return supabaseInstance
 }
 
