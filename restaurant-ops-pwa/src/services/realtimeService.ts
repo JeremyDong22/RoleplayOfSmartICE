@@ -208,5 +208,20 @@ export class RealtimeService {
   }
 }
 
-// Export singleton instance
-export const realtimeService = new RealtimeService();
+// Export singleton instance - 使用 Proxy 实现懒加载
+let realtimeServiceInstance: RealtimeService | null = null;
+
+const getRealtimeService = () => {
+  if (!realtimeServiceInstance) {
+    realtimeServiceInstance = new RealtimeService();
+  }
+  return realtimeServiceInstance;
+};
+
+export const realtimeService = new Proxy({} as RealtimeService, {
+  get(target, prop) {
+    const instance = getRealtimeService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

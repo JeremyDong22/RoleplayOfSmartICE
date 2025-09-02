@@ -160,8 +160,25 @@ class NotificationService {
   }
 }
 
-// 创建单例实例
-const notificationService = new NotificationService();
+// 创建单例实例 - 使用懒加载
+let notificationServiceInstance: NotificationService | null = null;
+
+const getNotificationService = () => {
+  if (!notificationServiceInstance) {
+    console.log('[NOTIFICATION SERVICE v1.0.1] Creating instance');
+    notificationServiceInstance = new NotificationService();
+  }
+  return notificationServiceInstance;
+};
+
+// Use Proxy for lazy loading
+const notificationService = new Proxy({} as NotificationService, {
+  get(target, prop) {
+    const instance = getNotificationService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 
 export default notificationService;
 export { NotificationService, type NotificationOptions };

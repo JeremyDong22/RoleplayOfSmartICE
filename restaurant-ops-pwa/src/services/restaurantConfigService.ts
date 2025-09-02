@@ -5,7 +5,7 @@
  * Updated: 2025-01-13 - 优化缓存逻辑，避免重复初始化
  */
 
-import { supabase } from './supabase'
+import { getSupabase } from './supabase'
 import Cookies from 'js-cookie'
 
 interface RestaurantConfig {
@@ -80,7 +80,7 @@ class RestaurantConfigService {
       // 首先检查用户是否有餐厅ID
       if (restaurantId) {
         // 获取餐厅详情
-        const { data: restaurant, error: restaurantError } = await supabase
+        const { data: restaurant, error: restaurantError } = await getSupabase()
           .from('roleplay_restaurants')
           .select('id, name, is_active')
           .eq('id', restaurantId)
@@ -104,7 +104,7 @@ class RestaurantConfigService {
       
       // 如果用户没有分配餐厅，尝试从用户profile获取
       if (userId) {
-        const { data: userProfile, error: profileError } = await supabase
+        const { data: userProfile, error: profileError } = await getSupabase()
           .from('roleplay_users')
           .select('restaurant_id')
           .eq('id', userId)
@@ -116,7 +116,7 @@ class RestaurantConfigService {
         
         if (userProfile?.restaurant_id) {
           // 获取餐厅详情
-          const { data: restaurant, error: restaurantError } = await supabase
+          const { data: restaurant, error: restaurantError } = await getSupabase()
             .from('roleplay_restaurants')
             .select('id, name, is_active')
             .eq('id', userProfile.restaurant_id)
@@ -140,7 +140,7 @@ class RestaurantConfigService {
       }
       
       // 如果没有用户或用户没有分配餐厅，获取第一个活跃的餐厅
-      const { data: restaurants, error: restaurantsError } = await supabase
+      const { data: restaurants, error: restaurantsError } = await getSupabase()
         .from('roleplay_restaurants')
         .select('id, name, is_active')
         .eq('is_active', true)
@@ -223,7 +223,7 @@ class RestaurantConfigService {
    */
   async getActiveRestaurants(): Promise<RestaurantConfig[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('roleplay_restaurants')
         .select('id, name, is_active')
         .eq('is_active', true)
@@ -247,7 +247,7 @@ class RestaurantConfigService {
    */
   async setCurrentRestaurant(restaurantId: string): Promise<boolean> {
     try {
-      const { data: restaurant } = await supabase
+      const { data: restaurant } = await getSupabase()
         .from('roleplay_restaurants')
         .select('id, name, is_active')
         .eq('id', restaurantId)

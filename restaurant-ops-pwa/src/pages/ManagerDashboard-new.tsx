@@ -42,7 +42,7 @@ import { clearAllAppStorage } from '../utils/clearAllStorage'
 import notificationService from '../services/notificationService'
 import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuses, getTodayApprovedDutyManagerTasks, validateCanClose, submitTaskRecord, type TaskStatusDetail } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
-import { supabase } from '../services/supabase'
+import { getSupabase } from '../services/supabase'
 import { authService } from '../services/authService'
 import { taskService } from '../services/taskService'
 import { getRestaurantId } from '../utils/restaurantSetup'
@@ -156,6 +156,7 @@ interface TaskStatus {
 
 
 export const ManagerDashboard: React.FC = () => {
+  console.log('[MANAGER DASHBOARD v2.0.0] Component starting to render - fixed supabase import');
   // Check if role is correct
   const selectedRole = localStorage.getItem('selectedRole')
   
@@ -164,6 +165,29 @@ export const ManagerDashboard: React.FC = () => {
   
   // 从数据库获取任务数据
   const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
+  
+  // State declarations - must be before callbacks that use them
+  const [testTime, setTestTime] = useState<Date | undefined>(undefined)
+  const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
+  const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
+  const [taskStatuses, setTaskStatuses] = useState<TaskStatus[]>([])
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]) // Tracks ALL completed tasks across all periods
+  const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
+  const [isManualClosing, setIsManualClosing] = useState(false)
+  const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
+  const manualClosingRef = useRef(false) // Ref to prevent race conditions
+  const waitingRef = useRef(false) // Ref for waiting state
+  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded initial data
+  const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
+  const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
+  const [reviewTasks, setReviewTasks] = useState<TaskTemplate[]>([]) // Store review tasks for duty manager
+  const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
+  const [currentPeriodId, setCurrentPeriodId] = useState<string | null>(null) // Track current period ID for persistence
+  const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
+  const [dbState, setDbState] = useState<RestaurantState | null>(null) // Restaurant state from database
+  const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
+  const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
   
   // 注册刷新回调 - 软刷新时重新加载数据
   const handleRefresh = useCallback(async () => {
@@ -202,27 +226,6 @@ export const ManagerDashboard: React.FC = () => {
       navigate('/')
     }
   }, [selectedRole, navigate])
-  const [testTime, setTestTime] = useState<Date | undefined>(undefined)
-  const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
-  const [nextPeriod, setNextPeriod] = useState<WorkflowPeriod | null>(null)
-  const [taskStatuses, setTaskStatuses] = useState<TaskStatus[]>([])
-  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]) // Tracks ALL completed tasks across all periods
-  const [missingTasks, setMissingTasks] = useState<{ task: TaskTemplate; periodName: string }[]>([])
-  const [isManualClosing, setIsManualClosing] = useState(false)
-  const [isWaitingForNextDay, setIsWaitingForNextDay] = useState(false)
-  const manualClosingRef = useRef(false) // Ref to prevent race conditions
-  const waitingRef = useRef(false) // Ref for waiting state
-  const [hasInitialized, setHasInitialized] = useState(false) // Track if we've loaded initial data
-  const [manuallyAdvancedPeriod, setManuallyAdvancedPeriod] = useState<string | null>(null) // Track manually advanced period ID
-  const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
-  const [reviewTasks, setReviewTasks] = useState<TaskTemplate[]>([]) // Store review tasks for duty manager
-  const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
-  const [currentPeriodId, setCurrentPeriodId] = useState<string | null>(null) // Track current period ID for persistence
-  const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
-  const [dbState, setDbState] = useState<RestaurantState | null>(null) // Restaurant state from database
-  const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
-  const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
   
   // 过滤只显示 Manager 的浮动任务（已经在service层排除了manual_closing）
   const floatingTasks = allFloatingTasks.filter(task => 
@@ -886,7 +889,7 @@ export const ManagerDashboard: React.FC = () => {
         let uploadRequirement = null
         
         // Query the database for the task's submission_type
-        const { data: dbTask } = await supabase
+        const { data: dbTask } = await getSupabase()
           .from('roleplay_tasks')
           .select('submission_type')
           .eq('id', taskId)

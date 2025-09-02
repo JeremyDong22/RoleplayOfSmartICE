@@ -4,7 +4,7 @@
 // Updated: 2025-08-02 - Added test time support for date queries
 // Updated: 2025-08-21 - Changed getTodayCompletedTaskIds and getTodayTaskStatuses to filter by restaurant_id and role_code instead of user_id to ensure all managers see consistent data
 
-import { supabase } from './supabase'
+import { getSupabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { getLocalDateString, getBusinessDate } from '../utils/dateFormat'
@@ -50,7 +50,7 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     console.log('[TaskRecordService] Using cached user role:', userRoleCode);
   } else {
     // Fetch user role if not cached or expired
-    const { data: userData } = await supabase
+    const { data: userData } = await getSupabase()
       .from('roleplay_users')
       .select(`
         id,
@@ -108,7 +108,7 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
   
   while (retries < 3) {
     try {
-      const result = await supabase
+      const result = await getSupabase()
         .from('roleplay_task_records')
         .insert(record)
         .select()
@@ -161,7 +161,7 @@ export async function reviewTaskRecord(
   decision: 'approved' | 'rejected',
   rejectReason?: string
 ) {
-  const { data: user } = await supabase.auth.getUser()
+  const { data: user } = await getSupabase().auth.getUser()
   if (!user) throw new Error('User not authenticated')
 
   const updateData: Partial<TaskRecord> = {
@@ -175,7 +175,7 @@ export async function reviewTaskRecord(
     updateData.reject_reason = rejectReason
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('roleplay_task_records')
     .update(updateData)
     .eq('id', recordId)
@@ -192,7 +192,7 @@ export async function resubmitTaskRecord(
   newData: Partial<TaskRecord>
 ) {
   // 获取原记录
-  const { data: original } = await supabase
+  const { data: original } = await getSupabase()
     .from('roleplay_task_records')
     .select('*')
     .eq('id', originalRecordId)
@@ -255,7 +255,7 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
   const now = testTime || new Date()
   
   // First get the user's restaurant_id and role_code
-  const { data: userData, error: userError } = await supabase
+  const { data: userData, error: userError } = await getSupabase()
     .from('roleplay_users')
     .select(`
       restaurant_id,
@@ -283,7 +283,7 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
   const today = await getBusinessDateAsync(now, restaurantId)
   
   // Get all tasks for this role in this restaurant
-  const { data: roleTasks, error: tasksError } = await supabase
+  const { data: roleTasks, error: tasksError } = await getSupabase()
     .from('roleplay_tasks')
     .select('id')
     .eq('restaurant_id', restaurantId)
@@ -301,7 +301,7 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
   }
   
   // Now get all completed records for these tasks in this restaurant today
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('roleplay_task_records')
     .select('task_id')
     .eq('restaurant_id', restaurantId)
@@ -325,7 +325,7 @@ export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Pr
   const today = await getBusinessDateAsync(now, restaurantId)
   
   // 第一步：获取该餐厅的所有值班经理任务ID
-  const { data: dutyManagerTasks, error: tasksError } = await supabase
+  const { data: dutyManagerTasks, error: tasksError } = await getSupabase()
     .from('roleplay_tasks')
     .select('id')
     .eq('role_code', 'duty_manager')
@@ -342,7 +342,7 @@ export async function getTodayApprovedDutyManagerTasks(restaurantId: string): Pr
   }
   
   // 第二步：查询这些任务今天的已审核通过记录
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('roleplay_task_records')
     .select('task_id, review_status, reviewed_at')
     .eq('restaurant_id', restaurantId)
@@ -364,7 +364,7 @@ export async function getCompletedTasksInRange(
   endDate: string
 ): Promise<string[]> {
   // First get the user's restaurant_id and role_code
-  const { data: userData, error: userError } = await supabase
+  const { data: userData, error: userError } = await getSupabase()
     .from('roleplay_users')
     .select(`
       restaurant_id,
@@ -389,7 +389,7 @@ export async function getCompletedTasksInRange(
   }
   
   // Get all tasks for this role in this restaurant
-  const { data: roleTasks, error: tasksError } = await supabase
+  const { data: roleTasks, error: tasksError } = await getSupabase()
     .from('roleplay_tasks')
     .select('id')
     .eq('restaurant_id', restaurantId)
@@ -407,7 +407,7 @@ export async function getCompletedTasksInRange(
   }
   
   // Now get all completed records for these tasks in this restaurant in the date range
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('roleplay_task_records')
     .select('task_id')
     .eq('restaurant_id', restaurantId)
@@ -427,7 +427,7 @@ export async function getCompletedTasksInRange(
 // 获取待审核的值班经理任务
 export async function getPendingDutyTasks(restaurantId: string) {
   // 首先获取所有duty_manager角色的任务ID
-  const { data: dutyManagerTasks, error: tasksError } = await supabase
+  const { data: dutyManagerTasks, error: tasksError } = await getSupabase()
     .from('roleplay_tasks')
     .select('id')
     .eq('role_code', 'duty_manager')
@@ -442,7 +442,7 @@ export async function getPendingDutyTasks(restaurantId: string) {
   }
   
   // 然后查询这些任务的待审核记录
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('roleplay_task_records')
     .select('*')
     .eq('restaurant_id', restaurantId)
@@ -482,7 +482,7 @@ export async function uploadTaskMedia(
 
   const path = `${folder}/${date}/${taskId}_${timestamp}.${ext}`
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await getSupabase().storage
     .from('RolePlay')
     .upload(path, file, {
       cacheControl: '3600',
@@ -514,7 +514,7 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
   const now = testTime || new Date()
   
   // First get the user's restaurant_id and role_code
-  const { data: userData, error: userError } = await supabase
+  const { data: userData, error: userError } = await getSupabase()
     .from('roleplay_users')
     .select(`
       restaurant_id,
@@ -542,7 +542,7 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
   const today = await getBusinessDateAsync(now, restaurantId)
   
   // Get all tasks for this role in this restaurant
-  const { data: roleTasks, error: tasksError } = await supabase
+  const { data: roleTasks, error: tasksError } = await getSupabase()
     .from('roleplay_tasks')
     .select('id')
     .eq('restaurant_id', restaurantId)
@@ -560,7 +560,7 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
   }
   
   // Now get all task records for these tasks in this restaurant today
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('roleplay_task_records')
     .select('task_id, status, created_at, submission_type, review_status')
     .eq('restaurant_id', restaurantId)
@@ -616,7 +616,7 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
   try {
     // 1. 获取餐厅特定的期间定义
     // Updated: 2025-08-04 - Fetch restaurant-specific periods
-    const { data: periods } = await supabase
+    const { data: periods } = await getSupabase()
       .from('roleplay_workflow_periods')
       .select('*')
       .eq('restaurant_id', restaurantId)

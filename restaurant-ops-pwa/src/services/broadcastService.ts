@@ -179,10 +179,24 @@ class BroadcastService {
 }
 */
 
-// Export singleton instance
-export const broadcastService = new BroadcastService()
+// Export singleton instance - 使用 Proxy 实现懒加载
+let broadcastServiceInstance: BroadcastService | null = null;
 
-// Setup storage fallback on initialization
-if (typeof window !== 'undefined') {
-  broadcastService.setupStorageFallback()
-}
+const getBroadcastService = () => {
+  if (!broadcastServiceInstance) {
+    broadcastServiceInstance = new BroadcastService();
+    // Setup storage fallback on initialization
+    if (typeof window !== 'undefined') {
+      broadcastServiceInstance.setupStorageFallback();
+    }
+  }
+  return broadcastServiceInstance;
+};
+
+export const broadcastService = new Proxy({} as BroadcastService, {
+  get(target, prop) {
+    const instance = getBroadcastService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

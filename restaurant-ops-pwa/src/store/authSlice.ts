@@ -1,7 +1,7 @@
 // Authentication slice for Redux store
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import type { PayloadAction } from '@reduxjs/toolkit'
-import { supabase } from '../services/supabase'
+import { getSupabase } from '../services/supabase'
 import type { UserRole } from '../types/database'
 
 interface UserProfile {
@@ -28,7 +28,7 @@ const initialState: AuthState = {
 export const signIn = createAsyncThunk(
   'auth/signIn',
   async ({ email, password }: { email: string; password: string }) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await getSupabase().auth.signInWithPassword({
       email,
       password,
     })
@@ -36,7 +36,7 @@ export const signIn = createAsyncThunk(
     if (error) throw error
 
     // Fetch user profile
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await getSupabase()
       .from('user_profiles')
       .select('*')
       .eq('id', data.user.id)
@@ -49,18 +49,18 @@ export const signIn = createAsyncThunk(
 )
 
 export const signOut = createAsyncThunk('auth/signOut', async () => {
-  const { error } = await supabase.auth.signOut()
+  const { error } = await getSupabase().auth.signOut()
   if (error) throw error
 })
 
 export const getCurrentUser = createAsyncThunk(
   'auth/getCurrentUser',
   async () => {
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const { data: { user }, error } = await getSupabase().auth.getUser()
     
     if (error || !user) throw new Error('Not authenticated')
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await getSupabase()
       .from('user_profiles')
       .select('*')
       .eq('id', user.id)

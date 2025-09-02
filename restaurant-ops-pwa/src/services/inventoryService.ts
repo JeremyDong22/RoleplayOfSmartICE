@@ -354,5 +354,20 @@ class InventoryService {
   }
 }
 
-// 导出单例
-export const inventoryService = new InventoryService()
+// 导出单例 - 使用 Proxy 实现懒加载
+let inventoryServiceInstance: InventoryService | null = null;
+
+const getInventoryService = () => {
+  if (!inventoryServiceInstance) {
+    inventoryServiceInstance = new InventoryService();
+  }
+  return inventoryServiceInstance;
+};
+
+export const inventoryService = new Proxy({} as InventoryService, {
+  get(target, prop) {
+    const instance = getInventoryService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

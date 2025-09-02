@@ -10,9 +10,19 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { LoginPageEnhanced } from './pages/Login/LoginPageEnhanced'
 import { RoleSelection } from './pages/RoleSelection'
-import { ManagerDashboard } from './pages/ManagerDashboard-new'
-import { ChefDashboard } from './pages/ChefDashboard-new'
-import DutyManagerDashboard from './pages/DutyManagerDashboard'
+// Use lazy loading for dashboard components to avoid circular dependencies
+import { lazy, Suspense } from 'react'
+import { CircularProgress, Box } from '@mui/material'
+
+// VERSION 1.0.1 - Using lazy loading for dashboards
+console.log('[APP v1.0.1] Loading with lazy dashboard components');
+
+const ManagerDashboard = lazy(() => {
+  console.log('[APP v1.0.1] Lazy loading ManagerDashboard');
+  return import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }));
+});
+const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new').then(module => ({ default: module.ChefDashboard })))
+const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard'))
 import ProfilePageEnhanced from './pages/ProfilePage/ProfilePageEnhanced'
 import TestFloatingCamera from './pages/TestFloatingCamera'
 import { DutyManagerProvider } from './contexts/DutyManagerContext'
@@ -35,7 +45,7 @@ import { initializeCacheManager } from './utils/cacheManager'
 import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
 import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton'
 import { faceModelManager } from './services/faceModelManager'
-import { supabase } from './services/supabase'
+import { getSupabase } from './services/supabase'
 
 // CEO Dashboard imports
 import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
@@ -87,7 +97,15 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <ManagerDashboard />,
+        element: (
+          <Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+              <CircularProgress />
+            </Box>
+          }>
+            <ManagerDashboard />
+          </Suspense>
+        ),
       },
       {
         path: 'profile',
@@ -110,7 +128,15 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <ChefDashboard />,
+        element: (
+          <Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+              <CircularProgress />
+            </Box>
+          }>
+            <ChefDashboard />
+          </Suspense>
+        ),
       },
       {
         path: 'profile',
@@ -133,7 +159,15 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <DutyManagerDashboard />,
+        element: (
+          <Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+              <CircularProgress />
+            </Box>
+          }>
+            <DutyManagerDashboard />
+          </Suspense>
+        ),
       },
       {
         path: 'profile',

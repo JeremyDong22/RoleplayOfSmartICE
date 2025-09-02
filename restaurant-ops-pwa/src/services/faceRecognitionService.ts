@@ -419,4 +419,20 @@ class FaceRecognitionService {
 }
 
 // Export singleton instance
-export const faceRecognitionService = new FaceRecognitionService()
+// Export singleton - 使用 Proxy 实现懒加载
+let faceRecognitionServiceInstance: FaceRecognitionService | null = null;
+
+const getFaceRecognitionService = () => {
+  if (!faceRecognitionServiceInstance) {
+    faceRecognitionServiceInstance = new FaceRecognitionService();
+  }
+  return faceRecognitionServiceInstance;
+};
+
+export const faceRecognitionService = new Proxy({} as FaceRecognitionService, {
+  get(target, prop) {
+    const instance = getFaceRecognitionService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

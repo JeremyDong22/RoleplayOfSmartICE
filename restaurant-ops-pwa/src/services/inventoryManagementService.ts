@@ -5,7 +5,7 @@
  * Purpose: 库存管理核心服务，连接到实时库存视图和其他数据库表
  */
 
-import { supabase } from './supabase'
+import { getSupabase } from './supabase'
 import { getAuthService } from './authService'
 import { restaurantConfigService } from './restaurantConfigService'
 import { inventoryRealtimeService } from './inventoryRealtimeService'
@@ -133,7 +133,7 @@ class InventoryManagementService {
       }
 
       // Get item name from item ID
-      const { data: item } = await supabase
+      const { data: item } = await getSupabase()
         .from('roleplay_inventory_items')
         .select('item_name')
         .eq('id', itemId)
@@ -147,7 +147,7 @@ class InventoryManagementService {
       const snapshotDate = new Date().toISOString()
 
       // Create a task record for the snapshot
-      const { error } = await supabase
+      const { error } = await getSupabase()
         .from('roleplay_task_records')
         .insert({
           id: snapshotId,
@@ -211,7 +211,7 @@ class InventoryManagementService {
         const item = items[i]
         
         // Get item name
-        const { data: itemData } = await supabase
+        const { data: itemData } = await getSupabase()
           .from('roleplay_inventory_items')
           .select('item_name')
           .eq('id', item.itemId)
@@ -240,7 +240,7 @@ class InventoryManagementService {
       }
 
       if (records.length > 0) {
-        const { error } = await supabase
+        const { error } = await getSupabase()
           .from('roleplay_task_records')
           .insert(records)
 
@@ -264,7 +264,7 @@ class InventoryManagementService {
         return []
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('roleplay_task_records')
         .select('*')
         .eq('restaurant_id', restaurantConfig.id)
@@ -302,7 +302,7 @@ class InventoryManagementService {
         return []
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('roleplay_inventory_records_view')
         .select('*')
         .eq('restaurant_id', restaurantConfig.id)
@@ -413,7 +413,7 @@ class InventoryManagementService {
         warning_quantity: item.warning_quantity || 10
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('roleplay_inventory_items')
         .insert(newItem)
         .select()
@@ -464,7 +464,7 @@ class InventoryManagementService {
       const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
       // Get item name
-      const { data: itemData } = await supabase
+      const { data: itemData } = await getSupabase()
         .from('roleplay_inventory_items')
         .select('item_name')
         .eq('id', itemId)
@@ -474,7 +474,7 @@ class InventoryManagementService {
         return { averageDaily: 0, trend: 'stable', predictedStockout: null }
       }
 
-      const { data: records } = await supabase
+      const { data: records } = await getSupabase()
         .from('roleplay_inventory_records_view')
         .select('*')
         .eq('restaurant_id', restaurantConfig.id)
@@ -531,7 +531,7 @@ class InventoryManagementService {
       }
 
       // Get item name
-      const { data: item } = await supabase
+      const { data: item } = await getSupabase()
         .from('roleplay_inventory_items')
         .select('item_name')
         .eq('id', itemId)
@@ -542,7 +542,7 @@ class InventoryManagementService {
       }
 
       // Create a task record for the ignore/unignore action
-      const { error } = await supabase
+      const { error } = await getSupabase()
         .from('roleplay_task_records')
         .insert({
           restaurant_id: restaurantConfig.id,
@@ -581,7 +581,7 @@ class InventoryManagementService {
       }
 
       // Create a task record for the reset action
-      const { error } = await supabase
+      const { error } = await getSupabase()
         .from('roleplay_task_records')
         .insert({
           restaurant_id: restaurantConfig.id,
@@ -630,4 +630,20 @@ class InventoryManagementService {
   }
 }
 
-export const inventoryManagementService = new InventoryManagementService()
+// Export singleton - 使用 Proxy 实现懒加载
+let inventoryManagementServiceInstance: InventoryManagementService | null = null;
+
+const getInventoryManagementService = () => {
+  if (!inventoryManagementServiceInstance) {
+    inventoryManagementServiceInstance = new InventoryManagementService();
+  }
+  return inventoryManagementServiceInstance;
+};
+
+export const inventoryManagementService = new Proxy({} as InventoryManagementService, {
+  get(target, prop) {
+    const instance = getInventoryManagementService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

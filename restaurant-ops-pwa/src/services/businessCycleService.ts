@@ -4,8 +4,8 @@
 // Updated: 2025-08-02 - Added test time support for date queries
 // Updated: 2025-08-11 - Added period calculation functions from deprecated workflowParser
 
-import { supabase } from './supabase'
-import { restaurantConfigService } from './restaurantConfigService'
+import { getSupabase } from './supabase'
+import { getRestaurantConfigService } from './restaurantConfigService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { getLocalDateString } from '../utils/dateFormat'
 import type { WorkflowPeriod } from '../types/task.types'
@@ -40,14 +40,14 @@ interface BusinessCycle {
 async function getBusinessHoursFromDatabase(restaurantId?: string): Promise<BusinessHours> {
   try {
     // Get restaurant ID if not provided
-    const targetRestaurantId = restaurantId || await restaurantConfigService.getRestaurantId()
+    const targetRestaurantId = restaurantId || await getRestaurantConfigService().getRestaurantId()
     
     if (!targetRestaurantId) {
       console.error('[BusinessCycleService] No restaurant ID available')
       return { openingTime: null, closingTime: null }
     }
     
-    const { data: periods, error } = await supabase
+    const { data: periods, error } = await getSupabase()
       .from('roleplay_workflow_periods')
       .select('start_time, end_time, display_order')
       .eq('restaurant_id', targetRestaurantId)
@@ -149,7 +149,7 @@ export async function getBusinessCycleTaskCompletion(
   
   
   // 1. 获取所有需要完成的任务（Manager + DutyManager，排除 Chef）
-  const { data: allTasks, error: tasksError } = await supabase
+  const { data: allTasks, error: tasksError } = await getSupabase()
     .from('roleplay_tasks')
     .select('id, title, role_code, period_id')
     .in('role_code', ['manager', 'duty_manager'])  // 排除 chef
@@ -163,7 +163,7 @@ export async function getBusinessCycleTaskCompletion(
   }
 
   // 2. 获取今天（UTC日期）所有已approved的任务
-  const { data: completedRecords, error: recordsError } = await supabase
+  const { data: completedRecords, error: recordsError } = await getSupabase()
     .from('roleplay_task_records')
     .select('task_id, status, review_status')
     .eq('restaurant_id', restaurantId)

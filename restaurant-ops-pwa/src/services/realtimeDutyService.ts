@@ -328,4 +328,20 @@ class RealtimeDutyService {
   }
 }
 
-export const realtimeDutyService = new RealtimeDutyService()
+// Export singleton - 使用 Proxy 实现懒加载
+let realtimeDutyServiceInstance: RealtimeDutyService | null = null;
+
+const getRealtimeDutyService = () => {
+  if (!realtimeDutyServiceInstance) {
+    realtimeDutyServiceInstance = new RealtimeDutyService();
+  }
+  return realtimeDutyServiceInstance;
+};
+
+export const realtimeDutyService = new Proxy({} as RealtimeDutyService, {
+  get(target, prop) {
+    const instance = getRealtimeDutyService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
 import type { TaskTemplate } from '../types/task.types'
 import { realtimeDutyService } from '../services/realtimeDutyService'
-import { supabase } from '../services/supabase'
+import { getSupabase } from '../services/supabase'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
 import { restaurantConfigService } from '../services/restaurantConfigService'

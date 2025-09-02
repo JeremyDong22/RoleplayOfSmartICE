@@ -200,4 +200,20 @@ class InventoryRealtimeService {
   }
 }
 
-export const inventoryRealtimeService = new InventoryRealtimeService()
+// Export singleton - 使用 Proxy 实现懒加载
+let inventoryRealtimeServiceInstance: InventoryRealtimeService | null = null;
+
+const getInventoryRealtimeService = () => {
+  if (!inventoryRealtimeServiceInstance) {
+    inventoryRealtimeServiceInstance = new InventoryRealtimeService();
+  }
+  return inventoryRealtimeServiceInstance;
+};
+
+export const inventoryRealtimeService = new Proxy({} as InventoryRealtimeService, {
+  get(target, prop) {
+    const instance = getInventoryRealtimeService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

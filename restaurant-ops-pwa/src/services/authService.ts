@@ -32,10 +32,12 @@ class AuthService {
   
   private constructor() {
     // Private constructor for singleton
+    console.log('[AUTH SERVICE v2.0.0] Instance created');
   }
   
   static getInstance(): AuthService {
     if (!AuthService.instance) {
+      console.log('[AUTH SERVICE v2.0.0] Creating new instance via getInstance()');
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
@@ -228,12 +230,16 @@ class AuthService {
   }
 }
 
+// VERSION: 1.0.1 - Module loaded
+console.log('[AUTH SERVICE v2.0.0] Module loaded - using Proxy for lazy loading');
+
 // Export singleton getter to avoid immediate instantiation
 export const getAuthService = () => AuthService.getInstance();
 
 // For backward compatibility - use Proxy for truly lazy loading
 export const authService = new Proxy({} as AuthService, {
   get(target, prop) {
+    console.log('[AUTH SERVICE v2.0.0] Proxy accessed for property:', prop);
     const instance = AuthService.getInstance();
     const value = (instance as any)[prop];
     return typeof value === 'function' ? value.bind(instance) : value;

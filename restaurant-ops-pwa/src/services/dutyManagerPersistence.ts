@@ -336,4 +336,20 @@ export class DutyManagerPersistenceService {
   }
 }
 
-export const dutyManagerPersistence = new DutyManagerPersistenceService()
+// Export singleton - 使用 Proxy 实现懒加载
+let dutyManagerPersistenceInstance: DutyManagerPersistenceService | null = null;
+
+const getDutyManagerPersistence = () => {
+  if (!dutyManagerPersistenceInstance) {
+    dutyManagerPersistenceInstance = new DutyManagerPersistenceService();
+  }
+  return dutyManagerPersistenceInstance;
+};
+
+export const dutyManagerPersistence = new Proxy({} as DutyManagerPersistenceService, {
+  get(target, prop) {
+    const instance = getDutyManagerPersistence();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

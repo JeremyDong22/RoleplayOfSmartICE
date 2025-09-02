@@ -42,6 +42,7 @@ export interface InventoryHistoryRecord {
   value_out: number | null  // 出库价值
   restaurant_name: string
   raw_metadata: any
+  photo_urls?: string[]  // 图片URLs
 }
 
 // 历史记录筛选器类型
@@ -249,4 +250,20 @@ class InventoryHistoryService {
 }
 
 // 导出单例
-export const inventoryHistoryService = new InventoryHistoryService()
+// Export singleton - 使用 Proxy 实现懒加载
+let inventoryHistoryServiceInstance: InventoryHistoryService | null = null;
+
+const getInventoryHistoryService = () => {
+  if (!inventoryHistoryServiceInstance) {
+    inventoryHistoryServiceInstance = new InventoryHistoryService();
+  }
+  return inventoryHistoryServiceInstance;
+};
+
+export const inventoryHistoryService = new Proxy({} as InventoryHistoryService, {
+  get(target, prop) {
+    const instance = getInventoryHistoryService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

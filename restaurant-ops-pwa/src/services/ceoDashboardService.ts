@@ -1340,7 +1340,23 @@ class CEODashboardService {
   }
 }
 
-export const ceoDashboardService = new CEODashboardService();
+// Export singleton - 使用 Proxy 实现懒加载
+let ceoDashboardServiceInstance: CEODashboardService | null = null;
+
+const getCEODashboardService = () => {
+  if (!ceoDashboardServiceInstance) {
+    ceoDashboardServiceInstance = new CEODashboardService();
+  }
+  return ceoDashboardServiceInstance;
+};
+
+export const ceoDashboardService = new Proxy({} as CEODashboardService, {
+  get(target, prop) {
+    const instance = getCEODashboardService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 
 // Re-export types for easier imports
 export type {

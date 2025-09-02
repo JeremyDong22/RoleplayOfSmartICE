@@ -156,5 +156,20 @@ class RestaurantStateService {
   }
 }
 
-// 创建单例
-export const restaurantStateService = new RestaurantStateService()
+// 创建单例 - 使用 Proxy 实现懒加载
+let restaurantStateServiceInstance: RestaurantStateService | null = null;
+
+const getRestaurantStateService = () => {
+  if (!restaurantStateServiceInstance) {
+    restaurantStateServiceInstance = new RestaurantStateService();
+  }
+  return restaurantStateServiceInstance;
+};
+
+export const restaurantStateService = new Proxy({} as RestaurantStateService, {
+  get(target, prop) {
+    const instance = getRestaurantStateService();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});

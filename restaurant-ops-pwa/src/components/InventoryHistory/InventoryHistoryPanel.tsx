@@ -36,7 +36,8 @@ import {
   Inventory as InventoryIcon,
   CalendarToday as CalendarIcon,
   Download as DownloadIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Image as ImageIcon
 } from '@mui/icons-material'
 import { format, parseISO, startOfDay, endOfDay, startOfMonth } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -59,7 +60,10 @@ const formatQuantity = (value: number | null, unit?: string | null) => {
 
 const formatDateTime = (date: string) => {
   if (!date) return '-'
-  return format(parseISO(date), 'MM-dd HH:mm', { locale: zhCN })
+  // Convert to Beijing time (UTC+8)
+  const dateObj = parseISO(date)
+  const beijingDate = new Date(dateObj.getTime() + (8 * 60 * 60 * 1000))
+  return format(beijingDate, 'MM-dd HH:mm', { locale: zhCN })
 }
 
 interface InventoryHistoryPanelProps {
@@ -207,69 +211,68 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
         </Stack>
         
         
-        {/* Filters */}
-        <Grid container spacing={2} alignItems="center">
-          <Grid size={4}>
-            <Autocomplete
-              value={filter.item_name || null}
-              onChange={(_, newValue) => setFilter(prev => ({ ...prev, item_name: newValue || '' }))}
-              options={uniqueItems}
-              renderInput={(params) => (
-                <TextField {...params} label="物品" size="small" placeholder="全部物品" />
-              )}
-              freeSolo
-              fullWidth
-            />
-          </Grid>
+        {/* Filters - Responsive Layout */}
+        <Stack spacing={2}>
+          {/* Item Search */}
+          <Autocomplete
+            value={filter.item_name || null}
+            onChange={(_, newValue) => setFilter(prev => ({ ...prev, item_name: newValue || '' }))}
+            options={uniqueItems}
+            renderInput={(params) => (
+              <TextField {...params} label="物品" size="small" placeholder="全部物品" />
+            )}
+            freeSolo
+            fullWidth
+          />
           
-          <Grid size={3}>
-            <ToggleButtonGroup
-              value={filter.department || 'all'}
-              exclusive
-              onChange={(_, value) => value && setFilter(prev => ({ ...prev, department: value as '前厅' | '后厨' | 'all' }))}
+          {/* Department Filter */}
+          <ToggleButtonGroup
+            value={filter.department || 'all'}
+            exclusive
+            onChange={(_, value) => value && setFilter(prev => ({ ...prev, department: value as '前厅' | '后厨' | 'all' }))}
+            size="small"
+            fullWidth
+          >
+            <ToggleButton value="all" sx={{ flex: 1 }}>全部</ToggleButton>
+            <ToggleButton value="前厅" sx={{ flex: 1 }}>前厅</ToggleButton>
+            <ToggleButton value="后厨" sx={{ flex: 1 }}>后厨</ToggleButton>
+          </ToggleButtonGroup>
+          
+          {/* Date Range - Side by side on mobile */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              type="date"
               size="small"
-              fullWidth
-            >
-              <ToggleButton value="all">全部</ToggleButton>
-              <ToggleButton value="前厅">前厅</ToggleButton>
-              <ToggleButton value="后厨">后厨</ToggleButton>
-            </ToggleButtonGroup>
-          </Grid>
-          
-          <Grid size={5}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <TextField
-                type="date"
-                size="small"
-                label="开始日期"
-                value={filter.date_from ? format(parseISO(filter.date_from), 'yyyy-MM-dd') : ''}
-                onChange={(e) => {
-                  const date = e.target.value ? startOfDay(new Date(e.target.value)) : null
-                  setFilter(prev => ({ 
-                    ...prev, 
-                    date_from: date ? format(date, "yyyy-MM-dd'T'HH:mm:ss") : ''
-                  }))
-                }}
-                InputLabelProps={{ shrink: true }}
-              />
-              <Typography variant="body2">至</Typography>
-              <TextField
-                type="date"
-                size="small"
-                label="结束日期"
-                value={filter.date_to ? format(parseISO(filter.date_to), 'yyyy-MM-dd') : ''}
-                onChange={(e) => {
-                  const date = e.target.value ? endOfDay(new Date(e.target.value)) : null
-                  setFilter(prev => ({ 
-                    ...prev, 
-                    date_to: date ? format(date, "yyyy-MM-dd'T'HH:mm:ss") : ''
-                  }))
-                }}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Stack>
-          </Grid>
-        </Grid>
+              label="开始"
+              value={filter.date_from ? format(parseISO(filter.date_from), 'yyyy-MM-dd') : ''}
+              onChange={(e) => {
+                const date = e.target.value ? startOfDay(new Date(e.target.value)) : null
+                setFilter(prev => ({ 
+                  ...prev, 
+                  date_from: date ? format(date, "yyyy-MM-dd'T'HH:mm:ss") : ''
+                }))
+              }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ flex: 1 }}
+            />
+            <Typography variant="caption" sx={{ flexShrink: 0 }}>至</Typography>
+            <TextField
+              type="date"
+              size="small"
+              label="结束"
+              value={filter.date_to ? format(parseISO(filter.date_to), 'yyyy-MM-dd') : ''}
+              onChange={(e) => {
+                const date = e.target.value ? endOfDay(new Date(e.target.value)) : null
+                setFilter(prev => ({ 
+                  ...prev, 
+                  date_to: date ? format(date, "yyyy-MM-dd'T'HH:mm:ss") : ''
+                }))
+              }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+        </Stack>
       </Paper>
       
       {/* History Table */}
@@ -283,22 +286,23 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
             暂无历史记录
           </Alert>
         ) : (
-          <TableContainer sx={{ height: '100%' }}>
+          <TableContainer sx={{ height: '100%', overflowX: 'auto' }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>时间</TableCell>
-                  <TableCell>任务名称</TableCell>
-                  <TableCell>操作员</TableCell>
-                  <TableCell>部门</TableCell>
-                  <TableCell>物品名称</TableCell>
-                  <TableCell align="right">数量</TableCell>
-                  <TableCell>单位</TableCell>
-                  <TableCell align="right">单价</TableCell>
-                  <TableCell align="right">总价</TableCell>
-                  <TableCell>质量检查</TableCell>
-                  <TableCell>类型</TableCell>
-                  <TableCell>备注</TableCell>
+                  <TableCell sx={{ minWidth: 100 }}>时间</TableCell>
+                  <TableCell sx={{ minWidth: 120 }}>任务名称</TableCell>
+                  <TableCell sx={{ minWidth: 80 }}>操作员</TableCell>
+                  <TableCell sx={{ minWidth: 80 }}>部门</TableCell>
+                  <TableCell sx={{ minWidth: 120 }}>物品名称</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 80 }}>数量</TableCell>
+                  <TableCell sx={{ minWidth: 60 }}>单位</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 80 }}>单价</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 80 }}>总价</TableCell>
+                  <TableCell sx={{ minWidth: 80 }}>质量检查</TableCell>
+                  <TableCell sx={{ minWidth: 80 }}>类型</TableCell>
+                  <TableCell sx={{ minWidth: 100 }}>图片</TableCell>
+                  <TableCell sx={{ minWidth: 120 }}>备注</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -360,6 +364,44 @@ export const InventoryHistoryPanel: React.FC<InventoryHistoryPanelProps> = ({
                           size="small"
                           color={isIn ? 'success' : 'error'}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {record.photo_urls && record.photo_urls.length > 0 ? (
+                          <Stack direction="row" spacing={0.5}>
+                            {record.photo_urls.slice(0, 3).map((url, idx) => (
+                              <Box
+                                key={idx}
+                                component="img"
+                                src={url}
+                                alt={`图片${idx + 1}`}
+                                sx={{
+                                  width: 40,
+                                  height: 40,
+                                  objectFit: 'cover',
+                                  borderRadius: 1,
+                                  cursor: 'pointer',
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                  '&:hover': {
+                                    transform: 'scale(1.1)',
+                                    zIndex: 1,
+                                    boxShadow: 2
+                                  }
+                                }}
+                                onClick={() => window.open(url, '_blank')}
+                              />
+                            ))}
+                            {record.photo_urls.length > 3 && (
+                              <Chip
+                                label={`+${record.photo_urls.length - 3}`}
+                                size="small"
+                                sx={{ height: 40 }}
+                              />
+                            )}
+                          </Stack>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">-</Typography>
+                        )}
                       </TableCell>
                       <TableCell>{record.notes || record.loss_reason || '-'}</TableCell>
                     </TableRow>
