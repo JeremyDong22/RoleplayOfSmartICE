@@ -82,7 +82,6 @@ export const RefreshProvider: React.FC<RefreshProviderProps> = ({ children }) =>
       }
       
       // 软刷新：重新加载数据但不清理缓存
-      console.log('[RefreshContext] Performing soft refresh...')
       
       // 1. 重新初始化核心服务
       const reinitPromises = []

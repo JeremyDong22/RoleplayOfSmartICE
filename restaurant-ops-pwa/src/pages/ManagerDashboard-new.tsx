@@ -156,7 +156,6 @@ interface TaskStatus {
 
 
 export const ManagerDashboard: React.FC = () => {
-  console.log('[MANAGER DASHBOARD v2.0.0] Component starting to render - fixed supabase import');
   // Check if role is correct
   const selectedRole = localStorage.getItem('selectedRole')
   
