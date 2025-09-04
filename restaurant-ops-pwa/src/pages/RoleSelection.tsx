@@ -1,24 +1,76 @@
 // Role selection page for choosing between Manager, Chef, Duty Manager and CEO
 // Updated: 2025-07-24 - Added authentication check for role access
 // Updated: 2025-08-04 - Added CEO role selection
+// Updated: 2025-09-04 - Added restaurant details display (name, address, city)
 import { useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, Paper, Button, Alert, IconButton } from '@mui/material'
+import { Box, Container, Typography, Paper, Button, Alert, IconButton, Card, CardContent } from '@mui/material'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount'
 import NightlightIcon from '@mui/icons-material/Nightlight'
 import LogoutIcon from '@mui/icons-material/Logout'
 import BusinessIcon from '@mui/icons-material/Business'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
+import LocationOnIcon from '@mui/icons-material/LocationOn'
+import StorefrontIcon from '@mui/icons-material/Storefront'
 import { authService } from '../services/authService'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../services/supabase'
+
+interface RestaurantInfo {
+  name: string
+  address: string
+  city: string
+}
 
 export const RoleSelection = () => {
   const navigate = useNavigate()
   const [error, setError] = useState('')
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null)
   const currentUser = authService.getCurrentUser()
   
   // Check if user is administrator
   const isAdministrator = currentUser?.roleCode === 'administrator'
+  
+  // Fetch restaurant information
+  useEffect(() => {
+    const fetchRestaurantInfo = async () => {
+      if (!currentUser?.username) return
+      
+      try {
+        // Fetch user's restaurant information
+        const { data, error } = await supabase
+          .from('roleplay_users')
+          .select(`
+            restaurant_id,
+            roleplay_restaurants (
+              name,
+              address,
+              city
+            )
+          `)
+          .eq('username', currentUser.username)
+          .eq('is_active', true)
+          .single()
+        
+        if (error) {
+          console.error('Error fetching restaurant info:', error)
+          return
+        }
+        
+        if (data?.roleplay_restaurants) {
+          setRestaurantInfo({
+            name: data.roleplay_restaurants.name || '未知餐厅',
+            address: data.roleplay_restaurants.address || '未知地址',
+            city: data.roleplay_restaurants.city || '未知城市'
+          })
+        }
+      } catch (err) {
+        console.error('Failed to fetch restaurant info:', err)
+      }
+    }
+    
+    fetchRestaurantInfo()
+  }, [currentUser?.username])
   
   // Debug: Log current user info
 
@@ -137,10 +189,40 @@ export const RoleSelection = () => {
         <Typography 
           variant="h6" 
           align="center" 
-          sx={{ mb: 2 }}
+          sx={{ mb: 1 }}
         >
           欢迎，{currentUser?.name} ({currentUser?.role})
         </Typography>
+        
+        {/* Restaurant info card */}
+        {restaurantInfo && (
+          <Card 
+            sx={{ 
+              mb: 3, 
+              maxWidth: 600, 
+              width: '100%',
+              backgroundColor: 'rgba(25, 118, 210, 0.08)',
+              border: '1px solid rgba(25, 118, 210, 0.3)'
+            }}
+          >
+            <CardContent sx={{ py: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <StorefrontIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    {restaurantInfo.name}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LocationOnIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    {restaurantInfo.city} · {restaurantInfo.address}
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
         
         {/* Special message for administrator */}
         {currentUser?.roleCode === 'administrator' && (

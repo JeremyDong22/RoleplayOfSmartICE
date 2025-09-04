@@ -35,6 +35,7 @@ import { inventoryManagementService } from '../../services/inventoryManagementSe
 import { inventoryService } from '../../services/inventoryService'
 import { inventoryRealtimeService } from '../../services/inventoryRealtimeService'
 import { inventoryHistoryService } from '../../services/inventoryHistoryService'
+import { inventoryOptimizedService } from '../../services/inventoryOptimizedService'
 import { authService } from '../../services/authService'
 import { restaurantConfigService } from '../../services/restaurantConfigService'
 import { useRefreshable } from '../../contexts/RefreshContext'
@@ -120,29 +121,35 @@ export const InventoryManagement: React.FC = () => {
       return
     }
     
+    const loadStartTime = performance.now()
+    const timings: Record<string, number> = {}
+    
     try {
       setDataLoading(true)
       setError(null)
       
       // Load restaurant ID first
+      const restaurantStart = performance.now()
       const restaurantConfig = await restaurantConfigService.getCurrentRestaurant()
       let currentRestaurantId = ''
       if (restaurantConfig?.id) {
         currentRestaurantId = restaurantConfig.id
         setRestaurantId(currentRestaurantId)
       }
+      timings['1_getRestaurant'] = performance.now() - restaurantStart
       
-      // Load all data in parallel for better performance
-      const [predictions, items, realtimeData, historyData] = await Promise.all([
-        inventoryManagementService.getAllPredictions(),
-        inventoryService.getAllInventory(),
-        inventoryRealtimeService.getRealtimeInventory(),
-        currentRestaurantId ? inventoryHistoryService.getHistoryRecords({
-          restaurant_id: currentRestaurantId,
-          operation_type: 'all',
-          department: 'all'
-        }) : Promise.resolve([])
-      ])
+      // 使用优化的批量查询服务 - 单次请求获取所有数据
+      const batchStart = performance.now()
+      const batchData = await inventoryOptimizedService.getBatchInventoryData(forceReload)
+      timings['2_batchQuery'] = performance.now() - batchStart
+      
+      // 解构批量数据
+      const realtimeData = batchData.realtimeItems
+      const items = batchData.inventoryItems
+      const historyData = batchData.historyRecords
+      
+      // 从 realtimeData 生成 predictions（避免重复查询）
+      const predictions = inventoryRealtimeService.formatForUI(realtimeData)
       
       setInventoryPredictions(predictions)
       setInventoryItems(items)
@@ -177,8 +184,28 @@ export const InventoryManagement: React.FC = () => {
       
       setDataLoaded(true) // 标记数据已加载
       setInitialLoadComplete(true) // 标记初始加载完成
+      
+      // Log performance metrics
+      const processingStart = performance.now()
+      const dataProcessingTime = processingStart - batchStart - timings['2_batchQuery']
+      const totalTime = performance.now() - loadStartTime
+      
+      console.log(`[InventoryManagement] Total load time: ${totalTime.toFixed(2)}ms`)
+      console.log('[InventoryManagement] Load timing breakdown:', {
+        ...timings,
+        '3_dataProcessing': dataProcessingTime.toFixed(2) + 'ms',
+        'TOTAL': totalTime.toFixed(2) + 'ms',
+        'DataSizes': {
+          predictions: predictions.length,
+          items: items.length,
+          realtimeData: realtimeData.length,
+          historyData: historyData.length
+        }
+      })
     } catch (err) {
+      const totalTime = performance.now() - loadStartTime
       console.error('Error loading inventory data:', err)
+      console.error(`[InventoryManagement] Failed after ${totalTime.toFixed(2)}ms`)
       setError('加载库存数据失败，请刷新重试')
     } finally {
       setDataLoading(false)
