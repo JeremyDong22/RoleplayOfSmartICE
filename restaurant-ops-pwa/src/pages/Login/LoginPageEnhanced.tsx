@@ -149,6 +149,11 @@ export const LoginPageEnhanced = () => {
     setDetectionProgress(0)
     
     try {
+      // Check if mediaDevices is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('您的浏览器不支持摄像头访问，请使用密码登录')
+      }
+
       // Request camera permission with optimized constraints
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                    (navigator.userAgent.includes('Macintosh') && 'ontouchend' in document)
@@ -194,8 +199,22 @@ export const LoginPageEnhanced = () => {
           }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       setFaceDetectionState('failed')
+      
+      // Set user-friendly error message
+      let errorMessage = '摄像头访问失败，请使用密码登录'
+      if (err?.message?.includes('不支持摄像头访问')) {
+        errorMessage = err.message
+      } else if (err?.name === 'NotAllowedError') {
+        errorMessage = '摄像头权限被拒绝，请允许访问摄像头后重试'
+      } else if (err?.name === 'NotFoundError') {
+        errorMessage = '未检测到摄像头设备，请使用密码登录'
+      } else if (err?.name === 'NotReadableError') {
+        errorMessage = '摄像头正在被其他应用使用，请关闭后重试'
+      }
+      
+      setError(errorMessage)
       setLoginMethod('password')
     }
   }

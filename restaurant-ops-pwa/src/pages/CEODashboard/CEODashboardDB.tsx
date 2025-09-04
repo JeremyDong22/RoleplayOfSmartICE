@@ -231,7 +231,7 @@ export const CEODashboardDB: React.FC = () => {
   // 注册刷新回调
   useRefreshable(async () => {
     await loadData(false); // 刷新时不显示loading
-  }, [selectedDate, department]);
+  }, [selectedDepartment]);
 
   useEffect(() => {
     loadData(true); // 初始加载显示loading
@@ -1022,6 +1022,11 @@ export const CEODashboardDB: React.FC = () => {
                 <Box>
                   <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
                     {alert.restaurant_name}-{alert.department} - {alert.message}
+                    {alert.restaurant_city && alert.restaurant_address && (
+                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
+                        {alert.restaurant_city} - {alert.restaurant_address}
+                      </Typography>
+                    )}
                   </Typography>
                   {alert.type === 'error' && (
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
@@ -1042,7 +1047,16 @@ export const CEODashboardDB: React.FC = () => {
           exclusive
           onChange={handleRestaurantChange}
           aria-label="restaurant selection"
-          sx={{ width: '100%', flexWrap: isMobile ? 'wrap' : 'nowrap' }}
+          sx={{ 
+            width: '100%', 
+            flexWrap: isMobile ? 'wrap' : 'nowrap',
+            gap: isMobile ? 1 : 0,
+            '& .MuiToggleButton-root': {
+              borderRadius: isMobile ? 2 : 0,
+              border: isMobile ? '1px solid' : '1px solid',
+              borderColor: 'divider'
+            }
+          }}
         >
           {combinedRestaurantData.map(restaurant => (
             <ToggleButton 
@@ -1051,20 +1065,66 @@ export const CEODashboardDB: React.FC = () => {
               sx={{ 
                 flex: 1, 
                 minWidth: isMobile ? '45%' : 'auto',
-                position: 'relative'
+                position: 'relative',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: isMobile ? 'flex-start' : 'center',
+                textAlign: isMobile ? 'left' : 'center',
+                p: isMobile ? 1.5 : 1,
+                gap: isMobile ? 0.5 : 1
               }}
             >
-              <RestaurantIcon sx={{ mr: 1 }} />
-              {restaurant.restaurant_name}
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 0.5,
+                width: isMobile ? '100%' : 'auto'
+              }}>
+                <RestaurantIcon sx={{ fontSize: isMobile ? 16 : 20 }} />
+                <Typography 
+                  variant={isMobile ? "body2" : "body1"} 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    fontSize: isMobile ? '0.875rem' : 'inherit'
+                  }}
+                >
+                  {restaurant.restaurant_name}
+                </Typography>
+              </Box>
+              {restaurant.restaurant_address && restaurant.restaurant_city && (
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    display: 'block', 
+                    color: 'text.secondary',
+                    fontSize: isMobile ? '0.75rem' : '0.875rem',
+                    lineHeight: 1.2,
+                    width: '100%',
+                    textAlign: isMobile ? 'left' : 'center'
+                  }}
+                >
+                  {restaurant.restaurant_city} · {restaurant.restaurant_address}
+                </Typography>
+              )}
               {/* 显示合并后的警告数量 */}
               {(restaurant.total_missing_tasks > 0 || restaurant.total_late_tasks > 0 || restaurant.total_error_tasks > 0) && (
-                <Box sx={{ ml: 1, display: 'flex', gap: 0.5 }}>
+                <Box sx={{ 
+                  ml: isMobile ? 0 : 1, 
+                  mt: isMobile ? 0.5 : 0,
+                  display: 'flex', 
+                  gap: 0.5,
+                  justifyContent: isMobile ? 'flex-start' : 'center',
+                  width: isMobile ? '100%' : 'auto'
+                }}>
                   {restaurant.total_missing_tasks > 0 && (
                     <Chip 
                       label={restaurant.total_missing_tasks} 
                       size="small" 
                       color="error"
-                      sx={{ height: 20, minWidth: 24 }}
+                      sx={{ 
+                        height: isMobile ? 18 : 20, 
+                        minWidth: isMobile ? 20 : 24,
+                        fontSize: isMobile ? '0.625rem' : '0.75rem'
+                      }}
                     />
                   )}
                   {restaurant.total_late_tasks > 0 && (
@@ -1072,7 +1132,11 @@ export const CEODashboardDB: React.FC = () => {
                       label={restaurant.total_late_tasks} 
                       size="small" 
                       color="warning"
-                      sx={{ height: 20, minWidth: 24 }}
+                      sx={{ 
+                        height: isMobile ? 18 : 20, 
+                        minWidth: isMobile ? 20 : 24,
+                        fontSize: isMobile ? '0.625rem' : '0.75rem'
+                      }}
                     />
                   )}
                   {restaurant.total_error_tasks > 0 && (
@@ -1080,8 +1144,9 @@ export const CEODashboardDB: React.FC = () => {
                       label={restaurant.total_error_tasks} 
                       size="small" 
                       sx={{ 
-                        height: 20, 
-                        minWidth: 24,
+                        height: isMobile ? 18 : 20, 
+                        minWidth: isMobile ? 20 : 24,
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
                         bgcolor: '#ff9800',
                         color: 'white'
                       }}

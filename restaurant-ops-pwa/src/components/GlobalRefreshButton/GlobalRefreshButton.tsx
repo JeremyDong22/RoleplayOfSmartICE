@@ -195,13 +195,29 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
         }, 1500)
         
       } else if (pressDuration >= 100) { // 避免误触
-        // 短按：硬刷新（原来的硬刷新逻辑）
+        // 短按：硬刷新（强制页面重载）
         console.log('执行硬刷新...')
         setSuccessMessage('正在刷新页面...')
-        await triggerRefresh('hard')
-        // 硬刷新会重载页面，不需要后续处理
+        setShowSuccess(true)
+        
+        // 设置一个超时，确保即使刷新失败按钮也能恢复
+        setTimeout(() => {
+          setIsAnimating(false)
+        }, 3000)
+        
+        try {
+          await triggerRefresh('hard')
+          // 硬刷新会重载页面，通常不会执行到这里
+        } catch (err) {
+          console.error('硬刷新失败，尝试直接重载页面:', err)
+          // 如果 triggerRefresh 失败，直接重载页面
+          setTimeout(() => {
+            window.location.reload()
+          }, 500)
+        }
       }
     } catch (err) {
+      console.error('刷新失败:', err)
       // Show error state
       setShowError(true)
       setTimeout(() => {
@@ -211,6 +227,12 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
     } finally {
       setLongPressProgress(0)
       setIsLongPress(false)
+      // 确保在任何情况下都重置动画状态（如果没有成功或错误状态）
+      if (!showSuccess && !showError) {
+        setTimeout(() => {
+          setIsAnimating(false)
+        }, 500)
+      }
     }
   }
 
@@ -314,8 +336,8 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
           }}
         >
           <Tooltip
-            title={isLongPress ? "松开执行彻底清理（清除所有缓存和存储）" : "点击刷新页面，长按2秒彻底清理"}
-            open={showTooltip}
+            title={isLongPress ? "松开执行彻底清理（清除所有缓存和存储）" : "点击刷新页面，长按2秒彻底清理所有缓存"}
+            open={showTooltip || (!isRefreshing && !isAnimating)}
             placement="top"
           >
             <Box sx={{ position: 'relative' }}>
@@ -361,7 +383,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
                     boxShadow: 6
                   })
                 }}
-                aria-label={isLongPress ? "彻底清理所有缓存" : "刷新页面"}
+                aria-label={isLongPress ? "彻底清理所有缓存和存储" : "硬刷新页面"}
               >
                 {getIcon()}
               </Fab>
