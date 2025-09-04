@@ -42,8 +42,6 @@ import { authService } from './services/authService'
 import { enableSupabaseDebug, testSupabaseQueries } from './utils/debugSupabase'
 import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
-import { CacheManagerUI } from './components/CacheManager/CacheManagerUI'
-import { ClearCacheButton } from './components/ClearCacheButton/ClearCacheButton'
 import { faceModelManager } from './services/faceModelManager'
 import { getSupabase } from './services/supabase'
 
@@ -365,8 +363,6 @@ function App() {
           <DutyManagerProvider>
             <RouterProvider router={router} />
             <NotificationPermission />
-            <CacheManagerUI />
-            <ClearCacheButton />
           </DutyManagerProvider>
         </TaskDataProvider>
       </RefreshProvider>

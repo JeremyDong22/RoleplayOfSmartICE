@@ -2,6 +2,7 @@
  * Global Refresh Floating Action Button Component
  * Created: 2025-08-27
  * Updated: 2025-09-02 - Added short press (soft refresh) and long press (hard refresh)
+ * Updated: 2025-09-04 - Changed short press to hard refresh, long press to complete cache clear
  * Purpose: Provides a unified refresh button with beautiful animations for all pages
  */
 
@@ -69,6 +70,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
   const [isLongPress, setIsLongPress] = useState(false)
   const [longPressProgress, setLongPressProgress] = useState(0)
   const [showTooltip, setShowTooltip] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('刷新成功')
   
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -133,20 +135,71 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
     
     try {
       if (isLongPress || pressDuration >= 2000) {
-        // 长按：硬刷新
-        console.log('执行硬刷新...')
-        await triggerRefresh('hard')
-        // 硬刷新会重载页面，不需要后续处理
-      } else if (pressDuration >= 100) { // 避免误触
-        // 短按：软刷新
-        console.log('执行软刷新...')
-        await triggerRefresh('soft')
-        // Show success state
+        // 长按：彻底清理（更武断的清理方式）
+        console.log('执行彻底清理...')
+        
+        // 清理 localStorage
+        localStorage.clear()
+        
+        // 清理 sessionStorage
+        sessionStorage.clear()
+        
+        // 清理 IndexedDB
+        if ('indexedDB' in window) {
+          const databases = await indexedDB.databases?.() || []
+          for (const db of databases) {
+            if (db.name) {
+              try {
+                await indexedDB.deleteDatabase(db.name)
+                console.log(`Deleted IndexedDB: ${db.name}`)
+              } catch (err) {
+                console.error(`Failed to delete IndexedDB ${db.name}:`, err)
+              }
+            }
+          }
+        }
+        
+        // 清理所有 cookies
+        document.cookie.split(";").forEach((c) => {
+          document.cookie = c
+            .replace(/^ +/, "")
+            .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/")
+        })
+        
+        // 清理所有 cache storage
+        if ('caches' in window) {
+          const cacheNames = await caches.keys()
+          await Promise.all(
+            cacheNames.map(cacheName => {
+              console.log(`Deleting cache: ${cacheName}`)
+              return caches.delete(cacheName)
+            })
+          )
+        }
+        
+        // 注销所有 service workers
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations()
+          for (const registration of registrations) {
+            await registration.unregister()
+            console.log('Unregistered service worker')
+          }
+        }
+        
+        // 显示成功消息并重定向到首页
+        setSuccessMessage('缓存已彻底清理，页面即将刷新...')
         setShowSuccess(true)
         setTimeout(() => {
-          setShowSuccess(false)
-          setIsAnimating(false)
+          window.location.href = '/'
+          window.location.reload()
         }, 1500)
+        
+      } else if (pressDuration >= 100) { // 避免误触
+        // 短按：硬刷新（原来的硬刷新逻辑）
+        console.log('执行硬刷新...')
+        setSuccessMessage('正在刷新页面...')
+        await triggerRefresh('hard')
+        // 硬刷新会重载页面，不需要后续处理
       }
     } catch (err) {
       // Show error state
@@ -201,7 +254,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
       return <CheckIcon />
     }
     if (isLongPress) {
-      return <CachedIcon /> // 显示不同图标表示硬刷新
+      return <CachedIcon /> // 显示不同图标表示彻底清理
     }
     return <RefreshIcon />
   }
@@ -210,7 +263,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
   const getColor = () => {
     if (showSuccess) return 'success'
     if (showError) return 'error'
-    if (isLongPress) return 'secondary' // 长按时显示不同颜色
+    if (isLongPress) return 'secondary' // 长按时显示不同颜色，警示更强烈的操作
     return 'primary'
   }
 
@@ -261,7 +314,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
           }}
         >
           <Tooltip
-            title={isLongPress ? "松开执行硬刷新（清理缓存）" : "长按2秒执行硬刷新"}
+            title={isLongPress ? "松开执行彻底清理（清除所有缓存和存储）" : "点击刷新页面，长按2秒彻底清理"}
             open={showTooltip}
             placement="top"
           >
@@ -308,7 +361,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
                     boxShadow: 6
                   })
                 }}
-                aria-label={isLongPress ? "硬刷新（清理缓存）" : "刷新页面"}
+                aria-label={isLongPress ? "彻底清理所有缓存" : "刷新页面"}
               >
                 {getIcon()}
               </Fab>
