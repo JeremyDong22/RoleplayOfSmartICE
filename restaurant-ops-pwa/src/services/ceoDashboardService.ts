@@ -58,6 +58,8 @@ export interface FloatingTaskInfo {
 export interface CEORestaurantData {
   restaurant_id: string;
   restaurant_name: string;
+  restaurant_address?: string;
+  restaurant_city?: string;
   total_tasks: number;
   completed_tasks: number;
   on_time_rate: number;
@@ -90,6 +92,8 @@ export interface CEOAlert {
   type: 'warning' | 'error' | 'info';
   restaurant_id: string;
   restaurant_name: string;
+  restaurant_address?: string;
+  restaurant_city?: string;
   department: '前厅' | '后厨';
   message: string;
   count: number;
@@ -99,6 +103,8 @@ export interface CEOAlert {
 export interface CombinedRestaurantData {
   restaurant_id: string;
   restaurant_name: string;
+  restaurant_address?: string;
+  restaurant_city?: string;
   total_missing_tasks: number;
   total_late_tasks: number;
   total_error_tasks: number;
@@ -149,11 +155,11 @@ class CEODashboardService {
   }
 
   // 获取所有活跃餐厅
-  async getRestaurants(): Promise<{ id: string; name: string }[]> {
+  async getRestaurants(): Promise<{ id: string; name: string; address?: string; city?: string }[]> {
     try {
       const { data, error } = await supabase
         .from('roleplay_restaurants')
-        .select('id, name')
+        .select('id, name, address, city')
         .eq('is_active', true)
         .order('name');
 
@@ -239,6 +245,7 @@ class CEODashboardService {
           is_floating,
           manual_closing
         `)
+        .eq('restaurant_id', restaurantId)  // 添加餐厅ID过滤
         .in('role_code', roleFilter)
         .eq('is_active', true)
         .eq('is_notice', false) // 不统计通知类任务
@@ -507,10 +514,10 @@ class CEODashboardService {
       const onTimeRate = completedTasks > 0 ? 
         ((completedTasks - lateTasks) / completedTasks) * 100 : 100;
 
-      // 6. 获取餐厅名称
+      // 6. 获取餐厅名称和地址信息
       const { data: restaurant } = await supabase
         .from('roleplay_restaurants')
-        .select('name')
+        .select('name, address, city')
         .eq('id', restaurantId)
         .single();
 
@@ -519,6 +526,8 @@ class CEODashboardService {
       return {
         restaurant_id: restaurantId,
         restaurant_name: restaurant?.name || '未知餐厅',
+        restaurant_address: restaurant?.address,
+        restaurant_city: restaurant?.city,
         total_tasks: tasks?.length || 0,
         completed_tasks: completedTasks,
         on_time_rate: onTimeRate,
@@ -562,6 +571,8 @@ class CEODashboardService {
           type: 'error',
           restaurant_id: restaurant.restaurant_id,
           restaurant_name: restaurant.restaurant_name,
+          restaurant_address: restaurant.restaurant_address,
+          restaurant_city: restaurant.restaurant_city,
           department: department,
           message: `${restaurant.missing_tasks_count}个任务未完成`,
           count: restaurant.missing_tasks_count,
@@ -576,6 +587,8 @@ class CEODashboardService {
           type: 'warning',
           restaurant_id: restaurant.restaurant_id,
           restaurant_name: restaurant.restaurant_name,
+          restaurant_address: restaurant.restaurant_address,
+          restaurant_city: restaurant.restaurant_city,
           department: department,
           message: `${restaurant.late_tasks_count}个任务延迟完成`,
           count: restaurant.late_tasks_count,
@@ -590,6 +603,8 @@ class CEODashboardService {
           type: 'warning',
           restaurant_id: restaurant.restaurant_id,
           restaurant_name: restaurant.restaurant_name,
+          restaurant_address: restaurant.restaurant_address,
+          restaurant_city: restaurant.restaurant_city,
           department: department,
           message: `${restaurant.error_tasks_count}个任务存在质量问题`,
           count: restaurant.error_tasks_count,
@@ -634,10 +649,14 @@ class CEODashboardService {
     
     const restaurantId = frontOffice?.restaurant_id || kitchen?.restaurant_id || '';
     const restaurantName = frontOffice?.restaurant_name || kitchen?.restaurant_name || '';
+    const restaurantAddress = frontOffice?.restaurant_address || kitchen?.restaurant_address;
+    const restaurantCity = frontOffice?.restaurant_city || kitchen?.restaurant_city;
     
     return {
       restaurant_id: restaurantId,
       restaurant_name: restaurantName,
+      restaurant_address: restaurantAddress,
+      restaurant_city: restaurantCity,
       total_missing_tasks: (frontOffice?.missing_tasks_count || 0) + (kitchen?.missing_tasks_count || 0),
       total_late_tasks: (frontOffice?.late_tasks_count || 0) + (kitchen?.late_tasks_count || 0),
       total_error_tasks: (frontOffice?.error_tasks_count || 0) + (kitchen?.error_tasks_count || 0),
@@ -656,7 +675,7 @@ class CEODashboardService {
 
   // 优化后的处理餐厅数据方法
   private processRestaurantDataOptimized(
-    restaurant: { id: string; name: string },
+    restaurant: { id: string; name: string; address?: string; city?: string },
     periods: CEOPeriod[],
     allTasks: any[],
     restaurantRecords: any[],
@@ -668,12 +687,13 @@ class CEODashboardService {
       const currentTime = now.getTime();
       const businessStartTime = this.getBusinessCycleStartTime();
       
-      // 过滤部门相关的任务
+      // 过滤部门相关的任务 - 同时过滤餐厅ID
       const roleFilter = department === '前厅' 
         ? ['manager', 'duty_manager']
         : ['chef'];
       
       const relevantTasks = allTasks.filter(task => 
+        task.restaurant_id === restaurant.id &&  // 添加餐厅ID过滤
         roleFilter.includes(task.role_code)
       );
       
@@ -974,6 +994,8 @@ class CEODashboardService {
       return {
         restaurant_id: restaurant.id,
         restaurant_name: restaurant.name,
+        restaurant_address: restaurant.address,
+        restaurant_city: restaurant.city,
         total_tasks: relevantTasks.filter(t => !t.is_floating && !t.manual_closing).length,
         completed_tasks: completedTasks,
         on_time_rate: onTimeRate,
