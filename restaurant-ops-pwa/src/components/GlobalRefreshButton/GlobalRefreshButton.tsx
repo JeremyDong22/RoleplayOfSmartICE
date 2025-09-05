@@ -71,6 +71,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
   const [longPressProgress, setLongPressProgress] = useState(0)
   const [showTooltip, setShowTooltip] = useState(false)
   const [successMessage, setSuccessMessage] = useState('刷新成功')
+  const [showInitialTooltip, setShowInitialTooltip] = useState(true) // 控制初始提示显示
   
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -251,6 +252,15 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
     setShowTooltip(false)
   }
 
+  // Hide initial tooltip after 2 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowInitialTooltip(false)
+    }, 2000) // 2秒后隐藏提示
+    
+    return () => clearTimeout(timer)
+  }, []) // 只在组件挂载时执行一次
+  
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -337,7 +347,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
         >
           <Tooltip
             title={isLongPress ? "松开执行彻底清理（清除所有缓存和存储）" : "点击刷新页面，长按2秒彻底清理所有缓存"}
-            open={showTooltip || (!isRefreshing && !isAnimating)}
+            open={showTooltip || (showInitialTooltip && !isRefreshing && !isAnimating)}
             placement="top"
           >
             <Box sx={{ position: 'relative' }}>

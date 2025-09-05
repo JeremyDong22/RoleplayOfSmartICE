@@ -27,21 +27,28 @@ export async function clearAllCaches(): Promise<void> {
   const keysToPreserve = [
     'supabase.auth.token',  // 保留认证信息
     'sb-',                  // 保留所有 Supabase 相关的键
+    'sb_',                  // 另一种 Supabase 键格式
+    'supabase',             // 任何包含 supabase 的键
     'user_',                // 保留用户信息
-    'role_'                 // 保留角色信息
+    'role_',                // 保留角色信息
+    'auth'                  // 任何包含 auth 的键
   ]
   const allKeys = Object.keys(localStorage)
+  
   allKeys.forEach(key => {
-    if (!keysToPreserve.some(preserve => key.includes(preserve))) {
+    const shouldPreserve = keysToPreserve.some(preserve => key.toLowerCase().includes(preserve.toLowerCase()))
+    if (!shouldPreserve) {
       localStorage.removeItem(key)
     }
   })
   
-  // 2. 清理 sessionStorage - 但保留路由相关信息
-  const sessionKeysToPreserve = ['router', 'navigation', 'history']
+  // 2. 清理 sessionStorage - 但保留路由和认证相关信息
+  const sessionKeysToPreserve = ['router', 'navigation', 'history', 'sb-', 'sb_', 'supabase', 'auth']
   const sessionKeys = Object.keys(sessionStorage)
+  
   sessionKeys.forEach(key => {
-    if (!sessionKeysToPreserve.some(preserve => key.includes(preserve))) {
+    const shouldPreserve = sessionKeysToPreserve.some(preserve => key.toLowerCase().includes(preserve.toLowerCase()))
+    if (!shouldPreserve) {
       sessionStorage.removeItem(key)
     }
   })

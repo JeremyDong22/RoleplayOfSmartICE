@@ -51,7 +51,7 @@ export const RefreshProvider: React.FC<RefreshProviderProps> = ({ children }) =>
     
     try {
       if (type === 'hard') {
-        // 硬刷新：清理所有缓存并更新版本
+        // 硬刷新：清理缓存并更新版本（保留认证信息）
         console.log('[RefreshContext] Performing hard refresh...')
         
         // 1. 清理所有缓存
@@ -61,9 +61,37 @@ export const RefreshProvider: React.FC<RefreshProviderProps> = ({ children }) =>
         const newVersion = APP_VERSION + '-' + Date.now()
         localStorage.setItem('app_version', newVersion)
         
-        // 3. 清理 Supabase 缓存
-        localStorage.removeItem('supabase.auth.token')
+        // 3. 清理非认证相关的 sessionStorage
+        // 保留 Supabase 认证相关的数据
+        const authKeys = ['sb-', 'supabase.auth']
+        const keysToKeep: { [key: string]: string } = {}
+        
+        // 保存认证相关的 localStorage 项
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && authKeys.some(authKey => key.includes(authKey))) {
+            keysToKeep[key] = localStorage.getItem(key) || ''
+          }
+        }
+        
+        // 保存认证相关的 sessionStorage 项
+        const sessionKeysToKeep: { [key: string]: string } = {}
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i)
+          if (key && authKeys.some(authKey => key.includes(authKey))) {
+            sessionKeysToKeep[key] = sessionStorage.getItem(key) || ''
+          }
+        }
+        
+        // 清理 sessionStorage 但恢复认证数据
         sessionStorage.clear()
+        Object.entries(sessionKeysToKeep).forEach(([key, value]) => {
+          sessionStorage.setItem(key, value)
+        })
+        
+        // NOTE: We don't need to clear/restore localStorage because clearAllCaches() 
+        // already preserves auth keys. The keysToKeep variable above was collecting
+        // them unnecessarily since clearAllCaches() handles preservation internally.
         
         // 4. 发送消息给 Service Worker 强制更新
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
