@@ -4,7 +4,7 @@
 // Updated: 2025-08-02 - Added test time support for date queries
 // Updated: 2025-08-21 - Changed getTodayCompletedTaskIds and getTodayTaskStatuses to filter by restaurant_id and role_code instead of user_id to ensure all managers see consistent data
 
-import { getSupabase } from './supabase'
+import { getSupabase, supabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { getLocalDateString, getBusinessDate } from '../utils/dateFormat'
