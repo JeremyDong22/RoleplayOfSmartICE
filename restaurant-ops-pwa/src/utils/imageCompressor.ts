@@ -14,12 +14,89 @@ interface CompressionOptions {
   quality?: number
   format?: 'jpeg' | 'webp'
   preserveAspectRatio?: boolean
+  autoQuality?: boolean // Auto-adjust quality based on network
 }
+
+export { CompressionOptions }
 
 interface ImageDimensions {
   width: number
   height: number
   aspectRatio: number
+}
+
+/**
+ * Get network-aware compression settings
+ */
+export function getNetworkAwareCompression(): CompressionOptions {
+  const connection = (navigator as any).connection || 
+                    (navigator as any).mozConnection || 
+                    (navigator as any).webkitConnection
+  
+  if (!connection) {
+    // Default settings if Network Information API not available
+    return {
+      maxWidth: 1920,
+      maxHeight: 1080,
+      quality: 0.8,
+      format: 'jpeg',
+      preserveAspectRatio: true
+    }
+  }
+  
+  const effectiveType = connection.effectiveType
+  const downlink = connection.downlink // Mbps
+  
+  console.log(`[Network] Connection type: ${effectiveType}, downlink: ${downlink}Mbps`)
+  
+  // Adjust compression based on network quality
+  switch (effectiveType) {
+    case 'slow-2g':
+    case '2g':
+      return {
+        maxWidth: 1024,
+        maxHeight: 768,
+        quality: 0.5,
+        format: 'jpeg',
+        preserveAspectRatio: true
+      }
+    case '3g':
+      return {
+        maxWidth: 1280,
+        maxHeight: 960,
+        quality: 0.6,
+        format: 'jpeg',
+        preserveAspectRatio: true
+      }
+    case '4g':
+      if (downlink && downlink < 2) {
+        // Slow 4G
+        return {
+          maxWidth: 1600,
+          maxHeight: 1200,
+          quality: 0.7,
+          format: 'jpeg',
+          preserveAspectRatio: true
+        }
+      }
+      // Fast 4G
+      return {
+        maxWidth: 1920,
+        maxHeight: 1080,
+        quality: 0.8,
+        format: 'jpeg',
+        preserveAspectRatio: true
+      }
+    default:
+      // WiFi or unknown
+      return {
+        maxWidth: 2048,
+        maxHeight: 1536,
+        quality: 0.85,
+        format: 'jpeg',
+        preserveAspectRatio: true
+      }
+  }
 }
 
 /**
@@ -40,7 +117,12 @@ export async function compressImage(
   base64String: string,
   options: CompressionOptions = {}
 ): Promise<string> {
-  const settings = { ...DEFAULT_OPTIONS, ...options }
+  // Use network-aware settings if autoQuality is enabled
+  const baseSettings = options.autoQuality 
+    ? getNetworkAwareCompression() 
+    : DEFAULT_OPTIONS
+  
+  const settings = { ...baseSettings, ...options }
   
   return new Promise((resolve, reject) => {
     const img = new Image()

@@ -9,7 +9,9 @@ import React from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { NavigationBar } from '../Navigation/NavigationBar'
 import { GlobalRefreshButton } from '../GlobalRefreshButton/GlobalRefreshButton'
+import { UploadQueueIndicator } from '../UploadQueueIndicator'
 import { authService } from '../../services/authService'
+import { Box } from '@mui/material'
 
 export const AppLayout: React.FC = () => {
   const location = useLocation()
@@ -56,8 +58,21 @@ export const AppLayout: React.FC = () => {
       {/* Content area - will change when navigating */}
       <Outlet />
       
-      {/* Global Refresh Button - floating above navigation */}
-      {showRefreshButton && <GlobalRefreshButton />}
+      {/* Global UI indicators - floating above navigation */}
+      {showRefreshButton && (
+        <Box sx={{ 
+          position: 'fixed', 
+          bottom: 80, 
+          right: 16, 
+          zIndex: 1200,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1
+        }}>
+          <GlobalRefreshButton />
+          <UploadQueueIndicator />
+        </Box>
+      )}
       
       {/* Navigation bar - stays persistent */}
       <NavigationBar role={userRole} />

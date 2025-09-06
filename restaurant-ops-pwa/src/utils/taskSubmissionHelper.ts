@@ -9,6 +9,7 @@ import { submitTaskRecord } from '../services/taskRecordService'
 import { uploadPhoto, uploadAudio } from '../services/storageService'
 import { compressImage, needsCompression, formatFileSize, estimateFileSize } from './imageCompressor'
 import { inventoryService } from '../services/inventoryService'
+import { uploadQueueService } from '../services/uploadQueueService'
 
 // Batch sizes to try in order for parallel uploads
 const BATCH_SIZES = [10, 7, 5, 3]
@@ -55,14 +56,12 @@ async function uploadPhotoWithRetry(
         await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount - 1), 5000)))
       }
       
-      // Compress if needed
+      // Compress if needed with network-aware settings
       let processedPhoto = photoData
       if (needsCompression(photoData, 800)) {
         onProgress?.('压缩图片中...')
         processedPhoto = await compressImage(photoData, {
-          maxWidth: 1920,
-          maxHeight: 1080,
-          quality: 0.8
+          autoQuality: true // Enable network-aware compression
         })
         const originalSize = estimateFileSize(photoData)
         const compressedSize = estimateFileSize(processedPhoto)
@@ -647,14 +646,49 @@ export async function submitTaskWithMedia({
       }
     }
     
-    // If all retries failed, throw the last error
-    throw submitError || new Error('Failed to submit task after retries')
+    // If all retries failed, add to queue for background retry
+    console.error('[TaskSubmissionHelper] All retries failed, adding to queue')
+    
+    // Add to upload queue for background retry
+    await uploadQueueService.addToQueue({
+      taskId,
+      userId,
+      restaurantId,
+      date,
+      periodId,
+      uploadRequirement,
+      data
+    })
+    
+    // Throw error to indicate immediate failure (but data is queued)
+    const errorMessage = submitError?.message || 'Failed to submit task after retries'
+    throw new Error(`${errorMessage}. Task has been queued for automatic retry when connection improves.`)
   } catch (error) {
     console.error('[TaskSubmissionHelper] Error submitting task:', {
       taskId,
       error,
       message: error instanceof Error ? error.message : 'Unknown error'
     })
-    throw error
+    
+    // Try to add to queue even if main submission failed
+    try {
+      await uploadQueueService.addToQueue({
+        taskId,
+        userId,
+        restaurantId,
+        date,
+        periodId,
+        uploadRequirement,
+        data
+      })
+      
+      // Modify error message to indicate queued status
+      const originalMessage = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`${originalMessage}. Task has been queued for automatic retry.`)
+    } catch (queueError) {
+      console.error('[TaskSubmissionHelper] Failed to add to queue:', queueError)
+      // If even queuing fails, throw original error
+      throw error
+    }
   }
 }

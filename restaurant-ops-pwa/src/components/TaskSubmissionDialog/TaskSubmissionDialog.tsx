@@ -165,7 +165,7 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     }
   }
   
-  const handleTaskSubmit = (data: any) => {
+  const handleTaskSubmit = async (data: any) => {
     console.log('🚀 Task submitted, face verification temporarily disabled')
     // Store submission data
     const submissionData = isLateSubmission 
@@ -174,8 +174,16 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
     
     // TEMPORARILY DISABLED: Face verification
     // Directly submit without face verification
-    onSubmit(task.id, submissionData)
-    handleClose()
+    try {
+      // onSubmit should be async and throw on failure
+      await onSubmit(task.id, submissionData)
+      handleClose()
+    } catch (error) {
+      console.error('[TaskSubmissionDialog] Submission failed:', error)
+      // Don't close dialog on failure - let user retry
+      // PhotoSubmissionDialog will preserve data in localStorage
+      throw error // Re-throw to let PhotoSubmissionDialog handle it
+    }
     
     // Original face verification code (disabled)
     // if (isUserEnrolled) {

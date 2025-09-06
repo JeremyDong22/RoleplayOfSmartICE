@@ -1,3 +1,3 @@
-// 暂时导出新版本进行测试
-export { PhotoSubmissionDialog } from './PhotoSubmissionDialog-new'
-export { PhotoSubmissionDialog as default } from './PhotoSubmissionDialog-new'
+// Export the main PhotoSubmissionDialog component
+export { PhotoSubmissionDialog } from './PhotoSubmissionDialog'
+export { PhotoSubmissionDialog as default } from './PhotoSubmissionDialog'

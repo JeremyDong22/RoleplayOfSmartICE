@@ -571,23 +571,37 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       }
     }
     
-    onSubmit(submitData)
+    // Store submission state before calling onSubmit
+    // This ensures data is preserved if upload fails
+    const submissionStarted = Date.now()
     
-    // 提交后直接清理并关闭，不要返回到samples视图
-    const cleanup = () => {
-      stopCamera()
-      // 提交成功后清空localStorage
-      if (taskId) {
-        localStorage.removeItem(STORAGE_KEY)
+    try {
+      // Call parent's onSubmit - this will handle the actual upload
+      // Parent should throw error if upload fails
+      onSubmit(submitData)
+      
+      // Only clear data if onSubmit succeeds (no error thrown)
+      const cleanup = () => {
+        stopCamera()
+        // Only clear localStorage after successful submission
+        if (taskId) {
+          localStorage.removeItem(STORAGE_KEY)
+          console.log('[PhotoDialog] Cleared localStorage after successful submission')
+        }
+        
+        setPhotoGroups([])
+        setCurrentSessionPhotos([])
+        setStructuredData({})
+        setCurrentView('samples')
       }
       
-      setPhotoGroups([])
-      setCurrentSessionPhotos([])
-      setStructuredData({})
-      setCurrentView('samples')
+      cleanup()
+    } catch (error) {
+      // Upload failed - preserve data in localStorage for retry
+      console.error('[PhotoDialog] Submission failed, preserving data for retry:', error)
+      // Data remains in localStorage and photoGroups state
+      // User can retry or close dialog and come back later
     }
-    
-    cleanup()
     // Don't automatically close - let parent handle it for face verification
     // onClose()
   }

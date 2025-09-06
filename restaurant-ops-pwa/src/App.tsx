@@ -14,7 +14,8 @@ import { RoleSelection } from './pages/RoleSelection'
 import { lazy, Suspense } from 'react'
 import { CircularProgress, Box } from '@mui/material'
 
-// VERSION 1.0.1 - Using lazy loading for dashboards
+// VERSION 1.0.2 - Using lazy loading for dashboards
+// Cache prevention via version comment to force rebuild
 
 const ManagerDashboard = lazy(() => {
   return import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }));

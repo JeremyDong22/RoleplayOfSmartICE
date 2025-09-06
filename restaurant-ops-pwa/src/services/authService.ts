@@ -234,8 +234,12 @@ class AuthService {
 export const getAuthService = () => AuthService.getInstance();
 
 // For backward compatibility - use Proxy for truly lazy loading
+const DEBUG_AUTH_PROXY = false; // Set to true to enable debug logs
 export const authService = new Proxy({} as AuthService, {
   get(target, prop) {
+    if (DEBUG_AUTH_PROXY) {
+      console.log(`[AUTH SERVICE v2.0.0] Proxy accessed for property: ${String(prop)}`);
+    }
     const instance = AuthService.getInstance();
     const value = (instance as any)[prop];
     return typeof value === 'function' ? value.bind(instance) : value;

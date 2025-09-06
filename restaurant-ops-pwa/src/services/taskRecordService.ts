@@ -74,7 +74,7 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
   
   // Check task type and prepare record in parallel
   const [taskInfo] = await Promise.all([
-    taskData.task_id ? supabase
+    taskData.task_id ? getSupabase()
       .from('roleplay_tasks')
       .select('role_code')
       .eq('id', taskData.task_id)
