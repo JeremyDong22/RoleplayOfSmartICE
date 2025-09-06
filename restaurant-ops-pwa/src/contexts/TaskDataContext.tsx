@@ -1,6 +1,7 @@
 /**
  * 任务数据上下文
  * 管理从数据库加载的任务数据并提供给整个应用
+ * Updated: 2025-09-05 - Removed console.log statements for production optimization
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
@@ -52,7 +53,6 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
         const currentUser = authService.getCurrentUser()
         if (!currentUser) {
           // 用户未登录，这是正常的，不需要显示错误
-          console.log('[TaskDataContext] No auth session, skipping task loading')
           return
         }
         

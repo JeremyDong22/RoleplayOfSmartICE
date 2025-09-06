@@ -15,10 +15,8 @@ import { lazy, Suspense } from 'react'
 import { CircularProgress, Box } from '@mui/material'
 
 // VERSION 1.0.1 - Using lazy loading for dashboards
-console.log('[APP v1.0.1] Loading with lazy dashboard components');
 
 const ManagerDashboard = lazy(() => {
-  console.log('[APP v1.0.1] Lazy loading ManagerDashboard');
   return import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }));
 });
 const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new').then(module => ({ default: module.ChefDashboard })))
@@ -289,7 +287,6 @@ function App() {
       // Note: We don't use Supabase Auth, we use our custom auth with cookies
       const currentUser = authService.getCurrentUser()
       if (currentUser) {
-        console.log('[App] User authenticated via Cookie, initializing restaurant config...')
         await restaurantConfigService.initialize()
       }
       
@@ -304,7 +301,6 @@ function App() {
       
       // 预加载人脸识别模型（后台加载，不阻塞）
       // 在iOS设备上可能需要更长的加载时间
-      console.log('[App] Starting face model preload...')
       // 延迟加载以避免与其他初始化冲突
       setTimeout(() => {
         faceModelManager.preloadInBackground()

@@ -32,12 +32,10 @@ class AuthService {
   
   private constructor() {
     // Private constructor for singleton
-    console.log('[AUTH SERVICE v2.0.0] Instance created');
   }
   
   static getInstance(): AuthService {
     if (!AuthService.instance) {
-      console.log('[AUTH SERVICE v2.0.0] Creating new instance via getInstance()');
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
@@ -231,7 +229,6 @@ class AuthService {
 }
 
 // VERSION: 1.0.1 - Module loaded
-console.log('[AUTH SERVICE v2.0.0] Module loaded - using Proxy for lazy loading');
 
 // Export singleton getter to avoid immediate instantiation
 export const getAuthService = () => AuthService.getInstance();

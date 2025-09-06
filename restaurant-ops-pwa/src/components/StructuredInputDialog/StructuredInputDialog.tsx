@@ -4,6 +4,7 @@
  * Purpose: 处理需要结构化数据输入的任务（如收货验货、损耗盘点）
  * 支持动态加载库存列表和自动填充单位
  * Updated: 2025-08-12 - 移除损耗盘点的价格计算和质量检查，更新损耗原因选项
+ * Updated: 2025-09-05 - Removed console.log statements for production optimization
  */
 
 import React, { useState, useEffect, useRef } from 'react'
@@ -192,12 +193,10 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
   }
 
   const handleFieldChange = async (key: string, value: any) => {
-    console.log('[handleFieldChange] key:', key, 'value:', value, 'current formData:', formData)
     
     // 使用函数式更新来确保获取最新的state
     setFormData(prev => {
       const newFormData = { ...prev, [key]: value }
-      console.log('[handleFieldChange] Updated formData to:', newFormData)
       
       // 如果修改了数量，需要更新价格相关字段
       if (key === 'quantity' && !taskName.includes('损耗')) {
@@ -400,7 +399,6 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
                     <InventoryItemPicker
                       value={formData.item_name || null}
                       onChange={(itemName) => {
-                        console.log('[DEBUG] onChange called with:', itemName)
                         handleFieldChange('item_name', itemName)
                       }}
                       department={department as '前厅' | '后厨'}

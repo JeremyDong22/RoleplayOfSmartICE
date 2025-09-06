@@ -3,6 +3,7 @@
  * 统一管理餐厅相关配置，从Supabase获取数据
  * Created: 2025-08-02
  * Updated: 2025-01-13 - 优化缓存逻辑，避免重复初始化
+ * Updated: 2025-01-05 - 移除所有 console.log 语句，保留 console.error 用于生产环境错误处理
  */
 
 import { getSupabase } from './supabase'
@@ -39,13 +40,11 @@ class RestaurantConfigService {
     try {
       // 如果已经初始化并有餐厅配置，直接返回缓存
       if (this.initialized && this.currentRestaurant) {
-        console.log('[RestaurantConfigService] Using cached restaurant:', this.currentRestaurant)
         return this.currentRestaurant
       }
 
       // 如果正在初始化中，返回现有的Promise避免重复调用
       if (this.initializationPromise) {
-        console.log('[RestaurantConfigService] Initialization already in progress, waiting...')
         return this.initializationPromise
       }
 
@@ -87,7 +86,6 @@ class RestaurantConfigService {
           .single()
         
         if (restaurantError) {
-          console.warn('[RestaurantConfigService] Error fetching user restaurant:', restaurantError)
         }
         
         if (restaurant) {
@@ -97,7 +95,6 @@ class RestaurantConfigService {
             isActive: restaurant.is_active
           }
           this.initialized = true
-          console.log('[RestaurantConfigService] Initialized with user restaurant:', this.currentRestaurant)
           return this.currentRestaurant
         }
       }
@@ -111,7 +108,6 @@ class RestaurantConfigService {
           .single()
         
         if (profileError) {
-          console.warn('[RestaurantConfigService] Error fetching user profile:', profileError)
         }
         
         if (userProfile?.restaurant_id) {
@@ -123,8 +119,7 @@ class RestaurantConfigService {
             .single()
           
           if (restaurantError) {
-            console.warn('[RestaurantConfigService] Error fetching user restaurant:', restaurantError)
-          }
+            }
           
           if (restaurant) {
             this.currentRestaurant = {
@@ -133,7 +128,6 @@ class RestaurantConfigService {
               isActive: restaurant.is_active
             }
             this.initialized = true
-            console.log('[RestaurantConfigService] Initialized with user restaurant from profile:', this.currentRestaurant)
             return this.currentRestaurant
           }
         }
@@ -150,7 +144,6 @@ class RestaurantConfigService {
       if (restaurantsError) {
         // 如果是认证错误，静默返回null
         if (restaurantsError.message?.includes('access control') || restaurantsError.message?.includes('CORS')) {
-          console.log('[RestaurantConfigService] CORS/Auth issue, will retry after login')
           return null
         }
         console.error('[RestaurantConfigService] Error fetching restaurants:', restaurantsError)
@@ -164,12 +157,10 @@ class RestaurantConfigService {
           isActive: restaurants[0].is_active
         }
         this.initialized = true
-        console.log('[RestaurantConfigService] Initialized with default restaurant:', this.currentRestaurant)
         return this.currentRestaurant
       }
       
       // 如果没有找到任何餐厅，返回null而不是硬编码默认值
-      console.log('[RestaurantConfigService] No active restaurant found')
       return null
       
     } catch (error: any) {

@@ -2,6 +2,7 @@
  * 任务数据库服务
  * 完全从 Supabase 数据库读取任务数据
  * 使用 Realtime 订阅任务更新
+ * Updated: 2025-01-05 - 移除所有 console.log 语句，保留 console.error 用于生产环境错误处理
  */
 
 import { supabase } from './supabase'
@@ -90,7 +91,6 @@ class TaskService {
   }
   
   private async _doInitialize(): Promise<boolean> {
-    console.log('[TaskService] Starting initialization...')
     
     try {
       // Add delay to ensure other services are initialized
@@ -100,7 +100,6 @@ class TaskService {
       // This checks our custom authentication from authService
       const currentUser = getAuthService().getCurrentUser()
       if (!currentUser) {
-        console.log('[TaskService] No auth session, skipping initialization')
         return false
       }
       
@@ -109,12 +108,10 @@ class TaskService {
       const tasksLoaded = await this.loadAllTasks()
       
       if (!periodsLoaded || !tasksLoaded) {
-        console.warn('[TaskService] Some data could not be loaded, continuing with partial data')
         // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
         return false
       }
       
-      console.log('[TaskService] Initialized successfully')
       
       // Mark as initialized
       this.isInitialized = true
@@ -230,7 +227,6 @@ class TaskService {
       
       // 如果是网络错误且还有重试次数，则重试
       if (retryCount < 3 && (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION'))) {
-        console.log(`Retrying load tasks (attempt ${retryCount + 1}/3)...`)
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
         return this.loadAllTasks(retryCount + 1)
       }
@@ -429,10 +425,6 @@ class TaskService {
         }
       }
       
-      // Debug log for closing period
-      if (period.name === '收市与打烊') {
-        // Converting closing period
-      }
       
       return convertedPeriod
     })
@@ -503,7 +495,6 @@ class TaskService {
    * 手动刷新所有数据
    */
   async refresh(): Promise<boolean> {
-    // Manual refresh triggered
     
     // 重新加载所有数据
     const periodsLoaded = await this.loadPeriods()

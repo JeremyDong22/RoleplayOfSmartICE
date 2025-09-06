@@ -3,6 +3,7 @@
  * 处理 PWA 推送通知的权限请求、注册和发送
  * @created by Claude
  * @date 2025-01-24
+ * Updated: 2025-01-05 - 移除所有 console.log/warn/debug 语句，保留 console.error 用于生产环境错误处理
  */
 
 interface NotificationOptions {
@@ -37,7 +38,6 @@ class NotificationService {
    */
   async requestPermission(): Promise<NotificationPermission> {
     if (!this.isSupported()) {
-      console.warn('该浏览器不支持推送通知');
       return 'denied';
     }
 
@@ -62,7 +62,6 @@ class NotificationService {
    */
   async sendNotification(options: NotificationOptions): Promise<void> {
     if (this.permission !== 'granted') {
-      console.debug('没有通知权限');
       return;
     }
 
@@ -165,7 +164,6 @@ let notificationServiceInstance: NotificationService | null = null;
 
 const getNotificationService = () => {
   if (!notificationServiceInstance) {
-    console.log('[NOTIFICATION SERVICE v1.0.1] Creating instance');
     notificationServiceInstance = new NotificationService();
   }
   return notificationServiceInstance;

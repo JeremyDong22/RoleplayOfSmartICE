@@ -256,7 +256,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowInitialTooltip(false)
-    }, 2000) // 2秒后隐藏提示
+    }, 2000) // 2秒后自动隐藏提示
     
     return () => clearTimeout(timer)
   }, []) // 只在组件挂载时执行一次

@@ -1,6 +1,7 @@
 // Debug utility for authentication and database queries
 // Created: 2025-08-13
 // Updated: 2025-08-14 - Added Cookie auth debugging, removed misleading Supabase Auth checks
+// Updated: 2025-09-05 - Commented out debug console statements for production
 
 import { supabase } from '../services/supabase';
 import { authService } from '../services/authService';
@@ -14,12 +15,12 @@ export function enableSupabaseDebug() {
     
     // Only intercept Supabase calls
     if (url.includes('supabase.co')) {
-      console.log('[DEBUG] Supabase Request:', {
-        url,
-        method: init?.method || 'GET',
-        headers: init?.headers,
-        body: init?.body ? JSON.parse(init.body as string) : undefined
-      });
+      // console.log('[DEBUG] Supabase Request:', {
+      //   url,
+      //   method: init?.method || 'GET',
+      //   headers: init?.headers,
+      //   body: init?.body ? JSON.parse(init.body as string) : undefined
+      // });
       
       try {
         const response = await originalFetch(input, init);
@@ -49,12 +50,12 @@ export function enableSupabaseDebug() {
     return originalFetch(input, init);
   };
   
-  console.log('[DEBUG] Supabase debugging enabled');
+  // console.log('[DEBUG] Supabase debugging enabled');
 }
 
 export function disableSupabaseDebug() {
   window.fetch = originalFetch;
-  console.log('[DEBUG] Supabase debugging disabled');
+  // console.log('[DEBUG] Supabase debugging disabled');
 }
 
 /**
@@ -64,14 +65,14 @@ export function disableSupabaseDebug() {
 export function checkCookieAuthStatus() {
   const user = authService.getCurrentUser();
   
-  console.log('[DEBUG] Cookie Auth Status:', {
-    isLoggedIn: !!user,
-    userId: user?.id || 'Not logged in',
-    userName: user?.name || 'N/A',
-    userEmail: user?.email || 'N/A',
-    userRole: user?.roleCode || 'N/A',
-    restaurantId: user?.restaurantId || 'N/A'
-  });
+  // console.log('[DEBUG] Cookie Auth Status:', {
+  //   isLoggedIn: !!user,
+  //   userId: user?.id || 'Not logged in',
+  //   userName: user?.name || 'N/A',
+  //   userEmail: user?.email || 'N/A',
+  //   userRole: user?.roleCode || 'N/A',
+  //   restaurantId: user?.restaurantId || 'N/A'
+  // });
   
   return user;
 }
@@ -81,7 +82,7 @@ export async function testSupabaseQueries() {
   // Only log in development and if explicitly debugging
   if (!import.meta.env.DEV) return;
   
-  console.log('[DEBUG] Testing authentication and database connection...');
+  // console.log('[DEBUG] Testing authentication and database connection...');
   
   // Check REAL auth status from Cookie
   checkCookieAuthStatus();
@@ -92,11 +93,11 @@ export async function testSupabaseQueries() {
     .select('id, name')
     .limit(1);
   
-  console.log('[DEBUG] Restaurants query:', {
-    success: !restaurantsError,
-    error: restaurantsError,
-    data: restaurants
-  });
+  // console.log('[DEBUG] Restaurants query:', {
+  //   success: !restaurantsError,
+  //   error: restaurantsError,
+  //   data: restaurants
+  // });
   
   // Test 3: Try to fetch user profile using Cookie auth (NOT Supabase Auth)
   const currentUser = authService.getCurrentUser();
@@ -107,15 +108,15 @@ export async function testSupabaseQueries() {
       .eq('id', currentUser.id)
       .single();
     
-    console.log('[DEBUG] User profile query:', {
-      success: !profileError,
-      error: profileError,
-      data: profile
-    });
+    // console.log('[DEBUG] User profile query:', {
+    //   success: !profileError,
+    //   error: profileError,
+    //   data: profile
+    // });
     
     // Final summary with real user info
-    console.log(`[DEBUG] ✅ System ready - User: ${currentUser.name} (${currentUser.roleCode}) logged in`);
+    // console.log(`[DEBUG] ✅ System ready - User: ${currentUser.name} (${currentUser.roleCode}) logged in`);
   } else {
-    console.log('[DEBUG] ⚠️ No user logged in via Cookie - Please login first');
+    // console.log('[DEBUG] ⚠️ No user logged in via Cookie - Please login first');
   }
 }

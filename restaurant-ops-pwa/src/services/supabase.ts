@@ -43,13 +43,11 @@ const createSupabaseClient = (): SupabaseClient<Database> => {
 // Lazy initialization to avoid immediate instantiation issues
 let supabaseInstance: SupabaseClient<Database> | null = null;
 
-// VERSION: 2.0.0 - Lazy initialization with logging
-console.log('[SUPABASE v2.0.0] Service module loaded - using lazy initialization');
+// VERSION: 2.0.0 - Lazy initialization
 
 // Export function to get current Supabase instance
 export const getSupabase = (): SupabaseClient<Database> => {
   if (!supabaseInstance) {
-    console.log('[SUPABASE v2.0.0] Creating instance via getSupabase()');
     supabaseInstance = createSupabaseClient();
   }
   return supabaseInstance;
@@ -71,7 +69,6 @@ export const supabase = (() => {
 export const resetSupabaseClient = (): SupabaseClient<Database> => {
   // Note: Cannot reset singleton instance after initialization
   // This would require reloading the module
-  console.warn('resetSupabaseClient called but instance cannot be reset')
   return supabaseInstance
 }
 

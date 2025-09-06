@@ -1,6 +1,7 @@
 // 值班经理任务持久化服务
 // 用于将值班经理的任务提交保存到数据库，支持离线查看
 // Updated: 2025-08-02 - Added test time support for date queries
+// Updated: 2025-09-05 - Removed console.log statements for production optimization
 
 import { supabase } from './supabase'
 import type { DutyManagerSubmission } from '../contexts/DutyManagerContext'
@@ -35,7 +36,6 @@ export class DutyManagerPersistenceService {
         })
       
       if (error) throw error
-      console.log('[DutyManagerPersistence] Trigger saved to database')
     } catch (error) {
       console.error('[DutyManagerPersistence] Failed to save trigger:', error)
       throw error
@@ -67,7 +67,6 @@ export class DutyManagerPersistenceService {
         })
       
       if (error) throw error
-      console.log('[DutyManagerPersistence] Submission saved to database:', submission.taskId)
     } catch (error) {
       console.error('[DutyManagerPersistence] Failed to save submission:', error)
       throw error
@@ -79,7 +78,6 @@ export class DutyManagerPersistenceService {
     try {
       // Validate restaurant ID to prevent UUID errors
       if (!restaurantId || restaurantId.trim() === '') {
-        console.log('[DutyManagerPersistence] No restaurant ID provided, skipping task statuses fetch')
         return { taskStatuses: {}, submissions: [] }
       }
       
@@ -162,7 +160,6 @@ export class DutyManagerPersistenceService {
     try {
       // Validate restaurant ID to prevent UUID errors
       if (!restaurantId || restaurantId.trim() === '') {
-        console.log('[DutyManagerPersistence] No restaurant ID provided, skipping submissions fetch')
         return []
       }
       
@@ -225,7 +222,6 @@ export class DutyManagerPersistenceService {
     try {
       // Validate restaurant ID to prevent UUID errors
       if (!restaurantId || restaurantId.trim() === '') {
-        console.log('[DutyManagerPersistence] No restaurant ID provided, skipping trigger fetch')
         return null
       }
       
@@ -266,12 +262,6 @@ export class DutyManagerPersistenceService {
     try {
       const today = (getCurrentTestTime() || new Date()).toISOString().split('T')[0]
       
-      console.log('[DutyManagerPersistence] Updating review status:', {
-        taskId,
-        status,
-        reviewerId,
-        date: today
-      })
       
       // First check if the record exists - get the latest one
       const { data: existingRecords, error: checkError } = await supabase
@@ -288,7 +278,6 @@ export class DutyManagerPersistenceService {
       }
       
       const existingRecord = existingRecords[0]
-      console.log('[DutyManagerPersistence] Found record:', existingRecord)
       
       const { data, error } = await supabase
         .from('roleplay_task_records')
@@ -303,7 +292,6 @@ export class DutyManagerPersistenceService {
         .select()
 
       if (error) throw error
-      console.log('[DutyManagerPersistence] Review status updated successfully:', data)
     } catch (error) {
       console.error('[DutyManagerPersistence] Failed to update review status:', error)
       throw error
@@ -328,7 +316,6 @@ export class DutyManagerPersistenceService {
         .like('task_id', 'trigger-%')
 
       if (error) throw error
-      console.log('[DutyManagerPersistence] Daily triggers cleared')
     } catch (error) {
       console.error('[DutyManagerPersistence] Failed to clear triggers:', error)
       throw error

@@ -2,6 +2,7 @@
 // Prevents multiple components from loading the same models simultaneously
 // Updated: 2025-08-13 - Removed mobile-specific logic, added comprehensive logging
 // Updated: 2025-08-15 - Added cache detection and offline-first strategy
+// Updated: 2025-01-05 - 移除所有 console.log/warn/info 语句，保留 console.error 用于生产环境错误处理
 
 import * as faceapi from 'face-api.js'
 import { IOSModelLoader } from './iOSModelLoader'
@@ -65,7 +66,6 @@ class FaceModelManager {
   // Check if models are cached in Service Worker
   private async checkModelCache(): Promise<boolean> {
     if (!('caches' in window)) {
-      console.log('[ModelManager] Cache API not available');
       return false;
     }
     
@@ -87,7 +87,6 @@ class FaceModelManager {
       );
       
       const allCached = cacheChecks.every(response => response !== undefined);
-      console.log(`[ModelManager] Models cached: ${allCached}`);
       return allCached;
     } catch (error) {
       console.error('[ModelManager] Error checking cache:', error);
@@ -113,7 +112,6 @@ class FaceModelManager {
         '/models/face_recognition_model-shard2.bin'
       ];
       
-      console.log('[ModelManager] Pre-caching models...');
       
       await Promise.allSettled(
         modelFiles.map(async (url) => {
@@ -121,15 +119,12 @@ class FaceModelManager {
             const response = await fetch(url);
             if (response.ok) {
               await cache.put(url, response);
-              console.log(`[ModelManager] Cached: ${url}`);
             }
           } catch (err) {
-            console.warn(`[ModelManager] Failed to cache ${url}:`, err);
           }
         })
       );
       
-      console.log('[ModelManager] Pre-caching complete');
     } catch (error) {
       console.error('[ModelManager] Pre-cache error:', error);
     }
@@ -150,7 +145,6 @@ class FaceModelManager {
     // Check network status
     const isOffline = !navigator.onLine;
     if (isOffline) {
-      console.log('[ModelManager] Offline mode detected');
     }
     
     // Check if models are cached
@@ -158,7 +152,6 @@ class FaceModelManager {
     
     if (!isCached && !isOffline) {
       // Models not cached and we're online - try to pre-cache them
-      console.log('[ModelManager] Models not cached, attempting to cache...');
       if (this.progressCallback) {
         this.progressCallback('首次使用，正在缓存模型文件...', 5);
       }
@@ -237,7 +230,6 @@ class FaceModelManager {
     try {
       this.loadAttempts++
       
-      console.log('[ModelManager] 开始加载模型，使用串行策略...')
       
       // Check current status
       const status = this.getModelStatus()
@@ -263,15 +255,6 @@ class FaceModelManager {
       if (finalStatus.tinyFaceDetector && finalStatus.faceLandmark68Net && finalStatus.faceRecognitionNet) {
         this.modelsLoaded = true
         
-        // 记录总加载时间
-        const totalSeconds = (loadTime / 1000).toFixed(1)
-        console.log(`✅ 所有模型加载完成，总耗时: ${Math.round(loadTime)}ms (${totalSeconds}秒)`)
-        
-        if (loadTime < 60000) {
-          console.log(`🎉 成功！模型在60秒内加载完成`)
-        } else {
-          console.warn(`⚠️ 警告：加载耗时超过60秒`)
-        }
         
         if (this.progressCallback) {
           this.progressCallback('模型加载完成', 100)
@@ -287,11 +270,6 @@ class FaceModelManager {
       // Log network details if available
       if ('connection' in navigator) {
         const conn = (navigator as any).connection
-        console.log('[ModelManager] 网络信息:', {
-          effectiveType: conn?.effectiveType,
-          downlink: conn?.downlink,
-          rtt: conn?.rtt
-        })
       }
       
       // Provide user-friendly error messages
@@ -308,48 +286,40 @@ class FaceModelManager {
   
   private async loadModelsSequentially(): Promise<void> {
     const sequentialStartTime = performance.now()
-    console.log('[ModelManager] 开始串行加载3个模型...')
     
     // Load TinyFaceDetector (330KB)
     if (!faceapi.nets.tinyFaceDetector.isLoaded) {
       const t1 = performance.now()
-      console.log('[1/3] 正在加载 TinyFaceDetector (330KB)...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.tinyFaceDetector.loadFromUri(this.MODEL_URL),
         'TinyFaceDetector',
         3
       )
-      console.log(`[1/3] TinyFaceDetector 加载完成: ${Math.round(performance.now() - t1)}ms`)
       // 不等待，直接继续
     }
     
     // Load FaceLandmark68Net (360KB)
     if (!faceapi.nets.faceLandmark68Net.isLoaded) {
       const t2 = performance.now()
-      console.log('[2/3] 正在加载 FaceLandmark68Net (360KB)...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.faceLandmark68Net.loadFromUri(this.MODEL_URL),
         'FaceLandmark68Net',
         3
       )
-      console.log(`[2/3] FaceLandmark68Net 加载完成: ${Math.round(performance.now() - t2)}ms`)
       // 不等待，直接继续
     }
     
     // Load FaceRecognitionNet (6.2MB)
     if (!faceapi.nets.faceRecognitionNet.isLoaded) {
       const t3 = performance.now()
-      console.log('[3/3] 正在加载 FaceRecognitionNet (6.2MB)...')
       await this.loadModelWithRetrySimple(
         () => faceapi.nets.faceRecognitionNet.loadFromUri(this.MODEL_URL),
         'FaceRecognitionNet',
         3
       )
-      console.log(`[3/3] FaceRecognitionNet 加载完成: ${Math.round(performance.now() - t3)}ms`)
     }
     
     const totalTime = performance.now() - sequentialStartTime
-    console.log(`[ModelManager] ✅ 串行加载完成，总耗时: ${Math.round(totalTime)}ms`)
   }
   
   private async loadModelsInParallel(): Promise<void> {
@@ -388,12 +358,9 @@ class FaceModelManager {
     }
     
     if (modelsToLoad.length > 0) {
-      console.log('[ModelManager] Starting parallel load of', modelsToLoad.length, 'models')
       await Promise.all(modelsToLoad)
       const parallelTime = performance.now() - loadStartTime
-      console.log('[ModelManager] All models loaded in', Math.round(parallelTime), 'ms')
     } else {
-      console.log('[ModelManager] All models already loaded')
     }
   }
   
@@ -421,7 +388,6 @@ class FaceModelManager {
         
         const attemptTime = performance.now() - attemptStartTime
         const totalTime = performance.now() - modelStartTime
-        console.log(`[ModelManager] ✅ ${modelName} loaded in ${Math.round(attemptTime)}ms`)
         
         if (this.progressCallback) {
           const progress = modelName === 'TinyFaceDetector' ? 33 :
@@ -433,17 +399,14 @@ class FaceModelManager {
       } catch (error: any) {
         lastError = error as Error
         const attemptTime = performance.now() - attemptStartTime
-        console.warn(`[ModelManager] ❌ ${modelName} attempt ${attempt} failed after ${Math.round(attemptTime)}ms:`, error.message)
         
         // Don't retry if offline
         if (!navigator.onLine) {
-          console.log(`[ModelManager] Offline - skipping retries for ${modelName}`);
           break;
         }
         
         if (attempt < maxRetries) {
           const waitTime = Math.min(1000 * attempt, 3000)  // Simpler backoff: 1s, 2s, 3s max
-          console.log(`[ModelManager] Retrying ${modelName} in ${waitTime}ms...`)
           await new Promise(resolve => setTimeout(resolve, waitTime))
         }
       }

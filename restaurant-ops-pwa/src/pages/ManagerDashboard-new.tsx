@@ -6,6 +6,7 @@
 // are linked to corresponding duty manager tasks for review.
 // Fixed: Manager now receives review tasks for BOTH afternoon (14:00-15:30) and evening (21:30+) 
 // duty manager submissions. Previously only worked for evening period.
+// Updated: 2025-01-05 - 移除所有 console.log 语句，保留 console.error 和已注释的 console 语句用于调试
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRefreshable } from '../contexts/RefreshContext'
@@ -190,7 +191,6 @@ export const ManagerDashboard: React.FC = () => {
   
   // 注册刷新回调 - 软刷新时重新加载数据
   const handleRefresh = useCallback(async () => {
-    console.log('[ManagerDashboard] Refreshing data...')
     
     try {
       // 1. 刷新 DutyManagerContext 的数据
@@ -208,7 +208,6 @@ export const ManagerDashboard: React.FC = () => {
         setDbTaskStatuses(updatedTaskStatuses)
       }
       
-      console.log('[ManagerDashboard] Data refresh completed')
     } catch (error) {
       console.error('[ManagerDashboard] Error refreshing data:', error)
       throw error
@@ -535,7 +534,6 @@ export const ManagerDashboard: React.FC = () => {
       // Check if we just crossed 10:00 AM (from 9:xx to 10:xx)
       if (lastCheckedHour !== 10 && currentHour === 10) {
         // Daily reset at 10:00 AM
-        console.log('[ManagerDashboard] Daily reset at 10:00 AM - clearing all task states')
         
         // Removed: Clear swipe confirmation states - no longer using swipe
         
@@ -740,7 +738,6 @@ export const ManagerDashboard: React.FC = () => {
         task.title.includes('损耗') || task.title.includes('盘点') ||
         task.title.includes('交割'))) {
       inventoryService.clearCache()
-      console.log('[ManagerDashboard] Cleared inventory cache after task completion:', task.title)
     }
     
     if (task && task.uploadRequirement === '审核' && task.linkedTasks) {
