@@ -75,17 +75,8 @@ self.addEventListener('fetch', event => {
         return cache.match(event.request).then(cachedResponse => {
           if (cachedResponse) {
             console.log('[SW] Model from cache (offline-first):', url.pathname);
-            // Try to update cache in background if online
-            if (navigator.onLine) {
-              fetch(event.request)
-                .then(networkResponse => {
-                  if (networkResponse && networkResponse.status === 200) {
-                    cache.put(event.request, networkResponse.clone());
-                    console.log('[SW] Model cache updated in background:', url.pathname);
-                  }
-                })
-                .catch(() => {}); // Ignore errors in background update
-            }
+            // Return cached response directly - no background updates
+            // This prevents unnecessary network requests and improves performance
             return cachedResponse;
           }
           
