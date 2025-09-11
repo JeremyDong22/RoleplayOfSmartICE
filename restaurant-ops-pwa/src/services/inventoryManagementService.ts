@@ -78,7 +78,7 @@ class InventoryManagementService {
         return []
       }
 
-      let query = supabase
+      let query = getSupabase()
         .from('roleplay_inventory_items')
         .select('*')
         .eq('restaurant_id', restaurantConfig.id)
