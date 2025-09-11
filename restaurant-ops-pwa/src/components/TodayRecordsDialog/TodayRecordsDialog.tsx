@@ -203,6 +203,9 @@ export const TodayRecordsDialog: React.FC<TodayRecordsDialogProps> = ({
                 
                 {taskRecords.map((record, index) => {
                   const structuredData = record.submission_metadata?.structured_data
+                  // 从items数组中获取第一个物品的信息
+                  const firstItem = structuredData?.items?.[0]
+                  
                   return (
                     <Accordion 
                       key={record.id}
@@ -225,18 +228,26 @@ export const TodayRecordsDialog: React.FC<TodayRecordsDialogProps> = ({
                           {format(addHours(new Date(record.created_at), 8), 'HH:mm')}
                         </Typography>
                         
-                        {structuredData && (
+                        {firstItem && (
                           <>
                             <Typography variant="body2" fontWeight={500}>
-                              {structuredData.item_name || '未知物品'}
+                              {firstItem.item_name || '未知物品'}
                             </Typography>
                             <Typography variant="body2">
-                              {structuredData.quantity || 0} {structuredData.unit || ''}
+                              {firstItem.quantity || 0} {firstItem.unit || ''}
                             </Typography>
+                            {structuredData.items.length > 1 && (
+                              <Chip
+                                size="small"
+                                label={`+${structuredData.items.length - 1}项`}
+                                color="primary"
+                                variant="outlined"
+                              />
+                            )}
                           </>
                         )}
                         
-                        {!structuredData && record.text_content && (
+                        {!firstItem && record.text_content && (
                           <Typography variant="body2" sx={{ flex: 1 }}>
                             {record.text_content.substring(0, 30)}...
                           </Typography>
@@ -253,15 +264,33 @@ export const TodayRecordsDialog: React.FC<TodayRecordsDialogProps> = ({
                       </AccordionSummary>
                       
                       <AccordionDetails>
-                        {/* 质量检查 */}
-                        {structuredData?.quality_check && (
+                        {/* 显示所有物品信息 */}
+                        {structuredData?.items && structuredData.items.length > 0 && (
                           <Box sx={{ mb: 2 }}>
-                            <Chip 
-                              size="small" 
-                              label={`质量: ${structuredData.quality_check}`}
-                              color={structuredData.quality_check === '合格' ? 'success' : 'error'}
-                              variant="outlined"
-                            />
+                            {structuredData.items.map((item, itemIndex) => (
+                              <Box key={itemIndex} sx={{ mb: 1.5, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                                  {item.item_name || '未知物品'}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  数量: {item.quantity} {item.unit || ''}
+                                </Typography>
+                                {item.unit_price && (
+                                  <Typography variant="body2" color="text.secondary">
+                                    单价: ¥{item.unit_price} | 总价: ¥{item.total_price || item.unit_price * item.quantity}
+                                  </Typography>
+                                )}
+                                {item.quality_check && (
+                                  <Chip 
+                                    size="small" 
+                                    label={`质量: ${item.quality_check}`}
+                                    color={item.quality_check === '合格' ? 'success' : 'error'}
+                                    variant="outlined"
+                                    sx={{ mt: 0.5 }}
+                                  />
+                                )}
+                              </Box>
+                            ))}
                           </Box>
                         )}
                         

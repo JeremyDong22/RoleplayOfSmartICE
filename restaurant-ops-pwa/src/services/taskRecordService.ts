@@ -148,7 +148,7 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
   
   // 库存更新现在由数据库触发器自动处理
   // 不需要显式调用函数
-  if (data && taskData.submission_metadata?.structured_data?.item_name) {
+  if (data && taskData.submission_metadata?.structured_data?.items?.length > 0) {
     console.log('Task contains inventory data, will be processed by database trigger:', data.id)
   }
   
