@@ -5,6 +5,7 @@
 // Updated: 2025-08-11 - Added face-api.js face recognition
 // Updated: 2025-08-12 - Removed FaceIO, implemented auto face detection
 // Updated: 2025-01-13 - Fixed auth initialization timing
+// Updated: 2025-09-08 - Added PWA update notification system
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -13,6 +14,7 @@ import { RoleSelection } from './pages/RoleSelection'
 // Use lazy loading for dashboard components to avoid circular dependencies
 import { lazy, Suspense } from 'react'
 import { CircularProgress, Box } from '@mui/material'
+import { UpdateNotification } from './components/UpdateNotification'
 
 // VERSION 1.0.2 - Using lazy loading for dashboards
 // Cache prevention via version comment to force rebuild
@@ -360,6 +362,7 @@ function App() {
           <DutyManagerProvider>
             <RouterProvider router={router} />
             <NotificationPermission />
+            <UpdateNotification />
           </DutyManagerProvider>
         </TaskDataProvider>
       </RefreshProvider>

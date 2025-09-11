@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
-    "build:check": "tsc -b && vite build",
+    "build": "node scripts/update-sw-version.js && vite build && node scripts/update-sw-version.js",
+    "build:check": "tsc -b && node scripts/update-sw-version.js && vite build && node scripts/update-sw-version.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

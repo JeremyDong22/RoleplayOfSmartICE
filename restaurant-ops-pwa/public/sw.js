@@ -3,9 +3,12 @@
 // Updated to support push notifications
 // Updated 2025-01-14: Added face recognition model caching
 // Updated 2025-08-15: Enhanced model caching for offline-first strategy
+// Updated 2025-09-08: Implemented automatic version updates with cache busting
 
-const CACHE_NAME = 'restaurant-ops-v4'; // Updated to force cache refresh
-const MODEL_CACHE_NAME = 'face-models-v2'; // Separate cache for models
+// Version will be replaced during build with timestamp or commit hash
+const VERSION = '__BUILD_VERSION__';
+const CACHE_NAME = `restaurant-ops-${VERSION}`;
+const MODEL_CACHE_NAME = `face-models-${VERSION}`;
 const urlsToCache = [
   '/',
   '/index.html',
@@ -26,6 +29,7 @@ const modelFiles = [
 
 // Install event - cache assets and models
 self.addEventListener('install', event => {
+  console.log(`[SW] Installing version ${VERSION}`);
   event.waitUntil(
     Promise.all([
       // Cache general assets
@@ -52,7 +56,7 @@ self.addEventListener('install', event => {
         );
       })
     ]).then(() => {
-      console.log('[SW] Installation complete');
+      console.log(`[SW] Installation complete for version ${VERSION}`);
       // Skip waiting to activate immediately
       self.skipWaiting();
     })
@@ -173,20 +177,37 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and claim clients
 self.addEventListener('activate', event => {
+  console.log(`[SW] Activating version ${VERSION}`);
   const cacheWhitelist = [CACHE_NAME, MODEL_CACHE_NAME]; // Keep both caches
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    Promise.all([
+      // Clean up old caches
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheWhitelist.indexOf(cacheName) === -1) {
+              console.log('[SW] Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      // Claim all clients immediately
+      clients.claim().then(() => {
+        console.log('[SW] Claimed all clients');
+        // Notify all clients about the update
+        clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'SW_UPDATED',
+              version: VERSION
+            });
+          });
+        });
+      })
+    ])
   );
 });
 
@@ -254,7 +275,13 @@ self.addEventListener('notificationclick', event => {
 // Message event - handle messages from the app
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[SW] Received SKIP_WAITING message');
     self.skipWaiting();
+  }
+  
+  // Handle version check request
+  if (event.data && event.data.type === 'GET_VERSION') {
+    event.ports[0].postMessage({ version: VERSION });
   }
   
   // Handle force refresh message
