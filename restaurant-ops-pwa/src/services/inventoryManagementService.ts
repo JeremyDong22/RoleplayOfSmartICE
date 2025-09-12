@@ -1,7 +1,7 @@
 /**
  * Inventory Management Service
  * Created: 2025-08-22
- * Updated: 2025-08-28 - Fixed all placeholder methods to connect to real database
+ * Updated: 2025-09-12 - Fixed addInventoryItem to only insert valid database fields
  * Purpose: 库存管理核心服务，连接到实时库存视图和其他数据库表
  */
 
@@ -394,6 +394,7 @@ class InventoryManagementService {
 
   /**
    * 添加新物品
+   * Updated: 2025-09-12 - Fixed to only insert valid database fields
    */
   async addInventoryItem(item: Partial<InventoryItem>): Promise<InventoryItem> {
     try {
@@ -402,15 +403,17 @@ class InventoryManagementService {
         throw new Error('Restaurant configuration not found')
       }
 
+      // Only include fields that exist in the database table
       const newItem = {
         restaurant_id: restaurantConfig.id,
         item_name: item.item_name || '新物品',
         unit: item.unit || '个',
         department: item.department || '前厅',
         category: item.category || '其他',
-        subcategory: item.subcategory,
+        subcategory: item.subcategory || null,
         distribution_channel: item.distribution_channel || '本地',
         warning_quantity: item.warning_quantity || 10
+        // Note: specifications and shelf_life are not in the database table
       }
 
       const { data, error } = await getSupabase()

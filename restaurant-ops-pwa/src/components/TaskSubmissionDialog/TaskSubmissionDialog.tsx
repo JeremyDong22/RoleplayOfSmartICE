@@ -45,7 +45,7 @@ interface TaskSubmissionDialogProps {
   isLateSubmission?: boolean
   initialPhotoGroups?: any[] // 新增：支持传入之前的照片组
   onClose: () => void
-  onSubmit: (taskId: string, data: any) => void
+  onSubmit: (taskId: string, data: any) => Promise<void> | void
 }
 
 export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({

@@ -169,9 +169,9 @@ export const FloatingTaskCard: React.FC<FloatingTaskCardProps> = ({
     }
   }
 
-  const handleTaskSubmit = (taskId: string, data: any) => {
+  const handleTaskSubmit = async (taskId: string, data: any) => {
     const task = tasks.find(t => t.id === taskId)
-    onTaskComplete(taskId, data)
+    await onTaskComplete(taskId, data)
     setDialogOpen(false)
     setSelectedTask(null)
     setSuccessMessage(`${task?.title || '任务'}已提交成功`)

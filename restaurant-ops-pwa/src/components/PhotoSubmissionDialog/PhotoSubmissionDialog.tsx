@@ -107,7 +107,7 @@ interface PhotoSubmissionDialogProps {
     photo: string
     description: string
     sampleIndex: number
-  }>) => void
+  }>) => Promise<void> | void
 }
 
 export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
@@ -519,7 +519,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   }
   
   // 最终提交
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // 保留原有的evidence格式用于兼容
     const evidence = photoGroups.flatMap(group => 
       group.photos.map(photo => ({
@@ -578,7 +578,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     try {
       // Call parent's onSubmit - this will handle the actual upload
       // Parent should throw error if upload fails
-      onSubmit(submitData)
+      // IMPORTANT: await the async operation to prevent premature cleanup
+      await onSubmit(submitData)
       
       // Only clear data if onSubmit succeeds (no error thrown)
       const cleanup = () => {
@@ -592,10 +593,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         setPhotoGroups([])
         setCurrentSessionPhotos([])
         setStructuredData({})
-        setCurrentView('samples')
+        // Don't reset view - let parent close the dialog
+        // This prevents the confusing UI reset before dialog closes
+        // setCurrentView('samples')  // REMOVED: This was causing the bug
       }
       
       cleanup()
+      // The parent will close the dialog after successful upload
     } catch (error) {
       // Upload failed - preserve data in localStorage for retry
       console.error('[PhotoDialog] Submission failed, preserving data for retry:', error)

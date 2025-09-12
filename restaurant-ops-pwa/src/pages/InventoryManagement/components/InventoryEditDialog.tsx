@@ -1,7 +1,7 @@
 /**
  * Inventory Edit Dialog Component
  * Created: 2025-08-22
- * Updated: 2025-08-31 - 增强编辑功能，支持修改物品名称和其他属性
+ * Updated: 2025-09-12 - Fixed database insertion, added unique validation, improved UI, added category dropdowns
  * Purpose: Dialog for editing inventory items (add/edit/delete)
  */
 
@@ -31,7 +31,8 @@ import {
   Chip,
   Grid,
   FormHelperText,
-  Divider
+  Divider,
+  Autocomplete
 } from '@mui/material'
 import {
   Delete as DeleteIcon,
@@ -80,6 +81,8 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [editingItem, setEditingItem] = useState<Partial<InventoryItem> | null>(null)
+  const [existingCategories, setExistingCategories] = useState<string[]>([])
+  const [existingSubcategories, setExistingSubcategories] = useState<string[]>([])
   
   // 新物品表单状态
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
@@ -105,6 +108,14 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
       loadInventory()
     }
   }, [open])
+
+  // 提取现有的类别和子类别
+  useEffect(() => {
+    const categories = [...new Set(items.filter(i => !i.isDeleted && i.category).map(i => i.category))]
+    const subcategories = [...new Set(items.filter(i => !i.isDeleted && i.subcategory).map(i => i.subcategory!))]
+    setExistingCategories(categories)
+    setExistingSubcategories(subcategories)
+  }, [items])
 
   const loadInventory = async () => {
     try {
@@ -176,6 +187,16 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
     if (!newItem.item_name?.trim()) {
       errors.item_name = '物品名称不能为空'
     }
+    
+    // 检查名称是否已存在
+    const isDuplicate = items.some(item => 
+      !item.isDeleted && 
+      item.item_name.toLowerCase() === newItem.item_name?.trim().toLowerCase()
+    )
+    if (isDuplicate) {
+      errors.item_name = '该物品名称已存在'
+    }
+    
     // 新物品数量固定为0，不需要验证
     if (!newItem.unit?.trim()) {
       errors.unit = '单位不能为空'
@@ -211,7 +232,8 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
       isDeleted: false
     }
 
-    setItems(prev => [...prev, newItemWithId])
+    // 将新物品添加到列表顶部
+    setItems(prev => [newItemWithId, ...prev])
     
     // 重置表单
     setNewItem({
@@ -257,7 +279,7 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
         if (deleteError) throw deleteError
       }
       
-      // 执行更新操作
+      // 执行更新操作 - 只更新数据库表中存在的字段
       if (itemsToUpdate.length > 0) {
         for (const item of itemsToUpdate) {
           const { error: updateError } = await supabase
@@ -267,11 +289,9 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
               unit: item.unit,
               department: item.department,
               category: item.category,
-              subcategory: item.subcategory,
-              distribution_channel: item.distribution_channel,
-              warning_quantity: item.warning_quantity,
-              specifications: item.specifications,
-              shelf_life: item.shelf_life,
+              subcategory: item.subcategory || null,
+              distribution_channel: item.distribution_channel || '本地',
+              warning_quantity: item.warning_quantity || 10,
               updated_at: new Date().toISOString()
             })
             .eq('id', item.id)
@@ -281,21 +301,17 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
         }
       }
       
-      // 执行添加操作
+      // 执行添加操作 - 只插入数据库表中存在的字段
       if (itemsToAdd.length > 0) {
         const newItems = itemsToAdd.map(item => ({
           restaurant_id: restaurantId,
           item_name: item.item_name,
-          quantity: 0,  // 新物品数量始终为0
           unit: item.unit,
           department: item.department,
           category: item.category,
-          subcategory: item.subcategory,
-          distribution_channel: item.distribution_channel,
-          warning_quantity: item.warning_quantity,
-          specifications: item.specifications,
-          shelf_life: item.shelf_life,
-          total_price: 0,  // 新物品总价始终为0
+          subcategory: item.subcategory || null,
+          distribution_channel: item.distribution_channel || '本地',
+          warning_quantity: item.warning_quantity || 10,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }))
@@ -417,6 +433,7 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
                       value={newItem.item_name || ''}
                       onChange={(e) => setNewItem(prev => ({ ...prev, item_name: e.target.value }))}
                       error={!!formErrors.item_name}
+                      helperText={formErrors.item_name}
                       placeholder="输入名称"
                     />
                   </TableCell>
@@ -454,24 +471,40 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <TextField
+                    <Autocomplete
                       size="small"
-                      fullWidth
+                      freeSolo
+                      options={existingCategories}
                       value={newItem.category || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value }))}
-                      error={!!formErrors.category}
-                      placeholder="饮料/食材"
-                      sx={{ minWidth: 90 }}
+                      onInputChange={(event, newValue) => {
+                        setNewItem(prev => ({ ...prev, category: newValue }))
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          error={!!formErrors.category}
+                          placeholder="饮料/食材"
+                          sx={{ minWidth: 90 }}
+                        />
+                      )}
                     />
                   </TableCell>
                   <TableCell>
-                    <TextField
+                    <Autocomplete
                       size="small"
-                      fullWidth
+                      freeSolo
+                      options={existingSubcategories}
                       value={newItem.subcategory || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, subcategory: e.target.value }))}
-                      placeholder="可选"
-                      sx={{ minWidth: 90 }}
+                      onInputChange={(event, newValue) => {
+                        setNewItem(prev => ({ ...prev, subcategory: newValue }))
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          placeholder="可选"
+                          sx={{ minWidth: 90 }}
+                        />
+                      )}
                     />
                   </TableCell>
                   <TableCell>
@@ -543,7 +576,7 @@ export const InventoryEditDialog: React.FC<InventoryEditDialogProps> = ({
               </TableRow>
             </TableHead>
             <TableBody>
-              {items.map((item) => (
+              {items.filter(item => !item.isDeleted).concat(items.filter(item => item.isDeleted)).map((item) => (
                 <TableRow 
                   key={item.id}
                   sx={{ 

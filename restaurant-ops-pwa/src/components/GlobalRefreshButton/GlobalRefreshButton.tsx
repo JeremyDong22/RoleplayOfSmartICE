@@ -82,7 +82,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
     if (isRefreshing || isAnimating) return
     
     touchStartTimeRef.current = Date.now()
-    setLongPressProgress(0)
+    setLongPressProgress(0.1) // 设置初始值让进度条立即显示
     
     // Start progress animation
     progressIntervalRef.current = setInterval(() => {
@@ -195,8 +195,8 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
           window.location.reload()
         }, 1500)
         
-      } else if (pressDuration >= 100) { // 避免误触
-        // 短按：硬刷新（强制页面重载）
+      } else {
+        // 短按：硬刷新（强制页面重载）- 移除时长限制，立即响应
         console.log('执行硬刷新...')
         setSuccessMessage('正在刷新页面...')
         setShowSuccess(true)
@@ -204,17 +204,15 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
         // 设置一个超时，确保即使刷新失败按钮也能恢复
         setTimeout(() => {
           setIsAnimating(false)
-        }, 3000)
+        }, 1000) // 缩短到1秒
         
         try {
           await triggerRefresh('hard')
           // 硬刷新会重载页面，通常不会执行到这里
         } catch (err) {
           console.error('硬刷新失败，尝试直接重载页面:', err)
-          // 如果 triggerRefresh 失败，直接重载页面
-          setTimeout(() => {
-            window.location.reload()
-          }, 500)
+          // 如果 triggerRefresh 失败，立即重载页面
+          window.location.reload() // 移除延迟，立即重载
         }
       }
     } catch (err) {
