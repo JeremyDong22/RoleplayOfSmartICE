@@ -93,8 +93,7 @@ class TaskService {
   private async _doInitialize(): Promise<boolean> {
     
     try {
-      // Add delay to ensure other services are initialized
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Removed unnecessary delay - services should handle their own initialization
       
       // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
       // This checks our custom authentication from authService
@@ -116,10 +115,10 @@ class TaskService {
       // Mark as initialized
       this.isInitialized = true
       
-      // 启用实时订阅（延迟以避免网络拥堵）
+      // 启用实时订阅（减少延迟以提高响应速度）
       setTimeout(() => {
         this.subscribeToChanges()
-      }, 2000)
+      }, 500)
       
       return true
     } catch (error) {
@@ -159,8 +158,8 @@ class TaskService {
       
       // 如果是网络错误且还有重试次数，则重试
       if (retryCount < 3 && (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION'))) {
-        // Retrying load periods
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // 递增延迟
+        // Retrying load periods with shorter delay
+        await new Promise(resolve => setTimeout(resolve, 200 * (retryCount + 1))) // 更短的递增延迟 (200ms, 400ms, 600ms)
         return this.loadPeriods(retryCount + 1)
       }
       

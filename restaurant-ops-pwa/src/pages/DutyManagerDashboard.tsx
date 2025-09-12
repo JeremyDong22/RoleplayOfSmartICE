@@ -445,14 +445,10 @@ const DutyManagerDashboard: React.FC = () => {
         }
       } else {
         console.error('[DutyManagerDashboard] Task not found:', taskId)
+        throw new Error('任务未找到')
       }
     } catch (error) {
       console.error('[DutyManagerDashboard] Task submission failed:', error)
-      alert('任务提交失败，数据已保存到本地，请稍后重试。\n\n刷新页面后，您的照片和数据将自动恢复。')
-      
-      // 不删除状态！保留evidence数据，这样用户刷新页面后可以重试
-      // PhotoSubmissionDialog已经通过localStorage保存了照片
-      // 我们只需要保留taskStatuses中的evidence即可
       
       // 保存失败的任务到localStorage，以便页面刷新后恢复
       const failedTask = {
@@ -469,7 +465,11 @@ const DutyManagerDashboard: React.FC = () => {
       } catch (e) {
         console.error('Failed to save task to localStorage:', e)
       }
+      
+      // 重要：必须重新抛出错误，让PhotoSubmissionDialog知道提交失败
+      throw error
     }
+  }
   }
 
   // 处理通知评论

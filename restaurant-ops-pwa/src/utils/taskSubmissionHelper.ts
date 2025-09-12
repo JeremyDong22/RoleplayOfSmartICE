@@ -15,6 +15,9 @@ import { uploadQueueService } from '../services/uploadQueueService'
 const BATCH_SIZES = [10, 7, 5, 3]
 const UPLOAD_TIMEOUT = 30000 // 30 seconds per batch
 
+// Track ongoing submissions to prevent duplicates
+const ongoingSubmissions = new Set<string>()
+
 interface TaskSubmissionData {
   taskId: string
   userId: string
@@ -51,7 +54,9 @@ async function uploadPhotoWithRetry(
   while (retryCount <= maxRetries) {
     try {
       if (retryCount > 0) {
-        onProgress?.(`重试上传 (${retryCount}/${maxRetries})...`)
+        // Include photo index to make it clear which photo is retrying
+        const photoIndex = (onProgress as any)?.photoIndex || ''
+        onProgress?.(`照片${photoIndex} 重试 (${retryCount}/${maxRetries})...`)
         // Wait before retry with exponential backoff
         await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount - 1), 5000)))
       }
@@ -215,6 +220,16 @@ export async function submitTaskWithMedia({
   onProgress,
   maxRetries = 3
 }: TaskSubmissionData) {
+  // Prevent duplicate submissions
+  const submissionKey = `${taskId}-${userId}-${date}`
+  if (ongoingSubmissions.has(submissionKey)) {
+    console.warn('[TaskSubmissionHelper] Duplicate submission prevented for:', submissionKey)
+    throw new Error('任务正在提交中，请勿重复操作')
+  }
+  
+  // Mark submission as ongoing
+  ongoingSubmissions.add(submissionKey)
+  
   try {
     console.log('[TaskSubmissionHelper] ===== SUBMISSION START =====');
     console.log('[TaskSubmissionHelper] Processing task submission:', {
@@ -297,7 +312,21 @@ export async function submitTaskWithMedia({
       // 处理不同格式的evidence数据
       let evidenceArray: any[] = []
       
-      if (data.evidence) {
+      // 首先检查photoGroups（值班经理可能使用这个格式）
+      if (data.photoGroups && Array.isArray(data.photoGroups)) {
+        console.log('[TaskSubmissionHelper] Found photoGroups format:', data.photoGroups)
+        // 将photoGroups转换为evidence格式
+        evidenceArray = []
+        data.photoGroups.forEach((group: any) => {
+          if (group.photos && Array.isArray(group.photos)) {
+            group.photos.forEach((photo: string) => {
+              console.log('[TaskSubmissionHelper] Photo data type:', typeof photo)
+              console.log('[TaskSubmissionHelper] Photo data starts with:', photo?.substring?.(0, 50))
+              evidenceArray.push({ photo: photo, description: group.comment || '' })
+            })
+          }
+        })
+      } else if (data.evidence) {
         // 如果evidence是对象且包含evidence属性（嵌套格式）
         if (data.evidence.evidence && Array.isArray(data.evidence.evidence)) {
           evidenceArray = data.evidence.evidence
@@ -312,6 +341,8 @@ export async function submitTaskWithMedia({
           evidenceArray = []
         }
       }
+      
+      console.log('[TaskSubmissionHelper] Evidence array:', evidenceArray)
       
       // NEW: Parallel upload with fallback
       if (evidenceArray.length > 0) {
@@ -631,6 +662,9 @@ export async function submitTaskWithMedia({
         console.log('[TaskSubmissionHelper] Submission successful:', result.id)
         console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
         
+        // Remove from ongoing submissions on success
+        ongoingSubmissions.delete(submissionKey)
+        
         onProgress?.(100, '提交成功!')
         return result
       } catch (error: any) {
@@ -662,8 +696,12 @@ export async function submitTaskWithMedia({
     
     // Throw error to indicate immediate failure (but data is queued)
     const errorMessage = submitError?.message || 'Failed to submit task after retries'
+    // Remove from ongoing submissions before throwing
+    ongoingSubmissions.delete(submissionKey)
     throw new Error(`${errorMessage}. Task has been queued for automatic retry when connection improves.`)
   } catch (error) {
+    // Always clean up the submission key on any error
+    ongoingSubmissions.delete(submissionKey)
     console.error('[TaskSubmissionHelper] Error submitting task:', {
       taskId,
       error,
