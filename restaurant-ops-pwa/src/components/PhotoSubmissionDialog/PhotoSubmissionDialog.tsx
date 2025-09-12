@@ -29,7 +29,8 @@ import {
   Select,
   MenuItem,
   Divider,
-  InputAdornment
+  InputAdornment,
+  LinearProgress
   // Badge
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
@@ -145,6 +146,9 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   const [showSuccess, setShowSuccess] = useState(false)
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadMessage, setUploadMessage] = useState('')
   
   // 结构化数据状态
   const [structuredData, setStructuredData] = useState<Record<string, any>>({})
@@ -574,6 +578,9 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     // Store submission state before calling onSubmit
     // This ensures data is preserved if upload fails
     const submissionStarted = Date.now()
+    setIsSubmitting(true)
+    setUploadProgress(0)
+    setUploadMessage('准备上传...')
     
     try {
       // Call parent's onSubmit - this will handle the actual upload
@@ -599,10 +606,18 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       }
       
       cleanup()
-      // The parent will close the dialog after successful upload
+      setIsSubmitting(false)
+      setUploadProgress(100)
+      setUploadMessage('上传成功！')
+      // Close the dialog after successful upload
+      // This fixes the issue where dialog doesn't close after upload
+      onClose()
     } catch (error) {
       // Upload failed - preserve data in localStorage for retry
       console.error('[PhotoDialog] Submission failed, preserving data for retry:', error)
+      setIsSubmitting(false)
+      setUploadProgress(0)
+      setUploadMessage('上传失败，请重试')
       // Data remains in localStorage and photoGroups state
       // User can retry or close dialog and come back later
     }
@@ -1232,14 +1247,25 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         </Button>
         
         {photoGroups.length > 0 && (
-          <Button
-            variant="contained"
-            size="large"
-            onClick={handleSubmit}
-            startIcon={<CloudUpload />}
-          >
-            提交所有照片
-          </Button>
+          <Box>
+            <Button
+              variant="contained"
+              size="large"
+              onClick={handleSubmit}
+              startIcon={<CloudUpload />}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '正在上传...' : '提交所有照片'}
+            </Button>
+            {isSubmitting && (
+              <Box sx={{ mt: 2 }}>
+                <LinearProgress variant="determinate" value={uploadProgress} />
+                <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center' }}>
+                  {uploadMessage}
+                </Typography>
+              </Box>
+            )}
+          </Box>
         )}
       </Box>
     </Box>

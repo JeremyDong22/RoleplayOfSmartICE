@@ -45,7 +45,7 @@ async function uploadPhotoWithRetry(
   photoData: string,
   userId: string,
   taskId: string,
-  maxRetries: number = 3,
+  maxRetries: number = 2,
   onProgress?: (message: string) => void
 ): Promise<UploadResult> {
   let retryCount = 0
@@ -126,7 +126,7 @@ async function uploadBatchWithTimeout(
             photoData,
             userId,
             taskId,
-            3 // maxRetries
+            2 // maxRetries - reduced from 3 to 2 as requested
           )
           return { ...result, index }
         } catch (error: any) {
@@ -183,10 +183,16 @@ async function uploadPhotosWithFallback(
       allResults.push(...batchResults)
       photoIndex += batch.length
       
-      // Update progress if callback provided
+      // Update progress if callback provided with more detailed info
       if (onProgress) {
         const progress = Math.round((photoIndex / photos.length) * 100)
-        onProgress(progress, `上传照片 ${photoIndex}/${photos.length}`)
+        const successCount = allResults.filter(r => r.success).length
+        const failureCount = allResults.filter(r => !r.success).length
+        let message = `正在上传 ${photoIndex}/${photos.length} 张照片`
+        if (failureCount > 0) {
+          message += ` (${failureCount} 张失败)`
+        }
+        onProgress(progress, message)
       }
       
     } catch (error: any) {
@@ -218,7 +224,7 @@ export async function submitTaskWithMedia({
   uploadRequirement,
   data,
   onProgress,
-  maxRetries = 3
+  maxRetries = 2
 }: TaskSubmissionData) {
   // Prevent duplicate submissions
   const submissionKey = `${taskId}-${userId}-${date}`
@@ -319,12 +325,16 @@ export async function submitTaskWithMedia({
         evidenceArray = []
         data.photoGroups.forEach((group: any) => {
           if (group.photos && Array.isArray(group.photos)) {
-            group.photos.forEach((photoItem: any) => {
-              // photoGroups格式中，照片是对象 {image: 'data:...'} 而不是字符串
-              const photoData = typeof photoItem === 'string' ? photoItem : photoItem.image
-              console.log('[TaskSubmissionHelper] Photo item type:', typeof photoItem)
-              console.log('[TaskSubmissionHelper] Photo data starts with:', photoData?.substring?.(0, 50))
-              evidenceArray.push({ photo: photoData, description: group.comment || '' })
+            group.photos.forEach((photo: string) => {
+              // photoGroups格式中，照片应该是字符串数组（PhotoSubmissionDialog发送的格式）
+              // 验证是有效的base64数据
+              if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
+                console.log('[TaskSubmissionHelper] Photo data type:', typeof photo)
+                console.log('[TaskSubmissionHelper] Photo data starts with:', photo.substring(0, 50))
+                evidenceArray.push({ photo: photo, description: group.comment || '' })
+              } else {
+                console.error('[TaskSubmissionHelper] Invalid photo data:', typeof photo, photo?.substring?.(0, 50))
+              }
             })
           }
         })
