@@ -77,28 +77,32 @@ export async function uploadPhoto(
     const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
     
     // Convert base64 to ArrayBuffer using base64-arraybuffer library
-    // This is the approach recommended in Supabase docs
     const arrayBuffer = decode(base64Data);
     
-    // Check file size (approximate - base64 is ~33% larger than binary)
-    const approximateSize = (base64Data.length * 3) / 4;
-    if (approximateSize > MAX_FILE_SIZE) {
+    // Check file size
+    if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
       throw new Error(`File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
     }
     
     // Generate unique file path
     const filePath = generateFilePath(userId, taskId);
+    const fileName = filePath.split('/').pop() || 'photo.jpg';
     
-    console.log('[StorageService] Using ArrayBuffer approach:', {
-      contentType,
-      arrayBufferSize: arrayBuffer.byteLength,
-      filePath
+    // Create a File object from ArrayBuffer
+    // Supabase expects File or Blob, not raw ArrayBuffer
+    const file = new File([arrayBuffer], fileName, { type: contentType });
+    
+    console.log('[StorageService] Created File from ArrayBuffer:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      contentType
     });
     
-    // Upload to Supabase Storage using ArrayBuffer (as per docs)
+    // Upload to Supabase Storage using File object
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, arrayBuffer, {
+      .upload(filePath, file, {
         contentType: contentType,
         cacheControl: '3600',
         upsert: false, // Don't overwrite existing files
