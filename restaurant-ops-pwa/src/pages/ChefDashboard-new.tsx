@@ -19,6 +19,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { TaskSummary } from '../components/TaskSummary'
 import { EditableTime } from '../components/TimeControl/EditableTime'
+import { TimeDisplay } from '../components/TimeDisplay'
+import { TaskOverviewDropdown } from '../components/TaskOverviewDropdown'
 import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPeriodDisplay'
 import { getCurrentTestTime } from '../utils/globalTestTime'
 import { FloatingTaskCard } from '../components/FloatingTaskCard'
@@ -950,7 +952,11 @@ export const ChefDashboard: React.FC = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             后厨管理
           </Typography>
-          <EditableTime testTime={testTime} onTimeChange={setTestTime} onResetTasks={handleResetTasks} />
+          <TimeDisplay testTime={testTime} />
+          <TaskOverviewDropdown testTime={testTime} />
+          {(import.meta.env.VITE_SHOW_DEV_TOOLS === 'true' || window.location.hostname === 'localhost') && (
+            <EditableTime testTime={testTime} onTimeChange={setTestTime} onResetTasks={handleResetTasks} />
+          )}
         </Toolbar>
       </AppBar>
       

@@ -17,6 +17,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { useNavigate } from 'react-router-dom'
 import type { TaskTemplate, WorkflowPeriod } from '../types/task.types'
 import { EditableTime } from '../components/TimeControl/EditableTime'
+import { TimeDisplay } from '../components/TimeDisplay'
+import { TaskOverviewDropdown } from '../components/TaskOverviewDropdown'
 import { TaskSummary } from '../components/TaskSummary'
 import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { useDutyManager } from '../contexts/DutyManagerContext'
@@ -683,7 +685,11 @@ const DutyManagerDashboard: React.FC = () => {
             <Typography variant="h6" sx={{ flexGrow: 1 }}>
               值班经理工作台
             </Typography>
-            <EditableTime onTimeChange={(date) => setTestTime(date || null)} />
+            <TimeDisplay testTime={testTime || undefined} />
+            <TaskOverviewDropdown testTime={testTime || undefined} />
+            {(import.meta.env.VITE_SHOW_DEV_TOOLS === 'true' || window.location.hostname === 'localhost') && (
+              <EditableTime onTimeChange={(date) => setTestTime(date || null)} />
+            )}
           </Toolbar>
         </AppBar>
         
@@ -742,7 +748,11 @@ const DutyManagerDashboard: React.FC = () => {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             值班经理
           </Typography>
-          <EditableTime onTimeChange={(date) => setTestTime(date || null)} />
+          <TimeDisplay testTime={testTime || undefined} />
+          <TaskOverviewDropdown testTime={testTime || undefined} />
+          {(import.meta.env.VITE_SHOW_DEV_TOOLS === 'true' || window.location.hostname === 'localhost') && (
+            <EditableTime onTimeChange={(date) => setTestTime(date || null)} />
+          )}
         </Toolbar>
       </AppBar>
 
