@@ -319,10 +319,12 @@ export async function submitTaskWithMedia({
         evidenceArray = []
         data.photoGroups.forEach((group: any) => {
           if (group.photos && Array.isArray(group.photos)) {
-            group.photos.forEach((photo: string) => {
-              console.log('[TaskSubmissionHelper] Photo data type:', typeof photo)
-              console.log('[TaskSubmissionHelper] Photo data starts with:', photo?.substring?.(0, 50))
-              evidenceArray.push({ photo: photo, description: group.comment || '' })
+            group.photos.forEach((photoItem: any) => {
+              // photoGroups格式中，照片是对象 {image: 'data:...'} 而不是字符串
+              const photoData = typeof photoItem === 'string' ? photoItem : photoItem.image
+              console.log('[TaskSubmissionHelper] Photo item type:', typeof photoItem)
+              console.log('[TaskSubmissionHelper] Photo data starts with:', photoData?.substring?.(0, 50))
+              evidenceArray.push({ photo: photoData, description: group.comment || '' })
             })
           }
         })
