@@ -4,63 +4,23 @@
  * This service provides functionality to:
  * - Upload photos to Supabase Storage bucket
  * - Generate unique file names with structured paths
- * - Convert base64 images to blobs
+ * - Convert base64 images to ArrayBuffer (per Supabase docs)
  * - Return public URLs for uploaded files
  * 
  * Created: 2025-01-23
+ * Updated: 2025-09-12 - Changed from Blob to ArrayBuffer approach
  */
 
 import { supabase } from './supabase';
+import { decode } from 'base64-arraybuffer';
 
 // Constants
 const BUCKET_NAME = 'RolePlay';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-/**
- * Converts a base64 string to a Blob
- * @param base64 - The base64 string (with or without data URI prefix)
- * @param contentType - The MIME type of the image (default: image/jpeg)
- * @returns Blob object
- */
-function base64ToBlob(base64: string, contentType: string = 'image/jpeg'): Blob {
-  // Extract actual content type from data URI if available
-  const dataUriMatch = base64.match(/^data:(image\/\w+);base64,/);
-  const actualContentType = dataUriMatch ? dataUriMatch[1] : contentType;
-  
-  // Remove data URI prefix if present
-  const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
-  
-  // Validate that we have base64 data
-  if (!base64Data) {
-    console.error('[StorageService] No base64 data after removing prefix');
-    throw new Error('Invalid base64 data');
-  }
-  
-  try {
-    // Decode base64 string
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: actualContentType });
-    
-    // Log blob details for debugging
-    console.log('[StorageService] Created blob:', {
-      size: blob.size,
-      type: blob.type,
-      contentType: actualContentType
-    });
-    
-    return blob;
-  } catch (error) {
-    console.error('[StorageService] Failed to decode base64:', error);
-    throw new Error('Failed to decode base64 data');
-  }
-}
+// Note: We're using ArrayBuffer approach instead of Blob
+// as recommended in Supabase documentation:
+// https://supabase.com/docs/reference/javascript/storage-from-upload
 
 /**
  * Generates a unique file path for storing photos
@@ -109,32 +69,37 @@ export async function uploadPhoto(
       throw new Error('Invalid image data format');
     }
     
-    // Convert base64 to blob
-    const blob = base64ToBlob(base64Image);
+    // Extract content type from data URI
+    const contentTypeMatch = base64Image.match(/^data:(image\/\w+);base64,/);
+    const contentType = contentTypeMatch ? contentTypeMatch[1] : 'image/jpeg';
     
-    // Check file size
-    if (blob.size > MAX_FILE_SIZE) {
+    // Remove data URI prefix to get pure base64
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    
+    // Convert base64 to ArrayBuffer using base64-arraybuffer library
+    // This is the approach recommended in Supabase docs
+    const arrayBuffer = decode(base64Data);
+    
+    // Check file size (approximate - base64 is ~33% larger than binary)
+    const approximateSize = (base64Data.length * 3) / 4;
+    if (approximateSize > MAX_FILE_SIZE) {
       throw new Error(`File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
     }
     
     // Generate unique file path
     const filePath = generateFilePath(userId, taskId);
     
-    // Convert Blob to File object - Supabase might require a filename
-    const fileName = filePath.split('/').pop() || 'photo.jpg';
-    const file = new File([blob], fileName, { type: blob.type });
-    
-    console.log('[StorageService] Created File object:', {
-      name: file.name,
-      size: file.size,
-      type: file.type
+    console.log('[StorageService] Using ArrayBuffer approach:', {
+      contentType,
+      arrayBufferSize: arrayBuffer.byteLength,
+      filePath
     });
     
-    // Upload to Supabase Storage using File instead of Blob
+    // Upload to Supabase Storage using ArrayBuffer (as per docs)
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, file, {
-        contentType: file.type,
+      .upload(filePath, arrayBuffer, {
+        contentType: contentType,
         cacheControl: '3600',
         upsert: false, // Don't overwrite existing files
         metadata: {
