@@ -10,7 +10,8 @@
   "dependencies": {
     "@mui/icons-material": "^7.2.0",
     "@mui/x-charts": "^8.9.2",
-    "dotenv": "^17.2.1",
+    "@supabase/supabase-js": "^2.57.4",
+    "dotenv": "^17.2.2",
     "framer-motion": "^12.23.12",
     "react-countup": "^6.5.3",
     "react-intersection-observer": "^9.16.0",

@@ -44,6 +44,8 @@ interface TaskSubmissionDialogProps {
   task: TaskTemplate | null
   isLateSubmission?: boolean
   initialPhotoGroups?: any[] // 新增：支持传入之前的照片组
+  selectedZone?: string | null  // 新增：预选的随机抽查区域
+  selectedTable?: string | null  // 新增：预选的随机抽查桌号
   onClose: () => void
   onSubmit: (taskId: string, data: any) => Promise<void> | void
 }
@@ -53,6 +55,8 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   task,
   isLateSubmission = false,
   initialPhotoGroups,
+  selectedZone,
+  selectedTable,
   onClose,
   onSubmit
 }) => {
@@ -65,8 +69,7 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [showFaceVerification, setShowFaceVerification] = useState(false)
   const [pendingSubmissionData, setPendingSubmissionData] = useState<any>(null)
   const [isUserEnrolled, setIsUserEnrolled] = useState(false)
-  // Random inspection states
-  const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  // Random inspection state
   const [isRandomInspection, setIsRandomInspection] = useState(false)
   
   // Debug: Track component lifecycle
@@ -82,11 +85,10 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
         
         // Check if task is random inspection
         if (task.isRandomInspection) {
+          // console.log('[TaskSubmissionDialog] 检测到随机抽查任务:', task.title)
           setIsRandomInspection(true)
-          // Randomly select a zone
-          const zones = ['A区', 'B区', 'C区']
-          const randomZone = zones[Math.floor(Math.random() * zones.length)]
-          setSelectedZone(randomZone)
+          // No longer randomly select here - use pre-selected values from TaskCountdown
+          // The zone and table have already been selected when user clicked "完成任务"
         }
         
         // Check if task needs dynamic fields
@@ -369,21 +371,15 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
             structuredFields={fieldsToUse} // 使用动态字段或原有配置
             isRandomInspection={isRandomInspection} // 传递随机抽查标记
             selectedZone={selectedZone} // 传递选中的区域
+            selectedTable={selectedTable} // 传递选中的桌号
             onClose={handleClose}
-            onSubmit={(data) => {
-              // Add zone info to metadata if it's random inspection
-              const submitData = isRandomInspection 
-                ? { 
-                    ...data, 
-                    type: 'photo',
-                    metadata: {
-                      ...data.metadata,
-                      selected_zone: selectedZone,
-                      inspection_type: 'random',
-                      inspection_date: new Date().toISOString()
-                    }
-                  }
-                : { ...data, type: 'photo' }
+            onSubmit={(data, metadata) => {
+              // Merge any metadata passed from PhotoSubmissionDialog
+              const submitData = {
+                ...data,
+                type: 'photo',
+                metadata: metadata || data.metadata
+              }
               handleTaskSubmit(submitData)
             }}
           />

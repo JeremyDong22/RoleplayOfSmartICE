@@ -114,6 +114,10 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
   const [activeTask, setActiveTask] = useState<TaskTemplate | null>(null)
   const [recordsTaskId, setRecordsTaskId] = useState<string | null>(null)
   
+  // Random inspection states
+  const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const [selectedTable, setSelectedTable] = useState<string | null>(null)
+  
   // Track submitting tasks to show loading state
   const [submittingTaskIds, setSubmittingTaskIds] = useState<Set<string>>(new Set())
   // Track floating tasks that just completed for animation
@@ -767,6 +771,17 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                                   inventoryService.clearCache()
                                 }
                                 
+                                // Check if task is random inspection
+                                if (task.isRandomInspection) {
+                                  // Randomly select zone and table
+                                  const zones = ['A区', 'B区', 'C区']
+                                  const tables = ['1', '2'] // Each zone has 2 tables
+                                  const randomZone = zones[Math.floor(Math.random() * zones.length)]
+                                  const randomTable = tables[Math.floor(Math.random() * tables.length)]
+                                  setSelectedZone(randomZone)
+                                  setSelectedTable(`${randomZone.charAt(0)}${randomTable}`) // e.g., "A1", "B2"
+                                }
+                                
                                 // Check if task requires photo or audio evidence
                                 if (task.uploadRequirement === '拍照') {
                                   setActiveTask(task)
@@ -863,12 +878,17 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
           open={photoDialogOpen || audioDialogOpen || textDialogOpen || listDialogOpen}
           task={activeTask}
           initialPhotoGroups={previousSubmissions[activeTask.id]?.photoGroups}
+          selectedZone={selectedZone}
+          selectedTable={selectedTable}
           onClose={() => {
             setPhotoDialogOpen(false)
             setAudioDialogOpen(false)
             setTextDialogOpen(false)
             setListDialogOpen(false)
             setActiveTask(null)
+            // Clear random inspection selection when closing
+            setSelectedZone(null)
+            setSelectedTable(null)
           }}
           onSubmit={async (taskId, data) => {
             await handleTaskComplete(taskId, data)
@@ -878,6 +898,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
             setAudioDialogOpen(false)
             setTextDialogOpen(false)
             setListDialogOpen(false)
+            // Clear random inspection selection after submission
+            setSelectedZone(null)
+            setSelectedTable(null)
           }}
         />
       )}

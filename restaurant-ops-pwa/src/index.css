@@ -6,10 +6,16 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* TEMPORARY FIX: Prevent infinite width */
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 #root {
   min-height: 100vh;
+  /* TEMPORARY FIX: Prevent infinite width */
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 * {
@@ -19,11 +25,16 @@ body {
 /* Embla Carousel styles for smooth swiping */
 .embla {
   overflow: hidden;
+  /* TEMPORARY FIX: Prevent infinite width */
+  max-width: 100%;
+  width: 100%;
 }
 
 .embla__viewport {
   overflow: hidden;
   width: 100%;
+  /* TEMPORARY FIX: Prevent infinite width */
+  max-width: 100%;
 }
 
 .embla__container {
@@ -32,12 +43,17 @@ body {
   -webkit-touch-callout: none;
   -khtml-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* TEMPORARY FIX: Prevent infinite width */
+  max-width: none;
 }
 
 .embla__slide {
   position: relative;
   flex: 0 0 85%;
   padding-right: 16px;
+  /* TEMPORARY FIX: Prevent infinite width */
+  max-width: 85%;
+  min-width: 0;
 }
 
 /* Prevent overscroll on iOS */

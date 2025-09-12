@@ -15,15 +15,16 @@ import { RoleSelection } from './pages/RoleSelection'
 import { lazy, Suspense } from 'react'
 import { CircularProgress, Box } from '@mui/material'
 import { UpdateNotification } from './components/UpdateNotification'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 // VERSION 1.0.2 - Using lazy loading for dashboards
 // Cache prevention via version comment to force rebuild
 
 const ManagerDashboard = lazy(() => {
-  return import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }));
+  return import('./pages/ManagerDashboard-new.tsx').then(module => ({ default: module.ManagerDashboard }));
 });
-const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new').then(module => ({ default: module.ChefDashboard })))
-const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard'))
+const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new.tsx').then(module => ({ default: module.ChefDashboard })))
+const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard.tsx'))
 import ProfilePageEnhanced from './pages/ProfilePage/ProfilePageEnhanced'
 import TestFloatingCamera from './pages/TestFloatingCamera'
 import { DutyManagerProvider } from './contexts/DutyManagerContext'
@@ -268,46 +269,33 @@ const router = createBrowserRouter([
   },
 ])
 
+// Version 1.0.2 - Cleaned up verbose logging
 function App() {
   const [realtimeStatus] = useState<string>('')
   const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
-    // Use a flag to prevent double initialization in StrictMode
     let initialized = false
     
     const initializeApp = async () => {
       if (initialized) return
       initialized = true
       
-      // 初始化缓存管理器（必须最先执行）
-      initializeCacheManager()
-      
-      // 初始化Storage
-      initializeStorage()
-      
-      // Initialize restaurant config if user is already logged in (Cookie-based auth)
-      // Note: We don't use Supabase Auth, we use our custom auth with cookies
-      const currentUser = authService.getCurrentUser()
-      if (currentUser) {
-        await restaurantConfigService.initialize()
+      try {
+        // Initialize core services
+        initializeCacheManager()
+        initializeStorage()
+        
+        // Initialize restaurant config if user is logged in
+        const currentUser = authService.getCurrentUser()
+        if (currentUser) {
+          await restaurantConfigService.initialize()
+        }
+        
+        console.log('✅ Services initialized')
+      } catch (error) {
+        console.error('❌ Initialization error:', error)
       }
-      
-      // Enable Supabase debugging only in development
-      if (import.meta.env.DEV) {
-        enableSupabaseDebug();
-        // Run test queries after services are initialized
-        setTimeout(() => {
-          testSupabaseQueries();
-        }, 2000);
-      }
-      
-      // 预加载人脸识别模型（后台加载，不阻塞）
-      // 在iOS设备上可能需要更长的加载时间
-      // 延迟加载以避免与其他初始化冲突
-      setTimeout(() => {
-        faceModelManager.preloadInBackground()
-      }, 1000)
     }
     
     // Add small delay to batch initialization and avoid race conditions
@@ -357,15 +345,23 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <RefreshProvider>
-        <TaskDataProvider>
-          <DutyManagerProvider>
-            <RouterProvider router={router} />
-            <NotificationPermission />
-            <UpdateNotification />
-          </DutyManagerProvider>
-        </TaskDataProvider>
-      </RefreshProvider>
+      <ErrorBoundary>
+        <RefreshProvider>
+          <ErrorBoundary>
+            <TaskDataProvider>
+              <ErrorBoundary>
+                <DutyManagerProvider>
+                  <ErrorBoundary>
+                    <RouterProvider router={router} />
+                  </ErrorBoundary>
+                  <NotificationPermission />
+                  <UpdateNotification />
+                </DutyManagerProvider>
+              </ErrorBoundary>
+            </TaskDataProvider>
+          </ErrorBoundary>
+        </RefreshProvider>
+      </ErrorBoundary>
       <Snackbar 
         open={showNotification} 
         autoHideDuration={3000} 

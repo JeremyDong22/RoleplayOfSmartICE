@@ -106,6 +106,7 @@ interface PhotoSubmissionDialogProps {
   structuredFields?: any  // 结构化字段配置
   isRandomInspection?: boolean  // 新增：是否为随机抽查任务
   selectedZone?: string | null  // 新增：选中的抽查区域
+  selectedTable?: string | null  // 新增：选中的抽查桌号
   onClose: () => void
   onSubmit: (evidence: Array<{
     photo: string
@@ -124,10 +125,16 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   structuredFields,
   isRandomInspection = false,
   selectedZone = null,
+  selectedTable = null,
   onClose,
   onSubmit
 }) => {
-  // console.log('[PhotoDialog] Opening with:', { taskName, taskId, isFloatingTask })
+  // console.log('[PhotoDialog] 随机抽查参数:', { 
+  //   isRandomInspection, 
+  //   selectedZone, 
+  //   selectedTable,
+  //   taskName
+  // })
   
   // 视图控制
   const [currentView, setCurrentView] = useState<ViewType>('samples')
@@ -589,10 +596,12 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     
     try {
       // Add metadata for random inspection
-      const metadata = isRandomInspection ? {
+      const metadata = isRandomInspection && selectedZone && selectedTable ? {
         selected_zone: selectedZone,
+        selected_table: selectedTable,
         inspection_type: 'random',
-        inspection_date: new Date().toISOString()
+        inspection_date: new Date().toISOString(),
+        inspection_details: `抽查区域：${selectedZone} - ${selectedTable}桌`
       } : undefined
       
       // Call parent's onSubmit - this will handle the actual upload
@@ -739,10 +748,13 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       {isRandomInspection && selectedZone && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           <Typography variant="subtitle1" fontWeight="bold">
-            今日抽查区域：{selectedZone}
+            今日抽查区域：{selectedZone} - {selectedTable}桌
           </Typography>
           <Typography variant="body2">
-            请对{selectedZone}的所有桌位进行详细卫生检查
+            请对{selectedTable}桌进行详细卫生检查
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block', mt: 1, fontStyle: 'italic' }}>
+            (退出并重新进入会刷新抽查区域)
           </Typography>
         </Alert>
       )}
@@ -925,6 +937,18 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
             </Typography>
           </Box>
         </Box>
+        
+        {/* 显示抽查桌号提示 */}
+        {isRandomInspection && selectedTable && (
+          <Alert severity="info" sx={{ mt: 1 }}>
+            <Typography variant="body2" fontWeight="bold">
+              正在检查：{selectedZone} - {selectedTable}桌
+            </Typography>
+            <Typography variant="caption">
+              请对该桌进行详细拍照记录
+            </Typography>
+          </Alert>
+        )}
       </Box>
       
       {/* 相机视图 - 动态比例 */}

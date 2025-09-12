@@ -13,17 +13,22 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props)
+  }
+
   public state: State = {
     hasError: false,
     error: null
   }
 
   public static getDerivedStateFromError(error: Error): State {
+    console.error('💥 ErrorBoundary caught:', error)
     return { hasError: true, error }
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo)
+    console.error('❌ Uncaught error:', error, errorInfo)
   }
 
   public render() {
