@@ -233,8 +233,8 @@ export async function getTaskSummaryStats(
             periodEnded = false
           } else if (currentTimeInMinutes < periodStartMinutes) {
             // 白天时间（03:00-21:30）
-            // 闭店时段已经结束了
-            periodEnded = true
+            // 闭店时段还未开始
+            periodEnded = false
           } else {
             // 晚上时间（21:30-24:00）
             // 闭店时段刚开始或进行中

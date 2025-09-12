@@ -742,7 +742,7 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       const periodStarted = period.id === currentPeriod?.id ||  // 当前时段
                            periodEnded ||  // 已结束的时段
                            (currentTimeInMinutes >= startInMinutes) ||  // 正常判断
-                           (startInMinutes > 20 * 60 && currentTimeInMinutes < cutoffMinutes) // 跨日情况：晚上的时段在凌晨也算已开始
+                           (startInMinutes > 20 * 60 && currentTimeInMinutes < cutoffMinutes && currentTimeInMinutes < 60 * 4) // 跨日情况：晚上的时段在凌晨(0-4点)也算已开始
       
       // 获取这个period的任务
       const periodTasks = (allTasks || []).filter(task => task.period_id === period.id)
