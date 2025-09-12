@@ -120,11 +120,21 @@ export async function uploadPhoto(
     // Generate unique file path
     const filePath = generateFilePath(userId, taskId);
     
-    // Upload to Supabase Storage
+    // Convert Blob to File object - Supabase might require a filename
+    const fileName = filePath.split('/').pop() || 'photo.jpg';
+    const file = new File([blob], fileName, { type: blob.type });
+    
+    console.log('[StorageService] Created File object:', {
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
+    
+    // Upload to Supabase Storage using File instead of Blob
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, blob, {
-        contentType: 'image/jpeg',
+      .upload(filePath, file, {
+        contentType: file.type,
         cacheControl: '3600',
         upsert: false, // Don't overwrite existing files
         metadata: {

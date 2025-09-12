@@ -11,9 +11,8 @@ import { compressImage, needsCompression, formatFileSize, estimateFileSize } fro
 import { inventoryService } from '../services/inventoryService'
 import { uploadQueueService } from '../services/uploadQueueService'
 
-// Batch sizes to try in order for parallel uploads
-// Reduced to fewer sizes to avoid too many retries
-const BATCH_SIZES = [5, 1]  // Try batch of 5, then individual uploads
+// Fixed batch size - no fallback
+const BATCH_SIZES = [5]  // Only batch of 5, no retry with different sizes
 const UPLOAD_TIMEOUT = 30000 // 30 seconds per batch
 
 // Track ongoing submissions to prevent duplicates
@@ -40,71 +39,47 @@ interface UploadResult {
 }
 
 /**
- * Uploads a photo with retry mechanism
+ * Uploads a photo WITHOUT retry - single attempt only
  */
 async function uploadPhotoWithRetry(
   photoData: string,
   userId: string,
   taskId: string,
-  maxRetries: number = 2,
+  maxRetries: number = 2, // Ignored - no retries
   onProgress?: (message: string) => void
 ): Promise<UploadResult> {
-  let retryCount = 0
-  let lastError: Error | null = null
-  
-  while (retryCount < maxRetries) {
-    try {
-      if (retryCount > 0) {
-        // Include photo index to make it clear which photo is retrying
-        const photoIndex = (onProgress as any)?.photoIndex || ''
-        onProgress?.(`照片${photoIndex} 重试 (${retryCount}/${maxRetries})...`)
-        // Wait before retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount - 1), 5000)))
-      }
-      
-      // Compress if needed with network-aware settings
-      let processedPhoto = photoData
-      if (needsCompression(photoData, 800)) {
-        onProgress?.('压缩图片中...')
-        processedPhoto = await compressImage(photoData, {
-          autoQuality: true // Enable network-aware compression
-        })
-        const originalSize = estimateFileSize(photoData)
-        const compressedSize = estimateFileSize(processedPhoto)
-        console.log(`Photo compressed: ${formatFileSize(originalSize)} -> ${formatFileSize(compressedSize)}`)
-      }
-      
-      onProgress?.('正在上传...')
-      const result = await uploadPhoto(processedPhoto, userId, taskId)
-      
-      if (result) {
-        return {
-          success: true,
-          url: result.publicUrl,
-          retryCount
-        }
-      } else {
-        throw new Error('Upload returned null')
-      }
-    } catch (error) {
-      lastError = error as Error
-      console.error(`Upload attempt ${retryCount + 1} failed:`, error)
-      retryCount++
-      
-      // Don't retry for certain errors
-      if (error instanceof Error) {
-        if (error.message.includes('File size exceeds') ||
-            error.message.includes('Invalid image')) {
-          break
-        }
-      }
+  try {
+    // Compress if needed with network-aware settings
+    let processedPhoto = photoData
+    if (needsCompression(photoData, 800)) {
+      onProgress?.('压缩图片中...')
+      processedPhoto = await compressImage(photoData, {
+        autoQuality: true // Enable network-aware compression
+      })
+      const originalSize = estimateFileSize(photoData)
+      const compressedSize = estimateFileSize(processedPhoto)
+      console.log(`Photo compressed: ${formatFileSize(originalSize)} -> ${formatFileSize(compressedSize)}`)
     }
-  }
-  
-  return {
-    success: false,
-    error: lastError?.message || 'Upload failed after retries',
-    retryCount
+    
+    onProgress?.('正在上传...')
+    const result = await uploadPhoto(processedPhoto, userId, taskId)
+    
+    if (result) {
+      return {
+        success: true,
+        url: result.publicUrl,
+        retryCount: 0
+      }
+    } else {
+      throw new Error('Upload returned null')
+    }
+  } catch (error) {
+    console.error('Upload failed (no retry):', error)
+    return {
+      success: false,
+      error: (error as Error).message,
+      retryCount: 0
+    }
   }
 }
 
@@ -148,7 +123,7 @@ async function uploadBatchWithTimeout(
 }
 
 /**
- * Upload photos with automatic batch size fallback
+ * Upload photos in fixed batches of 5 - NO FALLBACK
  */
 async function uploadPhotosWithFallback(
   photos: any[],
@@ -156,14 +131,12 @@ async function uploadPhotosWithFallback(
   taskId: string,
   onProgress?: (progress: number, message?: string) => void
 ): Promise<UploadResult[]> {
-  let currentBatchSizeIndex = 0
+  const FIXED_BATCH_SIZE = 5
   let allResults: UploadResult[] = []
   let photoIndex = 0
   
   while (photoIndex < photos.length) {
-    const batchSize = BATCH_SIZES[currentBatchSizeIndex]
-    const batch = photos.slice(photoIndex, photoIndex + batchSize)
-    
+    const batch = photos.slice(photoIndex, photoIndex + FIXED_BATCH_SIZE)
     
     try {
       const batchResults = await uploadBatchWithTimeout(
@@ -173,18 +146,11 @@ async function uploadPhotosWithFallback(
         UPLOAD_TIMEOUT
       )
       
-      // Check if any failed
-      const failures = batchResults.filter(r => !r.success)
-      if (failures.length > 0 && currentBatchSizeIndex < BATCH_SIZES.length - 1) {
-        // Some failed, try smaller batch size
-        throw new Error('Batch upload partial failure')
-      }
-      
-      // Success or last resort - accept results
+      // Accept whatever results we get - no retry
       allResults.push(...batchResults)
       photoIndex += batch.length
       
-      // Update progress if callback provided with more detailed info
+      // Update progress
       if (onProgress) {
         const progress = Math.round((photoIndex / photos.length) * 100)
         const successCount = allResults.filter(r => r.success).length
@@ -197,16 +163,9 @@ async function uploadPhotosWithFallback(
       }
       
     } catch (error: any) {
-      
-      // Try smaller batch size
-      currentBatchSizeIndex++
-      
-      if (currentBatchSizeIndex >= BATCH_SIZES.length) {
-        // All batch sizes failed
-        throw new Error('网络连接异常，请检查网络后重试')
-      }
-      
-      // Don't increment photoIndex, retry same photos
+      console.error('[Upload] Batch failed, not retrying:', error)
+      // If batch fails completely, just stop - no retry
+      throw new Error('照片上传失败，请检查网络连接')
     }
   }
   
@@ -660,40 +619,22 @@ export async function submitTaskWithMedia({
       }
     }
     
-    // Retry submission if it fails
-    let submitRetries = 0
-    let submitError: Error | null = null
-    
-    while (submitRetries < maxRetries) {
-      try {
-        if (submitRetries > 0) {
-          onProgress?.(95, `重试提交 (${submitRetries}/${maxRetries})...`)
-          // Shorter wait time for retries
-          await new Promise(resolve => setTimeout(resolve, 500 + (500 * submitRetries)))
-        } else {
-          onProgress?.(90, '保存任务记录...')
-        }
-        
-        const result = await submitTaskRecord(submissionData)
-        console.log('[TaskSubmissionHelper] Submission successful:', result.id)
-        console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
-        
-        // Remove from ongoing submissions on success
-        ongoingSubmissions.delete(submissionKey)
-        
-        onProgress?.(100, '提交成功!')
-        return result
-      } catch (error: any) {
-        submitError = error as Error
-        console.error(`Submit attempt ${submitRetries + 1} failed:`, error)
-        
-        // Check if it's a timeout error
-        if (error?.message?.includes('aborted') || error?.message?.includes('timeout')) {
-          onProgress?.(90 + submitRetries * 2, '网络超时，正在重试...');
-        }
-        
-        submitRetries++
-      }
+    // Single submission attempt - NO RETRY
+    try {
+      onProgress?.(90, '保存任务记录...')
+      
+      const result = await submitTaskRecord(submissionData)
+      console.log('[TaskSubmissionHelper] Submission successful:', result.id)
+      console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
+      
+      // Remove from ongoing submissions on success
+      ongoingSubmissions.delete(submissionKey)
+      
+      onProgress?.(100, '提交成功!')
+      return result
+    } catch (error: any) {
+      console.error('Submit failed (no retry):', error)
+      // Continue to add to queue below
     }
     
     // If all retries failed, add to queue for background retry
