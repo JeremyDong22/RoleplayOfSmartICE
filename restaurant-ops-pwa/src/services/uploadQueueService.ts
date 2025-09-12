@@ -80,7 +80,7 @@ class UploadQueueService {
 
       request.onsuccess = () => {
         this.db = request.result
-        console.log('[UploadQueue] IndexedDB initialized')
+        // Remove initialization log
         resolve()
       }
 
@@ -102,13 +102,13 @@ class UploadQueueService {
    */
   private setupNetworkListeners(): void {
     window.addEventListener('online', () => {
-      console.log('[UploadQueue] Network online, processing queue')
+      // Only log when network status actually changes
       this.isOnline = true
       this.processQueue()
     })
 
     window.addEventListener('offline', () => {
-      console.log('[UploadQueue] Network offline')
+      // Only log when network status actually changes
       this.isOnline = false
     })
   }
@@ -194,7 +194,10 @@ class UploadQueueService {
     })
 
     const allUploads = [...pendingUploads, ...partialUploads]
-    console.log(`[UploadQueue] Processing ${allUploads.length} queued uploads`)
+    // Only log if there are actually uploads to process
+    if (allUploads.length > 0) {
+      console.log(`[UploadQueue] Processing ${allUploads.length} queued uploads`)
+    }
 
     for (const upload of allUploads) {
       // Skip if recently attempted
@@ -210,7 +213,7 @@ class UploadQueueService {
    * Process a single upload with progressive photo upload
    */
   private async processUpload(upload: QueuedUpload): Promise<void> {
-    console.log(`[UploadQueue] Processing upload ${upload.id}`)
+    // Only log on actual upload attempts, not every check
     
     // Update status to uploading
     await this.updateUpload(upload.id, { 

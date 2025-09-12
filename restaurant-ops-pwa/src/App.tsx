@@ -59,7 +59,6 @@ import { RefreshProvider } from './contexts/RefreshContext'
 // Puppeteer import
 import { Puppeteer } from './pages/Puppeteer'
 import { TestListSample } from './pages/TestListSample'
-import { TestSupabaseAuth } from './pages/TestSupabaseAuth'
 
 const theme = createTheme({
   palette: {
@@ -248,10 +247,6 @@ const router = createBrowserRouter([
   {
     path: '/puppeteer',
     element: <Puppeteer />,
-  },
-  {
-    path: '/test-supabase-auth',
-    element: <TestSupabaseAuth />,
   },
   // Catch-all redirect for incorrect profile routes
   {

@@ -29,17 +29,15 @@ const modelFiles = [
 
 // Install event - cache assets and models
 self.addEventListener('install', event => {
-  console.log(`[SW] Installing version ${VERSION}`);
+  // Remove all console logs in production
   event.waitUntil(
     Promise.all([
       // Cache general assets
       caches.open(CACHE_NAME).then(cache => {
-        console.log('[SW] Opened general cache');
         return cache.addAll(urlsToCache);
       }),
       // Pre-cache model files for offline use
       caches.open(MODEL_CACHE_NAME).then(cache => {
-        console.log('[SW] Pre-caching model files...');
         return Promise.allSettled(
           modelFiles.map(url => 
             fetch(url)
@@ -49,14 +47,12 @@ self.addEventListener('install', event => {
                 }
               })
               .catch(err => {
-                console.warn(`[SW] Failed to pre-cache ${url}:`, err);
                 // Don't fail installation if model pre-caching fails
               })
           )
         );
       })
     ]).then(() => {
-      console.log(`[SW] Installation complete for version ${VERSION}`);
       // Skip waiting to activate immediately
       self.skipWaiting();
     })
@@ -74,14 +70,14 @@ self.addEventListener('fetch', event => {
       caches.open(MODEL_CACHE_NAME).then(cache => {
         return cache.match(event.request).then(cachedResponse => {
           if (cachedResponse) {
-            console.log('[SW] Model from cache (offline-first):', url.pathname);
+            // Only log in development or when explicitly debugging
+            // console.log('[SW] Model from cache (offline-first):', url.pathname);
             // Return cached response directly - no background updates
             // This prevents unnecessary network requests and improves performance
             return cachedResponse;
           }
           
           // Not in cache, try to fetch with timeout
-          console.log('[SW] Model not cached, attempting fetch:', url.pathname);
           return Promise.race([
             fetch(event.request),
             new Promise((_, reject) => 
@@ -92,11 +88,9 @@ self.addEventListener('fetch', event => {
             if (networkResponse && networkResponse.status === 200) {
               const responseToCache = networkResponse.clone();
               cache.put(event.request, responseToCache);
-              console.log('[SW] Model fetched and cached:', url.pathname);
             }
             return networkResponse;
           }).catch(error => {
-            console.error('[SW] Failed to fetch model:', url.pathname, error);
             // Return a 503 Service Unavailable response
             return new Response('Model unavailable - please check network connection', {
               status: 503,
@@ -170,7 +164,6 @@ self.addEventListener('fetch', event => {
 
 // Activate event - clean up old caches and claim clients
 self.addEventListener('activate', event => {
-  console.log(`[SW] Activating version ${VERSION}`);
   const cacheWhitelist = [CACHE_NAME, MODEL_CACHE_NAME]; // Keep both caches
   event.waitUntil(
     Promise.all([
@@ -179,7 +172,6 @@ self.addEventListener('activate', event => {
         return Promise.all(
           cacheNames.map(cacheName => {
             if (cacheWhitelist.indexOf(cacheName) === -1) {
-              console.log('[SW] Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
           })
@@ -187,7 +179,6 @@ self.addEventListener('activate', event => {
       }),
       // Claim all clients immediately
       clients.claim().then(() => {
-        console.log('[SW] Claimed all clients');
         // Notify all clients about the update
         clients.matchAll().then(clients => {
           clients.forEach(client => {
@@ -204,7 +195,6 @@ self.addEventListener('activate', event => {
 
 // Push event - handle push notifications
 self.addEventListener('push', event => {
-  console.log('Push notification received');
   
   const options = {
     body: '您有新的任务提醒',
@@ -242,7 +232,6 @@ self.addEventListener('push', event => {
 
 // Notification click event - handle notification clicks
 self.addEventListener('notificationclick', event => {
-  console.log('Notification clicked');
   event.notification.close();
 
   // Open the app when notification is clicked
@@ -266,7 +255,6 @@ self.addEventListener('notificationclick', event => {
 // Message event - handle messages from the app
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('[SW] Received SKIP_WAITING message');
     self.skipWaiting();
   }
   
@@ -277,18 +265,14 @@ self.addEventListener('message', event => {
   
   // Handle force refresh message
   if (event.data && event.data.type === 'FORCE_REFRESH') {
-    console.log('[SW] Received FORCE_REFRESH message');
-    
     // Clear all caches
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          console.log('[SW] Deleting cache:', cacheName);
           return caches.delete(cacheName);
         })
       );
     }).then(() => {
-      console.log('[SW] All caches cleared');
       
       // Skip waiting and claim all clients
       self.skipWaiting();

@@ -32,7 +32,9 @@ const createSupabaseClient = (): SupabaseClient<Database> => {
     // Remove custom fetch to avoid connection issues
     global: {
       headers: {
-        'x-client-info': 'restaurant-ops-pwa'
+        'x-client-info': 'restaurant-ops-pwa',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     }
   })

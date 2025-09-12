@@ -13,6 +13,7 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onVersio
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [currentVersion, setCurrentVersion] = useState<string>('');
+  const [isUpdating, setIsUpdating] = useState(false); // Track if we're in the middle of an update
 
   useEffect(() => {
     // Check for service worker updates
@@ -59,8 +60,8 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onVersio
 
     checkForUpdates();
     
-    // Check for updates every 30 seconds in production, 5 seconds in dev
-    const interval = setInterval(checkForUpdates, import.meta.env.DEV ? 5000 : 30000);
+    // Check for updates every 5 minutes in production, 30 seconds in dev
+    const interval = setInterval(checkForUpdates, import.meta.env.DEV ? 30000 : 300000);
     
     // Listen for service worker messages
     const handleMessage = (event: MessageEvent) => {
@@ -79,7 +80,18 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onVersio
     // Listen for controller change (happens after skipWaiting)
     const handleControllerChange = () => {
       // New service worker has taken control
-      window.location.reload();
+      if (isUpdating) {
+        // If we're updating because user clicked "立即更新", always reload
+        console.log('[SW] Controller changed, reloading for user-initiated update');
+        window.location.reload();
+      } else if (!import.meta.env.DEV) {
+        // In production, auto-reload for automatic updates
+        window.location.reload();
+      } else {
+        // In development, show notification for automatic updates
+        console.log('[SW] Controller changed, but skipping auto-reload in development');
+        setUpdateAvailable(true);
+      }
     };
     
     navigator.serviceWorker?.addEventListener('controllerchange', handleControllerChange);
@@ -93,9 +105,15 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onVersio
 
   const handleUpdate = () => {
     if (registration?.waiting) {
+      // Mark that we're updating
+      setIsUpdating(true);
       // Tell waiting service worker to skip waiting
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       setUpdateAvailable(false);
+      // Force reload after a short delay to ensure SW has activated
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
     }
   };
 

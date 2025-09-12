@@ -81,7 +81,7 @@ class AuthService {
         .from('roleplay_users')
         .select(`
           *,
-          roleplay_roles (
+          roleplay_roles!role_id (
             role_code,
             role_name_zh,
             role_name_en
