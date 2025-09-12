@@ -12,11 +12,18 @@ A Progressive Web Application for restaurant operations management with role-bas
 - Inventory management
 - Photo submission and approval workflows
 - Real-time status monitoring
-- Role-based authentication via Supabase
+- Custom cookie-based authentication (NOT using Supabase Auth)
+- Face recognition login via face-api.js
 
 ## Architecture
 - Frontend: React PWA in `/restaurant-ops-pwa`
-- Backend: Supabase (PostgreSQL + Auth + Storage)
+- Backend: Supabase (PostgreSQL + Storage only, NOT Auth)
 - Deployment: Vercel
 - State Management: Redux Toolkit
+- Authentication: Custom cookie-based system
 - Database tables use `roleplay_` prefix
+
+## Key Services Used
+- **Supabase**: Database and file storage only
+- **Custom Auth**: Cookie-based authentication via authService.ts
+- **Face Recognition**: face-api.js for biometric login

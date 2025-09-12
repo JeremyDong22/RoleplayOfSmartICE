@@ -24,7 +24,8 @@ import { TaskCountdown } from '../components/TaskCountdown/TaskCountdown'
 import { useDutyManager } from '../contexts/DutyManagerContext'
 import { useTaskData } from '../contexts/TaskDataContext'
 import { clearAllAppStorage } from '../utils/clearAllStorage'
-import { uploadPhoto } from '../services/storageService'
+import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
+import { getRestaurantId } from '../utils/restaurantSetup'
 import { dutyManagerPersistence } from '../services/dutyManagerPersistence'
 import { authService } from '../services/authService'
 import { restaurantConfigService } from '../services/restaurantConfigService'
@@ -205,7 +206,7 @@ const DutyManagerDashboard: React.FC = () => {
           const failedTasksStr = localStorage.getItem('duty-manager-failed-tasks')
           if (failedTasksStr) {
             const failedTasks = JSON.parse(failedTasksStr)
-            console.log('[DutyManagerDashboard] Found failed tasks to restore:', failedTasks)
+            // Restored failed tasks from localStorage
             
             // 检查任务是否是今天的（避免恢复昨天的失败任务）
             const today = new Date().toISOString().split('T')[0]
@@ -350,29 +351,7 @@ const DutyManagerDashboard: React.FC = () => {
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {
     try {
-      // 如果是重新提交，清除之前的驳回状态
-      const isResubmit = reviewStatus[taskId]?.status === 'rejected'
-      
-      // 值班经理任务不应该立即标记为完成，因为需要等待审核
-      // 只更新任务状态，不加入completedTaskIds
-      setState(prev => ({
-        ...prev,
-        // 不更新completedTaskIds，保持任务在待审核状态
-        taskStatuses: {
-          ...prev.taskStatuses,
-          [taskId]: { completedAt: new Date(), overdue: false, evidence: data },
-        },
-      }))
-      
-      // 立即提交到Context，任务进入待审核状态
-      const task = state.activeTasks.find(t => t.id === taskId)
-      if (task) {
-      
-      // 处理照片数据格式
-      let photos = []
-      let photoGroups = []
-      const uploadedPhotoUrls = []
-      const uploadedPhotoGroups = []
+      const now = testTime || new Date()
       
       // 获取真实用户ID
       const currentUser = authService.getCurrentUser()
@@ -382,178 +361,63 @@ const DutyManagerDashboard: React.FC = () => {
         throw new Error('未找到登录用户')
       }
       const userId = currentUser.id
-      console.log('[DutyManagerDashboard] Using real userId for photo upload:', userId)
       
-      // 检查是否有照片组数据（新格式）
-      // 注意：PhotoSubmissionDialog 返回的数据可能是嵌套的
-      // 数据可能在 data.photoGroups 或 data.evidence.photoGroups 中
-      const photoGroupsData = data.photoGroups || (data.evidence && data.evidence.photoGroups) || null
-      
-      
-      if (photoGroupsData && Array.isArray(photoGroupsData)) {
-        // 上传每个照片组的照片
-        for (const group of photoGroupsData) {
-          const uploadedUrls = []
-          for (const photo of group.photos || []) {
-            if (photo && photo.startsWith('data:')) {
-              // 上传照片到Supabase Storage
-              const result = await uploadPhoto(photo, userId, taskId)
-              if (result) {
-                uploadedUrls.push(result.publicUrl)
-              } else {
-                throw new Error('Photo upload failed')
-              }
-            } else {
-              uploadedUrls.push(photo) // 如果已经是URL，直接使用
-            }
-          }
-          
-          uploadedPhotoGroups.push({
-            ...group,
-            photos: uploadedUrls
-          })
-          uploadedPhotoUrls.push(...uploadedUrls)
-        }
-        photoGroups = uploadedPhotoGroups
-        photos = uploadedPhotoUrls
-      } else if ((data.evidence && Array.isArray(data.evidence)) || 
-                 (data.evidence && data.evidence.evidence && Array.isArray(data.evidence.evidence))) {
-        // 处理两种情况：直接的 evidence 数组，或嵌套在 data.evidence.evidence 中的数组
-        const evidenceArray = Array.isArray(data.evidence) ? data.evidence : data.evidence.evidence
-        // 旧格式：evidence 是一个数组，需要转换为照片组
-        const groupedByIndex: { [key: number]: any[] } = {}
-        
-        evidenceArray.forEach((item: any) => {
-          const sampleIndex = item.sampleIndex || 0
-          if (!groupedByIndex[sampleIndex]) {
-            groupedByIndex[sampleIndex] = []
-          }
-          groupedByIndex[sampleIndex].push(item)
-        })
-        
-        // 将分组后的数据转换为PhotoGroup格式并上传
-        for (const [index, items] of Object.entries(groupedByIndex)) {
-          const uploadedUrls = []
-          for (const item of items) {
-            const photoData = typeof item === 'string' ? item : (item.photo || item.photoData || item)
-            if (photoData && photoData.startsWith('data:')) {
-              const result = await uploadPhoto(photoData, userId, taskId)
-              if (result) {
-                uploadedUrls.push(result.publicUrl)
-              } else {
-                throw new Error('Photo upload failed')
-              }
-            } else {
-              uploadedUrls.push(photoData)
-            }
-          }
-          
-          uploadedPhotoGroups.push({
-            id: `group-${Date.now()}-${index}`,
-            photos: uploadedUrls,
-            sampleIndex: parseInt(index),
-            comment: items[0]?.description || '',
-          })
-          uploadedPhotoUrls.push(...uploadedUrls)
-        }
-        
-        photoGroups = uploadedPhotoGroups
-        photos = uploadedPhotoUrls
-      } else if (data.photo) {
-        // 处理单个照片的情况
-        if (data.photo.startsWith('data:')) {
-          const result = await uploadPhoto(data.photo, userId, taskId)
-          const photoUrl = result ? result.publicUrl : data.photo
-          photos = [photoUrl]
-          photoGroups = [{
-            id: `group-${Date.now()}`,
-            photos: [photoUrl],
-            sampleIndex: 0,
-            comment: '',
-          }]
-        } else {
-          photos = [data.photo]
-          photoGroups = [{
-            id: `group-${Date.now()}`,
-            photos: [data.photo],
-            sampleIndex: 0,
-            comment: '',
-          }]
-        }
-      } else if (data.photos) {
-        // 处理照片数组的情况
-        const uploadedUrls = []
-        for (const photo of data.photos) {
-          if (photo && photo.startsWith('data:')) {
-            const result = await uploadPhoto(photo, userId, taskId)
-            if (result) {
-              uploadedUrls.push(result.publicUrl)
-            } else {
-              throw new Error('Photo upload failed')
-            }
-          } else {
-            uploadedUrls.push(photo)
-          }
-        }
-        photos = uploadedUrls
-        photoGroups = [{
-          id: `group-${Date.now()}`,
-          photos: uploadedUrls,
-          sampleIndex: 0,
-          comment: '',
-        }]
+      // 获取餐厅ID
+      const restaurantId = await getRestaurantId()
+      if (!restaurantId) {
+        console.error('[DutyManagerDashboard] No restaurant ID found')
+        throw new Error('未找到餐厅ID')
       }
       
-      const submission = {
-        taskId: task.id,
-        taskTitle: task.title,
-        submittedAt: new Date(),
-        content: {
-          text: data.textInput || data.transcription || data.text || '',
-          photos: photos, // 保留兼容性
-          photoGroups: photoGroups, // 新增照片组数据
-          amount: data.amount || (task.title.includes('营业款') ? 12580 : undefined),
-        },
-      }
-      
-      
-      // 移除重复的数据库保存，addSubmission 会处理
-      /*
-      try {
-        const { submitTaskRecord } = await import('../services/taskRecordService')
-        const currentDate = new Date().toISOString().split('T')[0]
+      // 立即提交到Context，任务进入待审核状态
+      const task = state.activeTasks.find(t => t.id === taskId)
+      if (task) {
+        console.log('[DutyManagerDashboard] Using submitTaskWithMedia for unified upload')
         
-        await submitTaskRecord({
-          restaurant_id: 'default-restaurant-id', // TODO: 从context获取
-          task_id: task.id,
-          date: currentDate,
-          period_id: task.timeSlot || 'closing',
-          status: 'submitted',
-          submission_type: photos.length > 0 ? 'photo' : 'text',
-          text_content: submission.content.text,
-          photo_urls: photos,
-          submission_metadata: {
-            photoGroups: photoGroups,
-            amount: submission.content.amount
+        // 使用统一的submitTaskWithMedia函数，与店长和厨师保持一致
+        const result = await submitTaskWithMedia({
+          taskId,
+          userId,
+          restaurantId,
+          date: now.toISOString().split('T')[0],
+          periodId: state.targetPeriod?.id || '',
+          uploadRequirement: task.uploadRequirement,
+          data,
+          onProgress: (progress, message) => {
+            console.log(`[DutyManagerDashboard] Upload progress: ${progress}% - ${message}`)
           }
         })
-      } catch (dbError) {
-        // 继续执行，不影响本地功能
-      }
-      */
-      
-      // 只调用 addSubmission，它会在 Context 中保存到数据库
-      try {
-        console.log('[DutyManagerDashboard] Submitting task with data:', {
-          taskId: submission.taskId,
-          userId: userId,
-          photos: submission.content.photos?.length || 0,
-          photoGroups: submission.content.photoGroups?.length || 0
-        })
         
+        console.log('[DutyManagerDashboard] Task successfully submitted:', result.id)
+        
+        // 值班经理任务不应该立即标记为完成，因为需要等待审核
+        // 只更新任务状态，不加入completedTaskIds
+        setState(prev => ({
+          ...prev,
+          // 不更新completedTaskIds，保持任务在待审核状态
+          taskStatuses: {
+            ...prev.taskStatuses,
+            [taskId]: { completedAt: now, overdue: false, evidence: data },
+          },
+        }))
+        
+        // 提交到Context用于店长审核
+        const submission = {
+          taskId: task.id,
+          taskTitle: task.title,
+          submittedAt: now,
+          content: {
+            text: data.textInput || data.transcription || data.text || '',
+            photos: result.photo_urls || [],
+            photoGroups: data.photoGroups || [],
+            amount: data.amount || (task.title.includes('营业款') ? 12580 : undefined),
+          },
+        }
+        
+        // 提交到Context，等待店长审核
         await addSubmission(submission)
         
-        console.log('[DutyManagerDashboard] Task submission successful for userId:', userId)
+        console.log('[DutyManagerDashboard] Task submission successful')
         
         // Refresh task statuses from database for TaskSummary
         if (currentUserId) {
@@ -561,8 +425,11 @@ const DutyManagerDashboard: React.FC = () => {
           setDbTaskStatuses(updatedTaskStatuses)
         }
         
-        // 清理成功上传的任务
+        // 清理成功上传的localStorage
         try {
+          const photoStorageKey = `photo-collection-${taskId}`
+          localStorage.removeItem(photoStorageKey)
+          
           const failedTasksStr = localStorage.getItem('duty-manager-failed-tasks')
           if (failedTasksStr) {
             const failedTasks = JSON.parse(failedTasksStr)
@@ -573,17 +440,11 @@ const DutyManagerDashboard: React.FC = () => {
               localStorage.removeItem('duty-manager-failed-tasks')
             }
           }
-          
-          // 同时清理PhotoSubmissionDialog的localStorage
-          const photoStorageKey = `photo-collection-${taskId}`
-          localStorage.removeItem(photoStorageKey)
         } catch (e) {
           console.error('Failed to clean up localStorage:', e)
         }
-      } catch (error) {
-        console.error('[DutyManagerDashboard] Task submission failed:', error)
-        throw error
-      }
+      } else {
+        console.error('[DutyManagerDashboard] Task not found:', taskId)
       }
     } catch (error) {
       console.error('[DutyManagerDashboard] Task submission failed:', error)

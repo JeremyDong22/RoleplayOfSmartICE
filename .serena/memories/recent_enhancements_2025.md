@@ -1,6 +1,17 @@
 # Recent Enhancements & Features (2025)
 
-## Last Updated: 2025-01-07
+## Last Updated: 2025-01-12
+
+### Authentication System Decision (2025-01-12)
+- **Attempted Supabase Auth Migration**: 
+  - Created hybrid authentication service for dual support
+  - Implemented user migration tools
+  - Encountered issues with email validation and session management
+- **Rollback to Cookie Auth**:
+  - Removed all Supabase Auth implementation
+  - Maintained original cookie-based authentication
+  - Cleaned up database migration columns
+  - System restored to stable state with custom auth
 
 ### Bug Fixes (2025-01-07)
 - **Fixed Department Detection in PhotoSubmissionDialog**:
@@ -35,14 +46,14 @@
 - **TimeControl**: Time manipulation for testing/demo
 
 ### Recent Fixes (from git log)
-1. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
-2. Task upload optimization with retry queue and network-aware compression
-3. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
-4. Fixed React initialization errors in production builds
-5. Removed circular dependencies
-6. Fixed task filtering for restaurant-specific views
-7. Optimized inventory management loading behavior
-8. Fixed authentication issues in refresh button
+1. Authentication system decision - rollback to cookie auth (2025-01-12)
+2. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
+3. Task upload optimization with retry queue and network-aware compression
+4. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
+5. Fixed React initialization errors in production builds
+6. Removed circular dependencies
+7. Fixed task filtering for restaurant-specific views
+8. Optimized inventory management loading behavior
 
 ### Active Features
 - Progressive Web App with offline support
@@ -53,6 +64,7 @@
 - Face recognition authentication option
 - Automatic retry queue for failed uploads
 - Department-based inventory separation (前厅/后厨)
+- Cookie-based authentication (custom implementation)
 
 ### Database Pattern
 - All tables use `roleplay_` prefix
@@ -60,9 +72,12 @@
 - Automatic approval for non-manager roles
 - Restaurant-specific data filtering
 - Department-based inventory filtering
+- Custom user authentication via roleplay_users table
 
 ### Key Architecture Decisions
+- **Authentication**: Custom cookie-based, NOT Supabase Auth
 - **Role Detection**: Always use `roleCode` field, not `role` field
 - **Department Logic**: `roleCode === 'chef' ? '后厨' : '前厅'`
 - **Inventory Items**: Stored in `roleplay_inventory_items` table
 - **No Quantity Storage**: Quantities calculated from `task_records`
+- **User Emails**: Format is `username.demo@gmail.com`

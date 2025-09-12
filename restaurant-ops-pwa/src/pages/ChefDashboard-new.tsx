@@ -262,6 +262,11 @@ export const ChefDashboard: React.FC = () => {
   
   // Period update effect - now primarily uses database state (same as Manager)
   useEffect(() => {
+    // Don't run period updates until workflowPeriods are loaded
+    if (!workflowPeriods || workflowPeriods.length === 0) {
+      return
+    }
+    
     let intervalId: NodeJS.Timeout | null = null
     let lastPeriodId = currentPeriod?.id // Track last period to detect changes
     
@@ -916,12 +921,12 @@ export const ChefDashboard: React.FC = () => {
   // 检查是否为服务时段
   const isServicePeriod = currentPeriod?.id === 'lunch-service' || currentPeriod?.id === 'dinner-service'
   
-  // 处理加载状态
-  if (isLoading) {
+  // 处理加载状态 - 包括检查 workflowPeriods 是否已加载
+  if (isLoading || isLoadingFromDb || !workflowPeriods || workflowPeriods.length === 0) {
     return (
       <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <CircularProgress />
-        <Typography sx={{ ml: 2 }}>正在从数据库加载任务...</Typography>
+        <Typography sx={{ ml: 2 }}>正在加载任务数据...</Typography>
       </Container>
     )
   }

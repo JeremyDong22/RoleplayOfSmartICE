@@ -196,24 +196,15 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
         }, 1500)
         
       } else {
-        // 短按：硬刷新（强制页面重载）- 移除时长限制，立即响应
-        console.log('执行硬刷新...')
+        // 短按：标准页面刷新（和浏览器刷新按钮一样的效果）
+        console.log('执行标准页面刷新...')
         setSuccessMessage('正在刷新页面...')
         setShowSuccess(true)
         
-        // 设置一个超时，确保即使刷新失败按钮也能恢复
+        // 直接执行标准的页面重载，和F5/Command+R效果一样
         setTimeout(() => {
-          setIsAnimating(false)
-        }, 1000) // 缩短到1秒
-        
-        try {
-          await triggerRefresh('hard')
-          // 硬刷新会重载页面，通常不会执行到这里
-        } catch (err) {
-          console.error('硬刷新失败，尝试直接重载页面:', err)
-          // 如果 triggerRefresh 失败，立即重载页面
-          window.location.reload() // 移除延迟，立即重载
-        }
+          window.location.reload()
+        }, 300) // 短暂延迟让用户看到提示
       }
     } catch (err) {
       console.error('刷新失败:', err)
@@ -344,7 +335,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
           }}
         >
           <Tooltip
-            title={isLongPress ? "松开执行彻底清理（清除所有缓存和存储）" : "点击刷新页面，长按2秒彻底清理所有缓存"}
+            title={isLongPress ? "松开执行彻底清理（清除所有缓存和存储）" : "点击刷新页面，长按2秒彻底清理缓存"}
             open={showTooltip || (showInitialTooltip && !isRefreshing && !isAnimating)}
             placement="top"
           >
@@ -391,7 +382,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
                     boxShadow: 6
                   })
                 }}
-                aria-label={isLongPress ? "彻底清理所有缓存和存储" : "硬刷新页面"}
+                aria-label={isLongPress ? "彻底清理所有缓存和存储" : "刷新页面"}
               >
                 {getIcon()}
               </Fab>
