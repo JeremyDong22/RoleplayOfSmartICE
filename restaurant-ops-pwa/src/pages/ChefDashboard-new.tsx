@@ -39,6 +39,7 @@ import { authService } from '../services/authService'
 import { getRestaurantId } from '../utils/restaurantSetup'
 import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
 import { inventoryService } from '../services/inventoryService'
+import { getBusinessDateAsync } from '../services/businessDayService'
 
 // Pre-load workflow markdown content for browser
 const WORKFLOW_MARKDOWN_CONTENT = `# 门店日常工作流程
@@ -616,11 +617,14 @@ export const ChefDashboard: React.FC = () => {
             return
           }
           
+          // 使用营业日期，确保与业务日期切换逻辑一致
+          const businessDate = await getBusinessDateAsync(now, restaurantId)
+          
           const result = await submitTaskWithMedia({
             taskId,
             userId: currentUserId,
             restaurantId, // Get restaurant UUID
-            date: now.toISOString().split('T')[0],
+            date: businessDate,
             periodId: currentPeriod?.id || '',
             uploadRequirement: task.uploadRequirement,
             data
@@ -740,11 +744,14 @@ export const ChefDashboard: React.FC = () => {
             return
           }
           
+          // 使用营业日期，确保与业务日期切换逻辑一致
+          const businessDate = await getBusinessDateAsync(now, restaurantId)
+          
           const result = await submitTaskWithMedia({
             taskId,
             userId: currentUserId,
             restaurantId, // Get restaurant UUID from localStorage
-            date: now.toISOString().split('T')[0],
+            date: businessDate,
             periodId: currentPeriod?.id || '',
             uploadRequirement: task.uploadRequirement,
             data

@@ -34,6 +34,7 @@ export interface DatabaseTask {
   samples: any | null  // 新的samples JSON结构
   manual_closing?: boolean  // 新增：标识是否为手动闭店任务
   structured_fields?: any  // 结构化字段配置
+  is_random_inspection?: boolean  // 新增：标识是否为随机抽查任务
 }
 
 export interface DatabasePeriod {

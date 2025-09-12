@@ -186,8 +186,8 @@ export async function submitTaskWithMedia({
   onProgress,
   maxRetries = 2
 }: TaskSubmissionData) {
-  // Prevent duplicate submissions
-  const submissionKey = `${taskId}-${userId}-${date}`
+  // Prevent duplicate submissions - include periodId to avoid date-based duplicates
+  const submissionKey = `${taskId}-${userId}-${date}-${periodId}`
   if (ongoingSubmissions.has(submissionKey)) {
     console.warn('[TaskSubmissionHelper] Duplicate submission prevented for:', submissionKey)
     throw new Error('任务正在提交中，请勿重复操作')
@@ -652,7 +652,7 @@ export async function submitTaskWithMedia({
     })
     
     // Throw error to indicate immediate failure (but data is queued)
-    const errorMessage = submitError?.message || 'Failed to submit task after retries'
+    const errorMessage = error?.message || 'Failed to submit task after retries'
     // Remove from ongoing submissions before throwing
     ongoingSubmissions.delete(submissionKey)
     throw new Error(`${errorMessage}. Task has been queued for automatic retry when connection improves.`)

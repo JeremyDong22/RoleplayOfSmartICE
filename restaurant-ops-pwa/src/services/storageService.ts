@@ -4,15 +4,14 @@
  * This service provides functionality to:
  * - Upload photos to Supabase Storage bucket
  * - Generate unique file names with structured paths
- * - Convert base64 images to ArrayBuffer (per Supabase docs)
+ * - Convert base64 images to Blob
  * - Return public URLs for uploaded files
  * 
  * Created: 2025-01-23
- * Updated: 2025-09-12 - Changed from Blob to ArrayBuffer approach
+ * Updated: 2025-09-12 - Simplified blob creation
  */
 
 import { supabase } from './supabase';
-import { decode } from 'base64-arraybuffer';
 
 // Constants
 const BUCKET_NAME = 'RolePlay';
@@ -69,41 +68,42 @@ export async function uploadPhoto(
       throw new Error('Invalid image data format');
     }
     
-    // Extract content type from data URI
-    const contentTypeMatch = base64Image.match(/^data:(image\/\w+);base64,/);
-    const contentType = contentTypeMatch ? contentTypeMatch[1] : 'image/jpeg';
+    // Split the data URI to get the mime type and base64 data
+    const [dataPrefix, base64Data] = base64Image.split(',');
+    const mimeMatch = dataPrefix.match(/data:(.*?);/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     
-    // Remove data URI prefix to get pure base64
-    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    // Convert base64 to binary string
+    const binaryString = atob(base64Data);
     
-    // Convert base64 to ArrayBuffer using base64-arraybuffer library
-    const arrayBuffer = decode(base64Data);
+    // Create array of byte values
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Create Blob from bytes
+    const blob = new Blob([bytes], { type: mimeType });
     
     // Check file size
-    if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
+    if (blob.size > MAX_FILE_SIZE) {
       throw new Error(`File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
     }
     
     // Generate unique file path
     const filePath = generateFilePath(userId, taskId);
-    const fileName = filePath.split('/').pop() || 'photo.jpg';
     
-    // Create a File object from ArrayBuffer
-    // Supabase expects File or Blob, not raw ArrayBuffer
-    const file = new File([arrayBuffer], fileName, { type: contentType });
-    
-    console.log('[StorageService] Created File from ArrayBuffer:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      contentType
+    console.log('[StorageService] Uploading blob:', {
+      size: blob.size,
+      type: blob.type,
+      mimeType
     });
     
-    // Upload to Supabase Storage using File object
+    // Upload to Supabase Storage using Blob directly with explicit contentType
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, file, {
-        contentType: contentType,
+      .upload(filePath, blob, {
+        contentType: mimeType, // Explicitly set the content type
         cacheControl: '3600',
         upsert: false, // Don't overwrite existing files
         metadata: {

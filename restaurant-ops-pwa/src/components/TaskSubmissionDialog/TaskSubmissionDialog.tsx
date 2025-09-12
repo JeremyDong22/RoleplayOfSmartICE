@@ -65,6 +65,9 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [showFaceVerification, setShowFaceVerification] = useState(false)
   const [pendingSubmissionData, setPendingSubmissionData] = useState<any>(null)
   const [isUserEnrolled, setIsUserEnrolled] = useState(false)
+  // Random inspection states
+  const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const [isRandomInspection, setIsRandomInspection] = useState(false)
   
   // Debug: Track component lifecycle
   useEffect(() => {
@@ -76,6 +79,15 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   useEffect(() => {
     const loadDynamicFields = async () => {
       if (open && task) {
+        
+        // Check if task is random inspection
+        if (task.isRandomInspection) {
+          setIsRandomInspection(true)
+          // Randomly select a zone
+          const zones = ['A区', 'B区', 'C区']
+          const randomZone = zones[Math.floor(Math.random() * zones.length)]
+          setSelectedZone(randomZone)
+        }
         
         // Check if task needs dynamic fields
         const needsDynamicFields = task.title.includes('收货验货') || 
@@ -167,7 +179,7 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   
   const handleTaskSubmit = async (data: any) => {
     console.log('🚀 Task submitted, face verification temporarily disabled')
-    // Store submission data
+    // Store submission data, including any metadata that was passed from PhotoSubmissionDialog
     const submissionData = isLateSubmission 
       ? { ...data, lateExplanation: explanation }
       : data
@@ -355,9 +367,24 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
             initialPhotoGroups={initialPhotoGroups} // 传递初始照片组
             samples={task.samples}
             structuredFields={fieldsToUse} // 使用动态字段或原有配置
+            isRandomInspection={isRandomInspection} // 传递随机抽查标记
+            selectedZone={selectedZone} // 传递选中的区域
             onClose={handleClose}
             onSubmit={(data) => {
-              handleTaskSubmit({ ...data, type: 'photo' })
+              // Add zone info to metadata if it's random inspection
+              const submitData = isRandomInspection 
+                ? { 
+                    ...data, 
+                    type: 'photo',
+                    metadata: {
+                      ...data.metadata,
+                      selected_zone: selectedZone,
+                      inspection_type: 'random',
+                      inspection_date: new Date().toISOString()
+                    }
+                  }
+                : { ...data, type: 'photo' }
+              handleTaskSubmit(submitData)
             }}
           />
         </>

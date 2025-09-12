@@ -46,6 +46,7 @@ import notificationService from '../services/notificationService'
 import { getTodayCompletedTaskIds, getCompletedTasksInRange, getTodayTaskStatuses, getTodayApprovedDutyManagerTasks, validateCanClose, submitTaskRecord, type TaskStatusDetail } from '../services/taskRecordService'
 import { submitTaskWithMedia } from '../utils/taskSubmissionHelper'
 import { getSupabase } from '../services/supabase'
+import { getBusinessDateAsync } from '../services/businessDayService'
 import { authService } from '../services/authService'
 import { taskService } from '../services/taskService'
 import { getRestaurantId } from '../utils/restaurantSetup'
@@ -809,11 +810,14 @@ export const ManagerDashboard: React.FC = () => {
           return
         }
         
+        // 使用营业日期，确保与业务日期切换逻辑一致
+        const businessDate = await getBusinessDateAsync(now, restaurantId)
+        
         const result = await submitTaskWithMedia({
           taskId,
           userId: currentUserId,
           restaurantId, // Get restaurant UUID from localStorage
-          date: now.toISOString().split('T')[0],
+          date: businessDate,
           periodId: currentPeriod?.id || '',
           uploadRequirement: task.uploadRequirement,
           data
@@ -919,11 +923,14 @@ export const ManagerDashboard: React.FC = () => {
             return
           }
           
+          // 使用营业日期，确保与业务日期切换逻辑一致
+          const businessDate = await getBusinessDateAsync(now, restaurantId)
+          
           const result = await submitTaskWithMedia({
             taskId,
             userId: currentUserId,
             restaurantId, // Get restaurant UUID from localStorage
-            date: now.toISOString().split('T')[0],
+            date: businessDate,
             periodId: taskPeriodId,
             uploadRequirement,
             data

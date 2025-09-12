@@ -100,15 +100,18 @@ interface PhotoSubmissionDialogProps {
       index: number
       text: string
       images: string[]
+      description?: string  // 新增：用于抽查任务的详细描述
     }>
   } | null  // 新的samples数据结构
   structuredFields?: any  // 结构化字段配置
+  isRandomInspection?: boolean  // 新增：是否为随机抽查任务
+  selectedZone?: string | null  // 新增：选中的抽查区域
   onClose: () => void
   onSubmit: (evidence: Array<{
     photo: string
     description: string
     sampleIndex: number
-  }>) => Promise<void> | void
+  }>, metadata?: any) => Promise<void> | void
 }
 
 export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
@@ -119,6 +122,8 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   initialPhotoGroups,
   samples,
   structuredFields,
+  isRandomInspection = false,
+  selectedZone = null,
   onClose,
   onSubmit
 }) => {
@@ -583,10 +588,17 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     setUploadMessage('准备上传...')
     
     try {
+      // Add metadata for random inspection
+      const metadata = isRandomInspection ? {
+        selected_zone: selectedZone,
+        inspection_type: 'random',
+        inspection_date: new Date().toISOString()
+      } : undefined
+      
       // Call parent's onSubmit - this will handle the actual upload
       // Parent should throw error if upload fails
       // IMPORTANT: await the async operation to prevent premature cleanup
-      await onSubmit(submitData)
+      await onSubmit(submitData, metadata)
       
       // Only clear data if onSubmit succeeds (no error thrown)
       const cleanup = () => {
@@ -723,6 +735,18 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         拍照示例
       </Typography>
       
+      {/* 显示随机抽查区域提示 */}
+      {isRandomInspection && selectedZone && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="subtitle1" fontWeight="bold">
+            今日抽查区域：{selectedZone}
+          </Typography>
+          <Typography variant="body2">
+            请对{selectedZone}的所有桌位进行详细卫生检查
+          </Typography>
+        </Alert>
+      )}
+      
       {photoGroups.length > 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
           已保存 {photoGroups.length} 组照片，共 {photoGroups.reduce((sum, g) => sum + g.photos.length, 0)} 张
@@ -815,6 +839,16 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                   >
                     {sample.text}
                   </Typography>
+                  
+                  {/* 如果是随机抽查任务，显示详细要求 */}
+                  {isRandomInspection && samples?.samples[index]?.description && (
+                    <Typography 
+                      variant="body2" 
+                      sx={{ mt: 1, fontStyle: 'italic' }}
+                    >
+                      检查要求：{samples.samples[index].description}
+                    </Typography>
+                  )}
                 </Paper>
               </Grid>
             ))

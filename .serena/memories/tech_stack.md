@@ -11,6 +11,8 @@
 
 ## Additional Libraries
 - **Supabase JS 2.55.0** for backend integration
+  - ⚠️ **Critical**: No global Content-Type headers in client config
+  - Let Supabase auto-detect content types for each request
 - **Face-API.js 0.22.2** for face recognition
 - **Date-fns 4.1.0** for date handling
 - **Embla Carousel 8.6.0** for carousels
@@ -26,12 +28,24 @@
   - PostgreSQL database
   - Authentication
   - Real-time subscriptions
-  - File storage (photos, documents)
+  - File storage (RolePlay bucket for photos/audio)
+  - ⚠️ Storage requires proper MIME types (no JSON override)
 - **Vercel** for deployment
 
 ## Development Tools
 - TypeScript 5.8.3
 - ESLint 9.30.1 for linting
-- Vite for dev server and builds
+- Vite for dev server and builds (with HMR)
 - Canvas 3.2.0 (for face-api.js)
 - Dotenv 17.2.0 for environment variables
+
+## Storage Architecture
+- **LocalStorage**: Temporary draft storage
+- **IndexedDB**: Failed upload queue persistence
+- **Supabase Storage**: Final file storage
+- **Base64 → Blob → Upload** pipeline for photos
+
+## Known Configuration Requirements
+- Supabase client must not have global Content-Type headers
+- Storage uploads use explicit contentType in upload options
+- Vite hot-reloads configuration changes automatically

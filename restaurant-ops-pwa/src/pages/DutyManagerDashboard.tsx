@@ -31,6 +31,7 @@ import { authService } from '../services/authService'
 import { restaurantConfigService } from '../services/restaurantConfigService'
 import { isClosingPeriod, isLunchClosingPeriod } from '../utils/periodHelpers'
 import { getTodayTaskStatuses, type TaskStatusDetail } from '../services/taskRecordService'
+import { getBusinessDateAsync } from '../services/businessDayService'
 
 interface NoticeComment {
   noticeId: string
@@ -374,12 +375,16 @@ const DutyManagerDashboard: React.FC = () => {
       if (task) {
         console.log('[DutyManagerDashboard] Using submitTaskWithMedia for unified upload')
         
+        // 使用营业日期，确保与业务日期切换逻辑一致
+        const businessDate = await getBusinessDateAsync(now, restaurantId)
+        console.log('[DutyManagerDashboard] Using business date:', businessDate, 'from time:', now.toISOString())
+        
         // 使用统一的submitTaskWithMedia函数，与店长和厨师保持一致
         const result = await submitTaskWithMedia({
           taskId,
           userId,
           restaurantId,
-          date: now.toISOString().split('T')[0],
+          date: businessDate,
           periodId: state.targetPeriod?.id || '',
           uploadRequirement: task.uploadRequirement,
           data,
