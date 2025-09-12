@@ -23,19 +23,43 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
  * @returns Blob object
  */
 function base64ToBlob(base64: string, contentType: string = 'image/jpeg'): Blob {
+  // Extract actual content type from data URI if available
+  const dataUriMatch = base64.match(/^data:(image\/\w+);base64,/);
+  const actualContentType = dataUriMatch ? dataUriMatch[1] : contentType;
+  
   // Remove data URI prefix if present
   const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
   
-  // Decode base64 string
-  const byteCharacters = atob(base64Data);
-  const byteNumbers = new Array(byteCharacters.length);
-  
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  // Validate that we have base64 data
+  if (!base64Data) {
+    console.error('[StorageService] No base64 data after removing prefix');
+    throw new Error('Invalid base64 data');
   }
   
-  const byteArray = new Uint8Array(byteNumbers);
-  return new Blob([byteArray], { type: contentType });
+  try {
+    // Decode base64 string
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: actualContentType });
+    
+    // Log blob details for debugging
+    console.log('[StorageService] Created blob:', {
+      size: blob.size,
+      type: blob.type,
+      contentType: actualContentType
+    });
+    
+    return blob;
+  } catch (error) {
+    console.error('[StorageService] Failed to decode base64:', error);
+    throw new Error('Failed to decode base64 data');
+  }
 }
 
 /**
@@ -73,6 +97,16 @@ export async function uploadPhoto(
     // Validate inputs
     if (!base64Image || !userId || !taskId) {
       throw new Error('Missing required parameters for photo upload');
+    }
+    
+    // Log the type of data we're receiving for debugging
+    console.log('[StorageService] Received data type:', typeof base64Image);
+    console.log('[StorageService] Data starts with:', base64Image.substring(0, 100));
+    
+    // Ensure we have valid base64 image data
+    if (!base64Image.startsWith('data:image/')) {
+      console.error('[StorageService] Invalid image data format - not a data URI');
+      throw new Error('Invalid image data format');
     }
     
     // Convert base64 to blob

@@ -12,7 +12,8 @@ import { inventoryService } from '../services/inventoryService'
 import { uploadQueueService } from '../services/uploadQueueService'
 
 // Batch sizes to try in order for parallel uploads
-const BATCH_SIZES = [10, 7, 5, 3]
+// Reduced to fewer sizes to avoid too many retries
+const BATCH_SIZES = [5, 1]  // Try batch of 5, then individual uploads
 const UPLOAD_TIMEOUT = 30000 // 30 seconds per batch
 
 // Track ongoing submissions to prevent duplicates
@@ -51,7 +52,7 @@ async function uploadPhotoWithRetry(
   let retryCount = 0
   let lastError: Error | null = null
   
-  while (retryCount <= maxRetries) {
+  while (retryCount < maxRetries) {
     try {
       if (retryCount > 0) {
         // Include photo index to make it clear which photo is retrying
@@ -388,8 +389,11 @@ export async function submitTaskWithMedia({
             const failures = uploadResults.filter(r => !r.success)
             if (failures.length > 0) {
               console.error(`[Upload] ${failures.length} photos failed to upload`)
-              // Don't throw error here, let some photos be uploaded
-              // throw new Error(`${failures.length}张照片上传失败，请重试`)
+              // If ALL photos failed, throw error to prevent saving empty data
+              if (newUrls.length === 0 && existingUrls.length === 0) {
+                throw new Error(`所有照片上传失败，请检查网络连接后重试`)
+              }
+              // If some succeeded, continue with partial upload
             }
             
             // Update final progress
@@ -660,7 +664,7 @@ export async function submitTaskWithMedia({
     let submitRetries = 0
     let submitError: Error | null = null
     
-    while (submitRetries <= maxRetries) {
+    while (submitRetries < maxRetries) {
       try {
         if (submitRetries > 0) {
           onProgress?.(95, `重试提交 (${submitRetries}/${maxRetries})...`)
