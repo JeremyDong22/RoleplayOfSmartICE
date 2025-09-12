@@ -470,7 +470,6 @@ const DutyManagerDashboard: React.FC = () => {
       throw error
     }
   }
-  }
 
   // 处理通知评论
   const handleNoticeComment = (noticeId: string, comment: string) => {
