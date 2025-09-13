@@ -244,15 +244,17 @@ const TaskOverviewDropdown: React.FC<TaskOverviewDropdownProps> = ({ testTime })
                           <ListItem key={task.id} sx={{ py: 0.5, px: 1 }}>
                             <ListItemText
                               primary={
-                                <Typography variant="body2">
-                                  {task.title}
+                                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                                  <Typography variant="body2" component="span">
+                                    {task.title}
+                                  </Typography>
                                   {task.isNotice && (
                                     <Chip label="通知" size="small" sx={{ ml: 1, height: 18 }} />
                                   )}
                                   {task.isFloating && (
                                     <Chip label="浮动" size="small" color="info" sx={{ ml: 1, height: 18 }} />
                                   )}
-                                </Typography>
+                                </Box>
                               }
                               secondary={
                                 <Typography variant="caption" color="text.secondary">
@@ -278,15 +280,17 @@ const TaskOverviewDropdown: React.FC<TaskOverviewDropdownProps> = ({ testTime })
                           <ListItem key={task.id} sx={{ py: 0.5, px: 1 }}>
                             <ListItemText
                               primary={
-                                <Typography variant="body2">
-                                  {task.title}
+                                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                                  <Typography variant="body2" component="span">
+                                    {task.title}
+                                  </Typography>
                                   {task.isNotice && (
                                     <Chip label="通知" size="small" sx={{ ml: 1, height: 18 }} />
                                   )}
                                   {task.isFloating && (
                                     <Chip label="浮动" size="small" color="info" sx={{ ml: 1, height: 18 }} />
                                   )}
-                                </Typography>
+                                </Box>
                               }
                               secondary={
                                 <Typography variant="caption" color="text.secondary">
