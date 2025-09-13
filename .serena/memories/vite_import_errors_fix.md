@@ -1,7 +1,7 @@
 # Vite Import and Cache Errors - Common Fixes
 
-## Issue Date: 2025-09-06
-## Version: 1.0.2
+## Issue Date: 2025-09-13
+## Version: 1.0.3
 
 ### Common Errors and Solutions
 
@@ -18,7 +18,24 @@ const ManagerDashboard = lazy(() => {
 });
 ```
 
-#### 2. Missing import path resolution
+#### 2. Missing ErrorBoundary Import (Silent White Page)
+**Error**: App shows blank white page with no console errors
+
+**Root Cause**: Missing import statement for ErrorBoundary while it's being used in JSX
+
+**Solution**:
+```typescript
+// Add this import in App.tsx
+import { ErrorBoundary } from './components/ErrorBoundary'
+```
+
+**Key Learning**: Missing component imports can cause silent failures where:
+- No TypeScript errors in dev mode
+- No console errors visible
+- Just a blank white page
+- Browser shows raw HTML instead of rendered React app
+
+#### 3. Missing import path resolution
 **Error**: `Failed to resolve import "../../utils/getRestaurantId" from "src/components/PhotoSubmissionDialog/PhotoSubmissionDialog.tsx"`
 
 **Solution**:
@@ -31,7 +48,7 @@ import { getRestaurantId } from '../../utils/getRestaurantId'
 import { getRestaurantId } from '../../utils/restaurantSetup'
 ```
 
-#### 3. Multiple exports with the same name
+#### 4. Multiple exports with the same name
 **Error**: `ERROR: Multiple exports with the same name "PhotoSubmissionDialog"`
 
 **Solution**:
@@ -46,25 +63,25 @@ const PhotoSubmissionDialog: React.FC = () => { ... }
 export { PhotoSubmissionDialog }
 ```
 
-#### 4. Cache Prevention Strategy
+#### 5. Cache Prevention Strategy
 To prevent browser caching issues after fixes:
 
-1. Update version number in comments:
-```typescript
-// VERSION 1.0.2 - Using lazy loading for dashboards
-// Cache prevention via version comment to force rebuild
+1. Clear Vite cache:
+```bash
+rm -rf node_modules/.vite
 ```
 
 2. Restart the dev server:
 ```bash
-# Kill the current process
-# Then restart
+# Kill all node processes
+pkill -f "npm run dev"
+# Restart
 npm run dev
 ```
 
-3. For production builds, Vite automatically handles cache busting with content hashes.
+3. If port is busy, Vite will use next available port (5174, 5175, etc.)
 
-#### 5. Runtime.lastError: Message port closed
+#### 6. Runtime.lastError: Message port closed
 **Error**: `Unchecked runtime.lastError: The message port closed before a response was received`
 
 **Solution**:
@@ -72,16 +89,40 @@ npm run dev
 - Can be safely ignored in development
 - Clear browser cache if persistent
 
+#### 7. WebSocket Connection Errors
+**Error**: `WebSocket connection to 'ws://localhost:5173/?token=xxx' failed`
+
+**Cause**: Multiple dev servers running on different ports
+
+**Solution**:
+- Kill all dev servers
+- Start fresh on single port
+- Close old browser tabs pointing to old ports
+
+### Debugging Silent Loading Issues
+
+When you see infinite loading or white pages:
+
+1. **Check Browser Console** - Look for any errors
+2. **Check Network Tab** - Verify files are loading
+3. **Create Simple Test** - Make a minimal React component
+4. **Add Console Logs** - Strategic placement in main.tsx and App.tsx
+5. **Check Imports** - Missing imports cause silent failures
+6. **Run Build** - `npm run build` catches more errors than dev mode
+7. **Add Error Boundaries** - Wrap app with global error handlers
+
 ### Quick Troubleshooting Checklist
 1. ✅ Check all imported files exist
-2. ✅ Verify export statements match import expectations
+2. ✅ Verify ALL components used in JSX are imported
 3. ✅ No duplicate exports in the same file
 4. ✅ Correct import paths (especially for utils)
-5. ✅ Restart dev server after major changes
-6. ✅ Clear browser cache if needed
+5. ✅ Clear Vite cache if weird behavior
+6. ✅ Kill all dev servers and restart fresh
+7. ✅ Close old browser tabs with cached connections
 
 ### Project Structure Notes
 - Dashboard components are in `/src/pages/`
 - Utils are in `/src/utils/`
 - Common utility `getRestaurantId` is in `restaurantSetup.ts`
 - PhotoSubmissionDialog is in `/src/components/PhotoSubmissionDialog/`
+- ErrorBoundary is in `/src/components/ErrorBoundary.tsx`

@@ -13,7 +13,7 @@ import { uploadQueueService } from '../services/uploadQueueService'
 
 // Fixed batch size - no fallback
 const BATCH_SIZES = [5]  // Only batch of 5, no retry with different sizes
-const UPLOAD_TIMEOUT = 30000 // 30 seconds per batch
+const UPLOAD_TIMEOUT = 60000 // 60 seconds per batch - increased for slow networks
 
 // Track ongoing submissions to prevent duplicates
 const ongoingSubmissions = new Set<string>()
@@ -362,7 +362,7 @@ export async function submitTaskWithMedia({
             console.error('[Upload] Error:', uploadError)
             
             if (uploadError.message.includes('timeout')) {
-              throw new Error('上传超时（30秒），网络连接缓慢，请稍后重试')
+              throw new Error('上传超时（60秒），网络连接缓慢，请稍后重试')
             } else if (uploadError.message.includes('网络连接异常')) {
               throw uploadError
             } else {
@@ -619,43 +619,60 @@ export async function submitTaskWithMedia({
       }
     }
     
-    // Single submission attempt - NO RETRY
+    // Single submission attempt with timeout protection
     try {
       onProgress?.(90, '保存任务记录...')
-      
-      const result = await submitTaskRecord(submissionData)
+
+      // Add timeout protection for database submission
+      const submitWithTimeout = Promise.race([
+        submitTaskRecord(submissionData),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Database submission timeout')), UPLOAD_TIMEOUT)
+        )
+      ])
+
+      const result = await submitWithTimeout
       console.log('[TaskSubmissionHelper] Submission successful:', result.id)
       console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
-      
+
       // Remove from ongoing submissions on success
       ongoingSubmissions.delete(submissionKey)
-      
+
       onProgress?.(100, '提交成功!')
       return result
     } catch (error: any) {
-      console.error('Submit failed (no retry):', error)
-      // Continue to add to queue below
+      console.error('[TaskSubmissionHelper] Submit failed:', error)
+      // Important: DO NOT continue past this point if submission succeeded
+      // The error here means submission actually failed or timed out
+
+      // Store error for later use
+      const submissionError = error
+
+      console.error('[TaskSubmissionHelper] Adding to queue for retry')
+
+      // Add to upload queue for background retry - ALWAYS save data on failure
+      await uploadQueueService.addToQueue({
+        taskId,
+        userId,
+        restaurantId,
+        date,
+        periodId,
+        uploadRequirement,
+        data
+      })
+
+      // Throw error to indicate immediate failure (but data is queued)
+      const errorMessage = submissionError?.message || 'Failed to submit task'
+      // Remove from ongoing submissions before throwing
+      ongoingSubmissions.delete(submissionKey)
+
+      // Provide clear feedback based on error type
+      if (errorMessage.includes('timeout')) {
+        throw new Error(`提交超时（60秒），任务已保存并将在网络恢复后自动重试`)
+      } else {
+        throw new Error(`${errorMessage}. 任务已保存并将在网络恢复后自动重试`)
+      }
     }
-    
-    // If all retries failed, add to queue for background retry
-    console.error('[TaskSubmissionHelper] All retries failed, adding to queue')
-    
-    // Add to upload queue for background retry
-    await uploadQueueService.addToQueue({
-      taskId,
-      userId,
-      restaurantId,
-      date,
-      periodId,
-      uploadRequirement,
-      data
-    })
-    
-    // Throw error to indicate immediate failure (but data is queued)
-    const errorMessage = error?.message || 'Failed to submit task after retries'
-    // Remove from ongoing submissions before throwing
-    ongoingSubmissions.delete(submissionKey)
-    throw new Error(`${errorMessage}. Task has been queued for automatic retry when connection improves.`)
   } catch (error) {
     // Always clean up the submission key on any error
     ongoingSubmissions.delete(submissionKey)

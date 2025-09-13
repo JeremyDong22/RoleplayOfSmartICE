@@ -156,6 +156,7 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // UI状态
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showQueuedNotice, setShowQueuedNotice] = useState(false)
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -633,12 +634,24 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
       // Close the dialog after successful upload
       // This fixes the issue where dialog doesn't close after upload
       onClose()
-    } catch (error) {
+    } catch (error: any) {
       // Upload failed - preserve data in localStorage for retry
       console.error('[PhotoDialog] Submission failed, preserving data for retry:', error)
       setIsSubmitting(false)
-      setUploadProgress(0)
-      setUploadMessage('上传失败，请重试')
+
+      // Provide specific feedback based on error type
+      if (error?.message?.includes('超时')) {
+        setUploadProgress(50)  // Show partial progress for timeout
+        setUploadMessage('网络超时，任务已保存，将自动重试')
+        setShowQueuedNotice(true)  // Show notice about queued task
+      } else if (error?.message?.includes('已保存')) {
+        setUploadProgress(30)  // Show some progress for saved tasks
+        setUploadMessage('上传失败，但任务已保存')
+        setShowQueuedNotice(true)  // Show notice about queued task
+      } else {
+        setUploadProgress(0)
+        setUploadMessage('上传失败，请重试')
+      }
       // Data remains in localStorage and photoGroups state
       // User can retry or close dialog and come back later
     }
@@ -1632,6 +1645,22 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
         onClose={() => setShowSuccess(false)}
         message="拍照成功"
       />
+
+      {/* 任务已入队提示 */}
+      <Snackbar
+        open={showQueuedNotice}
+        autoHideDuration={6000}
+        onClose={() => setShowQueuedNotice(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setShowQueuedNotice(false)}
+          severity="info"
+          sx={{ width: '100%' }}
+        >
+          任务已保存到本地，网络恢复后将自动上传
+        </Alert>
+      </Snackbar>
       
       {/* 图片放大查看 */}
       <Modal

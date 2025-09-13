@@ -1,6 +1,12 @@
 # Recent Enhancements & Features (2025)
 
-## Last Updated: 2025-01-12
+## Last Updated: 2025-09-13
+
+### Random Inspection Feature Verification (2025-09-13)
+- **Confirmed Working**: Random table inspection feature is fully functional
+- **Database Verification**: Task records for "开市寻店验收 - 卫生 - 抽查" properly stored in roleplay_task_records
+- **Metadata Storage**: Randomized table numbers (like A1 in Zone A) correctly stored in metadata field
+- **Integration Status**: Feature successfully integrated with task submission workflow
 
 ### Authentication System Decision (2025-01-12)
 - **Attempted Supabase Auth Migration**: 
@@ -46,14 +52,15 @@
 - **TimeControl**: Time manipulation for testing/demo
 
 ### Recent Fixes (from git log)
-1. Authentication system decision - rollback to cookie auth (2025-01-12)
-2. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
-3. Task upload optimization with retry queue and network-aware compression
-4. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
-5. Fixed React initialization errors in production builds
-6. Removed circular dependencies
-7. Fixed task filtering for restaurant-specific views
-8. Optimized inventory management loading behavior
+1. Random inspection feature verification and testing (2025-09-13)
+2. Authentication system decision - rollback to cookie auth (2025-01-12)  
+3. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
+4. Task upload optimization with retry queue and network-aware compression
+5. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
+6. Fixed React initialization errors in production builds
+7. Removed circular dependencies
+8. Fixed task filtering for restaurant-specific views
+9. Optimized inventory management loading behavior
 
 ### Active Features
 - Progressive Web App with offline support
@@ -65,6 +72,7 @@
 - Automatic retry queue for failed uploads
 - Department-based inventory separation (前厅/后厨)
 - Cookie-based authentication (custom implementation)
+- Random table inspection with metadata storage
 
 ### Database Pattern
 - All tables use `roleplay_` prefix
@@ -73,6 +81,7 @@
 - Restaurant-specific data filtering
 - Department-based inventory filtering
 - Custom user authentication via roleplay_users table
+- Random inspection metadata stored in task_records
 
 ### Key Architecture Decisions
 - **Authentication**: Custom cookie-based, NOT Supabase Auth
@@ -81,3 +90,4 @@
 - **Inventory Items**: Stored in `roleplay_inventory_items` table
 - **No Quantity Storage**: Quantities calculated from `task_records`
 - **User Emails**: Format is `username.demo@gmail.com`
+- **Random Inspections**: Metadata includes zone/table selection automatically
