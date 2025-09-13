@@ -14,6 +14,8 @@ interface TaskDataContextType {
   workflowPeriods: WorkflowPeriod[]
   floatingTasks: TaskTemplate[]
   isLoading: boolean
+  loadingProgress: number  // 0-100
+  loadingMessage: string   // 当前加载步骤
   error: string | null
   refresh: () => Promise<void>
 }
@@ -36,6 +38,8 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
   const [workflowPeriods, setWorkflowPeriods] = useState<WorkflowPeriod[]>([])
   const [floatingTasks, setFloatingTasks] = useState<TaskTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadingProgress, setLoadingProgress] = useState(0)
+  const [loadingMessage, setLoadingMessage] = useState('正在初始化...')
   const [error, setError] = useState<string | null>(null)
   
 
@@ -43,9 +47,14 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
     try {
       setIsLoading(true)
       setError(null)
-      
-      // 初始化任务服务
-      const initialized = await taskService.initialize()
+      setLoadingProgress(0)
+      setLoadingMessage('正在连接服务器...')
+
+      // 初始化任务服务 - 传入进度回调
+      const initialized = await taskService.initialize((progress, message) => {
+        setLoadingProgress(progress)
+        setLoadingMessage(message)
+      })
       
       if (!initialized) {
         // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
@@ -66,11 +75,15 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       }
       
       // 获取数据
+      setLoadingProgress(90)
+      setLoadingMessage('正在整理数据...')
       const periods = taskService.getWorkflowPeriods()
       const floating = taskService.getFloatingTasks()
-      
+
       setWorkflowPeriods(periods)
       setFloatingTasks(floating)
+      setLoadingProgress(100)
+      setLoadingMessage('加载完成！')
       
       // 订阅更新
       const unsubscribeTasks = taskService.subscribe('tasks', (data) => {
@@ -128,16 +141,86 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
   // 加载中显示
   if (isLoading) {
     return (
-      <Box 
-        display="flex" 
-        justifyContent="center" 
-        alignItems="center" 
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
         minHeight="100vh"
         flexDirection="column"
-        gap={2}
+        gap={3}
+        sx={{ backgroundColor: '#f5f5f5' }}
       >
-        <CircularProgress />
-        <Box>正在加载任务数据...</Box>
+        <Box
+          sx={{
+            position: 'relative',
+            display: 'inline-flex',
+          }}
+        >
+          <CircularProgress
+            variant="determinate"
+            value={loadingProgress}
+            size={80}
+            thickness={4}
+          />
+          <Box
+            sx={{
+              top: 0,
+              left: 0,
+              bottom: 0,
+              right: 0,
+              position: 'absolute',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Box
+              component="span"
+              sx={{
+                fontSize: '1.25rem',
+                fontWeight: 'bold',
+                color: 'primary.main'
+              }}
+            >
+              {loadingProgress}%
+            </Box>
+          </Box>
+        </Box>
+
+        <Box sx={{
+          textAlign: 'center',
+          animation: 'pulse 1.5s ease-in-out infinite',
+          '@keyframes pulse': {
+            '0%': { opacity: 1 },
+            '50%': { opacity: 0.7 },
+            '100%': { opacity: 1 },
+          }
+        }}>
+          <Box sx={{ fontSize: '1.125rem', fontWeight: 500, mb: 1 }}>
+            {loadingMessage}
+          </Box>
+          <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+            请稍候，正在准备您的工作环境...
+          </Box>
+        </Box>
+
+        {/* 进度条 */}
+        <Box sx={{ width: '300px' }}>
+          <Box sx={{
+            height: 6,
+            backgroundColor: 'rgba(0,0,0,0.1)',
+            borderRadius: 3,
+            overflow: 'hidden'
+          }}>
+            <Box sx={{
+              height: '100%',
+              width: `${loadingProgress}%`,
+              backgroundColor: 'primary.main',
+              borderRadius: 3,
+              transition: 'width 0.3s ease-in-out'
+            }} />
+          </Box>
+        </Box>
       </Box>
     )
   }
@@ -206,12 +289,14 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
 
   return (
     <TaskDataContext.Provider 
-      value={{ 
-        workflowPeriods, 
-        floatingTasks, 
-        isLoading, 
-        error, 
-        refresh 
+      value={{
+        workflowPeriods,
+        floatingTasks,
+        isLoading,
+        loadingProgress,
+        loadingMessage,
+        error,
+        refresh
       }}
     >
       {children}

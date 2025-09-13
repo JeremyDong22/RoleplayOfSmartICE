@@ -97,11 +97,12 @@ export const RestaurantSelector: React.FC<RestaurantSelectorProps> = ({ onSelect
         {/* Cards Skeleton */}
         <Grid container spacing={3}>
           {[1, 2, 3].map((index) => (
-            <Grid 
-              item
-              xs={12}
-              sm={6}
-              md={4}
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+                md: 4
+              }}
               key={index}
             >
               <Card>
@@ -191,11 +192,12 @@ export const RestaurantSelector: React.FC<RestaurantSelectorProps> = ({ onSelect
       <Grid container spacing={isMobile ? 2 : 3}>
         <AnimatePresence>
           {restaurants.map((restaurant, index) => (
-            <Grid 
-              item
-              xs={12}
-              sm={6}
-              md={4}
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+                md: 4
+              }}
               key={restaurant.id}
             >
               <MotionCard

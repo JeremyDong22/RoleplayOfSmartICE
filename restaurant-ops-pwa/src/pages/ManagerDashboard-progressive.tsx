@@ -121,6 +121,7 @@ const DashboardContent: React.FC = () => {
     loadingProgress,
     currentPeriodTasks,
     currentPeriodLoading,
+    floatingTasks,
     statsData,
     statsLoading,
     refresh
@@ -235,7 +236,7 @@ const DashboardContent: React.FC = () => {
                 {currentPeriod ? (
                   <ProgressiveTaskCountdown
                     period={currentPeriod}
-                    tasks={currentPeriodTasks}
+                    tasks={[...currentPeriodTasks, ...floatingTasks]}
                     completedTaskIds={completedTaskIds}
                     testTime={testTime}
                     onComplete={handleTaskComplete}
@@ -254,7 +255,7 @@ const DashboardContent: React.FC = () => {
           {/* 右侧：任务统计 - 500ms内加载 */}
           <Grid size={{ xs: 12, md: 4 }}>
             <LazyTaskSummary
-              tasks={currentPeriodTasks}
+              tasks={[...currentPeriodTasks, ...floatingTasks]}
               taskStatuses={taskStatuses}
               completedTaskIds={completedTaskIds}
               missingTasks={missingTasks}

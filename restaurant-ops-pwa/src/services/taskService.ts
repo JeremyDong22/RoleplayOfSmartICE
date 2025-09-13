@@ -73,39 +73,46 @@ class TaskService {
   /**
    * 初始化服务并订阅实时更新
    */
-  async initialize(): Promise<boolean> {
+  async initialize(onProgress?: (progress: number, message: string) => void): Promise<boolean> {
     // If already initialized, return immediately
     if (this.isInitialized) {
+      onProgress?.(100, '已加载')
       return true
     }
-    
+
     // If initialization is in progress, wait for it
     if (this.initializingPromise) {
       return this.initializingPromise
     }
-    
+
     // Start initialization
-    this.initializingPromise = this._doInitialize()
+    this.initializingPromise = this._doInitialize(onProgress)
     const result = await this.initializingPromise
     this.initializingPromise = null
     return result
   }
   
-  private async _doInitialize(): Promise<boolean> {
-    
+  private async _doInitialize(onProgress?: (progress: number, message: string) => void): Promise<boolean> {
+
     try {
       // Removed unnecessary delay - services should handle their own initialization
-      
+      onProgress?.(10, '正在验证用户信息...')
+
       // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
       // This checks our custom authentication from authService
       const currentUser = getAuthService().getCurrentUser()
       if (!currentUser) {
         return false
       }
-      
+
       // 加载初始数据
+      onProgress?.(30, '正在加载营业期间...')
       const periodsLoaded = await this.loadPeriods()
+
+      onProgress?.(60, '正在加载任务数据...')
       const tasksLoaded = await this.loadAllTasks()
+
+      onProgress?.(80, '正在组织数据...')
       
       if (!periodsLoaded || !tasksLoaded) {
         // 如果数据加载失败，返回false但不抛出错误，让应用继续运行

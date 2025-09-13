@@ -51,6 +51,9 @@ interface ProgressiveTaskContextType {
   currentPeriodTasks: TaskTemplate[]
   currentPeriodLoading: boolean
 
+  // 浮动任务
+  floatingTasks: TaskTemplate[]
+
   // 统计数据（延迟加载）
   statsData: {
     completionRate: number
@@ -95,6 +98,7 @@ export const ProgressiveTaskProvider: React.FC<ProgressiveTaskProviderProps> = (
   // 数据状态
   const [currentPeriodTasks, setCurrentPeriodTasks] = useState<TaskTemplate[]>([])
   const [currentPeriodLoading, setCurrentPeriodLoading] = useState(true)
+  const [floatingTasks, setFloatingTasks] = useState<TaskTemplate[]>([])
   const [statsData, setStatsData] = useState<any>(null)
   const [statsLoading, setStatsLoading] = useState(true)
   const [allPeriods, setAllPeriods] = useState<WorkflowPeriod[]>([])
@@ -131,6 +135,39 @@ export const ProgressiveTaskProvider: React.FC<ProgressiveTaskProviderProps> = (
       }
 
       console.log('[ProgressiveTaskContext] 📋 Found periods:', periods.length)
+
+      // 获取所有任务并按期间组织
+      const { data: allTasks } = await supabase
+        .from('roleplay_tasks')
+        .select('*')
+        .or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)
+        .order('sort_order')
+
+      if (allTasks) {
+        // 按期间组织任务
+        const periodTaskMap = new Map()
+        for (const task of allTasks) {
+          if (task.period_id) {
+            if (!periodTaskMap.has(task.period_id)) {
+              periodTaskMap.set(task.period_id, [])
+            }
+            periodTaskMap.get(task.period_id).push(task)
+          }
+        }
+
+        // 将任务分配到各个期间
+        for (const period of periods) {
+          const tasks = periodTaskMap.get(period.id) || []
+          // 按角色组织任务
+          period.tasks = {
+            manager: tasks.filter(t => t.role_code === 'manager'),
+            chef: tasks.filter(t => t.role_code === 'chef'),
+            duty_manager: tasks.filter(t => t.role_code === 'duty_manager')
+          }
+        }
+
+        console.log('[ProgressiveTaskContext] 📦 Organized tasks into periods')
+      }
 
       // 判断当前时间是否在任何期间内
       const now = getCurrentTestTime() || new Date()
@@ -232,17 +269,27 @@ export const ProgressiveTaskProvider: React.FC<ProgressiveTaskProviderProps> = (
       const restaurantId = await restaurantConfigService.getRestaurantId()
       if (!restaurantId) return
 
-      // 获取当前期间的任务
-      const { data: tasks, error } = await supabase
+      // 获取所有任务（包括当前期间的、浮动任务和notices）
+      const { data: allTasks, error } = await supabase
         .from('roleplay_tasks')
         .select('*')
         .or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)
-        .eq('period_id', currentPeriod.id)
         .order('sort_order')
 
-      if (!error && tasks) {
-        console.log('[ProgressiveTaskContext] ✅ Loaded', tasks.length, 'tasks for current period')
-        setCurrentPeriodTasks(tasks as TaskTemplate[])
+      if (!error && allTasks) {
+        // 分离当前期间任务和浮动任务
+        const periodTasks = allTasks.filter(task =>
+          task.period_id === currentPeriod.id
+        )
+        const floatingTasksData = allTasks.filter(task =>
+          task.is_floating === true && task.role_code === 'manager'
+        )
+
+        console.log('[ProgressiveTaskContext] ✅ Loaded', periodTasks.length, 'tasks for current period')
+        console.log('[ProgressiveTaskContext] ✅ Loaded', floatingTasksData.length, 'floating tasks')
+
+        setCurrentPeriodTasks(periodTasks as TaskTemplate[])
+        setFloatingTasks(floatingTasksData as TaskTemplate[])
       } else if (error) {
         console.error('[ProgressiveTaskContext] ❌ Error loading tasks:', error)
       }
@@ -394,6 +441,7 @@ export const ProgressiveTaskProvider: React.FC<ProgressiveTaskProviderProps> = (
         loadingProgress,
         currentPeriodTasks,
         currentPeriodLoading,
+        floatingTasks,
         statsData,
         statsLoading,
         allPeriods,

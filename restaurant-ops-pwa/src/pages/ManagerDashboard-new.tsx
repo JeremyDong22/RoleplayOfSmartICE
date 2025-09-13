@@ -167,7 +167,7 @@ export const ManagerDashboard: React.FC = () => {
   const { submissions, updateReviewStatus, reviewStatus, clearTrigger, addSubmission, refreshFromDatabase } = useDutyManager()
   
   // 从数据库获取任务数据
-  const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
+  const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, loadingProgress, loadingMessage, error } = useTaskData()
   
   // State declarations - must be before callbacks that use them
   const [testTime, setTestTime] = useState<Date | undefined>(undefined)
@@ -185,6 +185,9 @@ export const ManagerDashboard: React.FC = () => {
   const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
   const [reviewTasks, setReviewTasks] = useState<TaskTemplate[]>([]) // Store review tasks for duty manager
   const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
+  const [dbLoadingProgress, setDbLoadingProgress] = useState(0) // Database loading progress
+  const [dbLoadingMessage, setDbLoadingMessage] = useState('正在初始化...') // Database loading message
+  const loadingRef = useRef(false) // Loading lock to prevent concurrent loads
   const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
   const [currentPeriodId, setCurrentPeriodId] = useState<string | null>(null) // Track current period ID for persistence
   const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
@@ -305,10 +308,19 @@ export const ManagerDashboard: React.FC = () => {
   // Load completed tasks from Supabase on mount
   useEffect(() => {
     async function loadFromDatabase() {
+      // 防止重复加载
+      if (hasInitialized || loadingRef.current) return
+      loadingRef.current = true
+
       try {
+        setDbLoadingProgress(0)
+        setDbLoadingMessage('正在连接数据库...')
+
         // 首先刷新 DutyManagerContext 的数据库状态
+        setDbLoadingProgress(20)
+        setDbLoadingMessage('正在同步值班经理数据...')
         await refreshFromDatabase()
-        
+
         // Get current user from authService instead of supabase.auth
         const currentUser = authService.getCurrentUser()
         // console.log('[ManagerDashboard] Current user from authService:', currentUser)
@@ -317,43 +329,56 @@ export const ManagerDashboard: React.FC = () => {
           setIsLoadingFromDb(false)
           return
         }
-        
+
         setCurrentUserId(currentUser.id)
         // console.log('[ManagerDashboard] Set currentUserId to:', currentUser.id)
-        
+
         // Load today's completed tasks
+        setDbLoadingProgress(40)
+        setDbLoadingMessage('正在加载今日完成记录...')
         const completedIds = await getTodayCompletedTaskIds(currentUser.id)
-        
+
         // Load approved duty manager tasks to determine review task completion
+        setDbLoadingProgress(60)
+        setDbLoadingMessage('正在检查审核任务...')
         const reviewTasksToAdd = await loadApprovedDutyManagerTasks()
-        
+
         setCompletedTaskIds([...completedIds, ...reviewTasksToAdd])
-        
+
         // Load today's task statuses for TaskSummary
+        setDbLoadingProgress(80)
+        setDbLoadingMessage('正在加载任务详情...')
         const taskStatuses = await getTodayTaskStatuses(currentUser.id)
         setDbTaskStatuses(taskStatuses)
-        
+
         // Check for global test time
         const globalTestTime = getCurrentTestTime()
         if (globalTestTime) {
           setTestTime(globalTestTime)
         }
-        
+
         // Clear missing tasks on fresh load to prevent stale data
         setMissingTasks([])
-        
+
+        setDbLoadingProgress(100)
+        setDbLoadingMessage('加载完成！')
+
       } catch (error) {
         // console.error('Error loading from database:', error)
       } finally {
-        setIsLoadingFromDb(false)
-        setHasInitialized(true)
+        // 短暂显示完成状态
+        setTimeout(() => {
+          setIsLoadingFromDb(false)
+          setHasInitialized(true)
+          loadingRef.current = false // 释放加载锁
+        }, 300)
       }
     }
     
     if (!hasInitialized) {
       loadFromDatabase()
     }
-  }, [hasInitialized, refreshFromDatabase])
+  }, [hasInitialized]) // 移除 refreshFromDatabase 依赖，避免重复触发
   
   // 移除频繁的审核状态监听，只在初始加载时从数据库获取
   
@@ -1233,9 +1258,73 @@ export const ManagerDashboard: React.FC = () => {
   // 处理加载状态 - 包括检查 workflowPeriods 是否已加载
   if (isLoading || isLoadingFromDb || !workflowPeriods || workflowPeriods.length === 0) {
     return (
-      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>正在加载任务数据...</Typography>
+      <Container sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        gap: 3,
+        backgroundColor: '#f5f5f5'
+      }}>
+        {/* 圆形进度条 */}
+        <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+          <CircularProgress
+            variant="determinate"
+            value={isLoading ? loadingProgress : dbLoadingProgress}
+            size={80}
+            thickness={4}
+          />
+          <Box
+            sx={{
+              top: 0,
+              left: 0,
+              bottom: 0,
+              right: 0,
+              position: 'absolute',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Typography
+              variant="h6"
+              component="div"
+              color="primary"
+              sx={{ fontWeight: 'bold' }}
+            >
+              {isLoading ? loadingProgress : dbLoadingProgress}%
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* 文字提示 */}
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            {isLoading ? loadingMessage : dbLoadingMessage}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isLoading ? '准备系统环境中...' : '同步个人数据中...'}
+          </Typography>
+        </Box>
+
+        {/* 横向进度条 */}
+        <Box sx={{ width: '300px' }}>
+          <Box sx={{
+            height: 6,
+            backgroundColor: 'rgba(0,0,0,0.1)',
+            borderRadius: 3,
+            overflow: 'hidden'
+          }}>
+            <Box sx={{
+              height: '100%',
+              width: `${isLoading ? loadingProgress : dbLoadingProgress}%`,
+              backgroundColor: 'primary.main',
+              borderRadius: 3,
+              transition: 'width 0.3s ease-in-out'
+            }} />
+          </Box>
+        </Box>
       </Container>
     )
   }

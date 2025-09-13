@@ -153,7 +153,7 @@ export const ChefDashboard: React.FC = () => {
   const navigate = useNavigate()
   
   // 从数据库获取任务数据
-  const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, error } = useTaskData()
+  const { workflowPeriods, floatingTasks: allFloatingTasks, isLoading, loadingProgress, loadingMessage, error } = useTaskData()
   
   // Redirect to role selection if no role is selected
   useEffect(() => {
@@ -177,6 +177,8 @@ export const ChefDashboard: React.FC = () => {
     const manualAdvanceRef = useRef<string | null>(null) // Ref for immediate access
     const [dbTaskStatuses, setDbTaskStatuses] = useState<TaskStatusDetail[]>([]) // Task statuses from database for TaskSummary
     const [isLoadingFromDb, setIsLoadingFromDb] = useState(true) // Loading state for database
+    const [dbLoadingProgress, setDbLoadingProgress] = useState(0) // Database loading progress
+    const [dbLoadingMessage, setDbLoadingMessage] = useState('正在初始化...') // Database loading message
     const [currentUserId, setCurrentUserId] = useState<string | null>(null) // Current user ID
     const [dbState, setDbState] = useState<RestaurantState | null>(null) // Restaurant state from database
     const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
@@ -221,7 +223,13 @@ export const ChefDashboard: React.FC = () => {
   // Load completed tasks from Supabase on mount
   useEffect(() => {
     async function loadFromDatabase() {
+      // 防止重复加载
+      if (hasInitialized) return
+
       try {
+        setDbLoadingProgress(0)
+        setDbLoadingMessage('正在验证用户身份...')
+
         // Get current user from authService instead of supabase.auth
         const currentUser = authService.getCurrentUser()
         if (!currentUser) {
@@ -229,28 +237,38 @@ export const ChefDashboard: React.FC = () => {
           setIsLoadingFromDb(false)
           return
         }
-        
+
         setCurrentUserId(currentUser.id)
-        
+
         // Load today's completed tasks
+        setDbLoadingProgress(40)
+        setDbLoadingMessage('正在加载今日完成记录...')
         const completedIds = await getTodayCompletedTaskIds(currentUser.id)
         setCompletedTaskIds(completedIds)
-        
+
         // Load today's task statuses for TaskSummary
+        setDbLoadingProgress(70)
+        setDbLoadingMessage('正在加载任务详情...')
         const taskStatuses = await getTodayTaskStatuses(currentUser.id)
         setDbTaskStatuses(taskStatuses)
-        
+
         // Check for global test time
         const globalTestTime = getCurrentTestTime()
         if (globalTestTime) {
           setTestTime(globalTestTime)
         }
-        
+
+        setDbLoadingProgress(100)
+        setDbLoadingMessage('加载完成！')
+
       } catch (error) {
         console.error('Error loading from database:', error)
       } finally {
-        setIsLoadingFromDb(false)
-        setHasInitialized(true)
+        // 短暂显示完成状态
+        setTimeout(() => {
+          setIsLoadingFromDb(false)
+          setHasInitialized(true)
+        }, 300)
       }
     }
     
@@ -931,9 +949,73 @@ export const ChefDashboard: React.FC = () => {
   // 处理加载状态 - 包括检查 workflowPeriods 是否已加载
   if (isLoading || isLoadingFromDb || !workflowPeriods || workflowPeriods.length === 0) {
     return (
-      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>正在加载任务数据...</Typography>
+      <Container sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        gap: 3,
+        backgroundColor: '#f5f5f5'
+      }}>
+        {/* 圆形进度条 */}
+        <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+          <CircularProgress
+            variant="determinate"
+            value={isLoading ? loadingProgress : dbLoadingProgress}
+            size={80}
+            thickness={4}
+          />
+          <Box
+            sx={{
+              top: 0,
+              left: 0,
+              bottom: 0,
+              right: 0,
+              position: 'absolute',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Typography
+              variant="h6"
+              component="div"
+              color="primary"
+              sx={{ fontWeight: 'bold' }}
+            >
+              {isLoading ? loadingProgress : dbLoadingProgress}%
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* 文字提示 */}
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            {isLoading ? loadingMessage : dbLoadingMessage}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isLoading ? '准备系统环境中...' : '同步个人数据中...'}
+          </Typography>
+        </Box>
+
+        {/* 横向进度条 */}
+        <Box sx={{ width: '300px' }}>
+          <Box sx={{
+            height: 6,
+            backgroundColor: 'rgba(0,0,0,0.1)',
+            borderRadius: 3,
+            overflow: 'hidden'
+          }}>
+            <Box sx={{
+              height: '100%',
+              width: `${isLoading ? loadingProgress : dbLoadingProgress}%`,
+              backgroundColor: 'primary.main',
+              borderRadius: 3,
+              transition: 'width 0.3s ease-in-out'
+            }} />
+          </Box>
+        </Box>
       </Container>
     )
   }
