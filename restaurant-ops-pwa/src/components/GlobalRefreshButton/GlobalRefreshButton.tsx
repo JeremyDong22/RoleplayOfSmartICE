@@ -82,9 +82,9 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
     if (isRefreshing || isAnimating) return
     
     touchStartTimeRef.current = Date.now()
-    setLongPressProgress(0.1) // 设置初始值让进度条立即显示
+    setLongPressProgress(0.01) // 设置极小初始值让进度条立即显示
     
-    // Start progress animation
+    // Start progress animation with faster update for smooth rotation
     progressIntervalRef.current = setInterval(() => {
       const elapsed = Date.now() - touchStartTimeRef.current
       const progress = Math.min((elapsed / 2000) * 100, 100) // 2秒长按
@@ -94,7 +94,7 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
         clearInterval(progressIntervalRef.current!)
         progressIntervalRef.current = null
       }
-    }, 16) // 60fps update
+    }, 10) // 更快的更新频率，更流畅的动画
     
     // Set timer for long press detection (2 seconds)
     longPressTimerRef.current = setTimeout(() => {
@@ -339,20 +339,24 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
             open={showTooltip || (showInitialTooltip && !isRefreshing && !isAnimating)}
             placement="top"
           >
-            <Box sx={{ position: 'relative' }}>
+            <Box sx={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
               {/* Progress indicator for long press */}
               {longPressProgress > 0 && longPressProgress < 100 && (
                 <CircularProgress
                   variant="determinate"
                   value={longPressProgress}
-                  size={size === 'small' ? 40 : size === 'large' ? 68 : 56}
+                  size={size === 'small' ? 56 : size === 'large' ? 84 : 72}
+                  thickness={3}
                   sx={{
                     position: 'absolute',
-                    top: 0,
-                    left: 0,
+                    color: 'error.main',
                     zIndex: 1,
-                    color: 'secondary.main',
-                    opacity: 0.7
+                    transform: `rotate(${-90 + (longPressProgress * 3.6)}deg)`, // 从顶部开始，每1%转3.6度
+                    transition: 'none', // 移除过渡效果让旋转更流畅
+                    '& .MuiCircularProgress-circle': {
+                      strokeLinecap: 'round',
+                      transition: 'none' // 确保没有过渡延迟
+                    }
                   }}
                 />
               )}

@@ -27,6 +27,23 @@
 6. Unregisters all Service Workers
 7. Redirects to homepage and reloads
 
+## Visual Indicators & Animation
+
+### Long Press Progress Circle
+- **Color**: Red (`error.main`) for warning/attention
+- **Size**: Slightly larger than button (56/72/84px based on button size)
+- **Position**: Centered over button using `inline-flex` layout
+- **Rotation**: Completes 360° rotation in 2 seconds (matching long-press duration)
+- **Update Rate**: 10ms intervals for smooth animation
+- **Transform**: Rotates based on progress (each 1% = 3.6 degrees)
+
+### Button States
+- **Normal**: Blue primary color
+- **Long Press Active**: Secondary color with scale(1.15)
+- **Success**: Green with checkmark icon
+- **Error**: Red with shake animation
+- **Loading**: Continuous rotation with pulse effect
+
 ## Data Refreshed on Page Reload
 
 ### Database Tables (from Supabase)
@@ -76,16 +93,11 @@
 - Tracks last refresh time
 - Handles soft/hard refresh modes (deprecated in favor of standard reload)
 
-## Visual Indicators
-- Rotation animation during refresh
-- Success checkmark after completion
-- Error shake animation on failure
-- Progress circle during long press
-- Tooltip showing refresh type
-
 ## Implementation Notes
 - Short press delay: 300ms (for visual feedback)
 - Long press threshold: 2000ms (2 seconds)
+- Long press progress update: Every 10ms for smooth animation
 - Success message duration: 1500ms
 - Uses Material-UI Fab component
 - Position: bottom-right, above navigation bar
+- Initial tooltip: Shows for 2 seconds on mount
