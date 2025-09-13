@@ -1,7 +1,7 @@
 # Debugging Best Practices for React/Vite Apps
 
 ## Created: 2025-09-13
-## Version: 1.0.0
+## Version: 1.1.0
 
 ### Silent Loading Issues (White Page of Death)
 
@@ -63,6 +63,48 @@ import { Component } from './Component'
 console.log('2. After Component import')
 // Identifies which import fails
 ```
+
+### Network & Timeout Issues (Added 2025-09-13)
+
+#### Problem: UI Shows Failure But Backend Succeeds
+- Frontend timeout triggers before backend completes
+- Race conditions between timeout and actual processing
+- Control flow bugs causing success to be treated as failure
+
+#### Debugging Approach
+
+##### 1. Analyze Log Sequence
+```javascript
+// Look for patterns like:
+"Submission successful: [id]"  // Backend succeeded
+"Submission failed: timeout"   // But UI shows failure
+```
+
+##### 2. Check Control Flow
+```javascript
+// Common bug pattern:
+} catch (error) {
+  console.error('Error:', error)
+  // Missing return! Code continues...
+}
+// This code runs even after catch!
+```
+
+##### 3. Add Timing Logs
+```javascript
+const startTime = Date.now()
+try {
+  const result = await operation()
+  console.log(`Success in ${Date.now() - startTime}ms`)
+} catch (error) {
+  console.log(`Failed after ${Date.now() - startTime}ms`)
+}
+```
+
+##### 4. Test with Network Throttling
+- Chrome DevTools → Network → Slow 3G
+- Observe actual timing vs timeout settings
+- Check if operations complete after timeout
 
 ### Console Log Management
 
@@ -157,6 +199,16 @@ npm run lint
    - Show errors in UI during development
    - Use toast notifications for user errors
 
+4. **Handle timeouts explicitly** (Added 2025-09-13)
+   ```typescript
+   const withTimeout = Promise.race([
+     actualOperation(),
+     new Promise((_, reject) => 
+       setTimeout(() => reject(new Error('Timeout')), 60000)
+     )
+   ])
+   ```
+
 ### Prevention Checklist
 
 Before committing:
@@ -165,6 +217,8 @@ Before committing:
 - [ ] No duplicate exports
 - [ ] Clear test files and logs
 - [ ] Test in incognito window
+- [ ] Verify catch blocks have return/throw
+- [ ] Test with slow network (3G throttling)
 
 ### Key Learnings
 
@@ -173,6 +227,8 @@ Before committing:
 3. **Browser cache causes confusion** - Always test in clean environment
 4. **StrictMode doubles everything** - Consider disabling in development
 5. **Build command reveals more errors** than dev mode
+6. **Timeouts need explicit handling** - Backend may succeed after frontend timeout
+7. **Control flow bugs are subtle** - Missing return in catch is common
 
 ### Quick Recovery Steps
 
@@ -183,3 +239,11 @@ When app won't load:
 4. Add global error handlers
 5. Clear all caches and restart
 6. Check for missing imports
+
+When seeing inconsistent state (UI vs Database):
+1. Check network timing with DevTools
+2. Add detailed logging with timestamps
+3. Verify control flow (returns in catch blocks)
+4. Test with network throttling
+5. Check for race conditions
+6. Ensure data is always saved on error

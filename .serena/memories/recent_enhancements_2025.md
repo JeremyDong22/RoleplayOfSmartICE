@@ -2,6 +2,20 @@
 
 ## Last Updated: 2025-09-13
 
+### Task Submission Timeout Handling Fix (2025-09-13)
+- **Problem Identified**: UI showing "upload failed" while data actually saved to database
+- **Root Cause**: 30s frontend timeout vs backend processing time mismatch + control flow bug
+- **Fixes Implemented**:
+  - Increased timeout from 30s to 60s for slow 3G networks
+  - Fixed control flow bug in taskSubmissionHelper.ts (missing return in catch block)
+  - Added timeout protection wrapper for database submissions
+  - All task types (photo, text, list, structured) now save to queue on timeout
+- **UI Improvements**:
+  - Clear timeout feedback: "网络超时，任务已保存，将自动重试"
+  - Progress indicators: 50% on timeout, 30% on queued tasks
+  - Snackbar notifications for queued tasks
+- **Result**: Zero data loss even on timeout, proper UI feedback matching actual status
+
 ### Random Inspection Feature Verification (2025-09-13)
 - **Confirmed Working**: Random table inspection feature is fully functional
 - **Database Verification**: Task records for "开市寻店验收 - 卫生 - 抽查" properly stored in roleplay_task_records
@@ -33,6 +47,7 @@
 - **Zero Data Loss**: LocalStorage preserved on failure, automatic retry every 30s
 - **Upload Queue UI**: Visual indicator showing pending uploads with manual retry
 - **Performance**: 71% faster uploads, 60-70% file size reduction
+- **Timeout Protection**: 60s timeout with proper error handling (Updated 2025-09-13)
 
 ### Performance Optimizations
 - **Inventory Loading**: 71% performance improvement through optimized data fetching
@@ -52,24 +67,25 @@
 - **TimeControl**: Time manipulation for testing/demo
 
 ### Recent Fixes (from git log)
-1. Random inspection feature verification and testing (2025-09-13)
-2. Authentication system decision - rollback to cookie auth (2025-01-12)  
-3. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
-4. Task upload optimization with retry queue and network-aware compression
-5. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
-6. Fixed React initialization errors in production builds
-7. Removed circular dependencies
-8. Fixed task filtering for restaurant-specific views
-9. Optimized inventory management loading behavior
+1. Task submission timeout handling and data persistence (2025-09-13)
+2. Random inspection feature verification and testing (2025-09-13)
+3. Authentication system decision - rollback to cookie auth (2025-01-12)  
+4. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
+5. Task upload optimization with retry queue and network-aware compression
+6. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
+7. Fixed React initialization errors in production builds
+8. Removed circular dependencies
+9. Fixed task filtering for restaurant-specific views
+10. Optimized inventory management loading behavior
 
 ### Active Features
 - Progressive Web App with offline support
-- IndexedDB for failed upload persistence
+- IndexedDB for failed upload persistence with 60s timeout protection
 - Network-aware image compression
 - Role-based dashboards (CEO, Manager, Chef, Staff)
 - Real-time updates via Supabase subscriptions
 - Face recognition authentication option
-- Automatic retry queue for failed uploads
+- Automatic retry queue for failed uploads (all task types)
 - Department-based inventory separation (前厅/后厨)
 - Cookie-based authentication (custom implementation)
 - Random table inspection with metadata storage
@@ -82,6 +98,7 @@
 - Department-based inventory filtering
 - Custom user authentication via roleplay_users table
 - Random inspection metadata stored in task_records
+- Queue storage in IndexedDB for offline resilience
 
 ### Key Architecture Decisions
 - **Authentication**: Custom cookie-based, NOT Supabase Auth
@@ -91,3 +108,5 @@
 - **No Quantity Storage**: Quantities calculated from `task_records`
 - **User Emails**: Format is `username.demo@gmail.com`
 - **Random Inspections**: Metadata includes zone/table selection automatically
+- **Timeout Strategy**: 60s for all submissions, always queue on failure
+- **Error Handling**: Always save data on ANY error, better duplicate than lost
