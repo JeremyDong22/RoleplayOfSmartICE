@@ -3,6 +3,7 @@
  * Created: 2025-08-27
  * Updated: 2025-09-02 - Added short press (soft refresh) and long press (hard refresh)
  * Updated: 2025-09-04 - Changed short press to hard refresh, long press to complete cache clear
+ * Updated: 2025-01-13 - Use shared cleanup utility for consistency
  * Purpose: Provides a unified refresh button with beautiful animations for all pages
  */
 
@@ -10,6 +11,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Fab, Zoom, Box, keyframes, Snackbar, Alert, CircularProgress, Tooltip } from '@mui/material'
 import { Refresh as RefreshIcon, Check as CheckIcon, Cached as CachedIcon } from '@mui/icons-material'
 import { useRefresh } from '../../contexts/RefreshContext'
+import { cleanupAndReload } from '../../utils/cacheCleanup'
 
 // Define rotation animation
 const rotate = keyframes`
@@ -136,64 +138,13 @@ export const GlobalRefreshButton: React.FC<GlobalRefreshButtonProps> = ({
     
     try {
       if (isLongPress || pressDuration >= 2000) {
-        // 长按：彻底清理（更武断的清理方式）
+        // 长按：彻底清理（使用共享的清理函数）
         console.log('执行彻底清理...')
-        
-        // 清理 localStorage
-        localStorage.clear()
-        
-        // 清理 sessionStorage
-        sessionStorage.clear()
-        
-        // 清理 IndexedDB
-        if ('indexedDB' in window) {
-          const databases = await indexedDB.databases?.() || []
-          for (const db of databases) {
-            if (db.name) {
-              try {
-                await indexedDB.deleteDatabase(db.name)
-                console.log(`Deleted IndexedDB: ${db.name}`)
-              } catch (err) {
-                console.error(`Failed to delete IndexedDB ${db.name}:`, err)
-              }
-            }
-          }
-        }
-        
-        // 清理所有 cookies
-        document.cookie.split(";").forEach((c) => {
-          document.cookie = c
-            .replace(/^ +/, "")
-            .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/")
-        })
-        
-        // 清理所有 cache storage
-        if ('caches' in window) {
-          const cacheNames = await caches.keys()
-          await Promise.all(
-            cacheNames.map(cacheName => {
-              console.log(`Deleting cache: ${cacheName}`)
-              return caches.delete(cacheName)
-            })
-          )
-        }
-        
-        // 注销所有 service workers
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations()
-          for (const registration of registrations) {
-            await registration.unregister()
-            console.log('Unregistered service worker')
-          }
-        }
-        
-        // 显示成功消息并重定向到首页
         setSuccessMessage('缓存已彻底清理，页面即将刷新...')
         setShowSuccess(true)
-        setTimeout(() => {
-          window.location.href = '/'
-          window.location.reload()
-        }, 1500)
+
+        // 使用共享的清理函数
+        await cleanupAndReload(1500)
         
       } else {
         // 短按：标准页面刷新（和浏览器刷新按钮一样的效果）

@@ -61,6 +61,13 @@ import { RefreshProvider } from './contexts/RefreshContext'
 import { Puppeteer } from './pages/Puppeteer'
 import { TestListSample } from './pages/TestListSample'
 
+// Progressive loading version
+const ManagerDashboardProgressive = lazy(() =>
+  import('./pages/ManagerDashboard-progressive.tsx').then(module => ({
+    default: module.ManagerDashboardProgressive
+  }))
+)
+
 const theme = createTheme({
   palette: {
     primary: {
@@ -248,6 +255,18 @@ const router = createBrowserRouter([
   {
     path: '/puppeteer',
     element: <Puppeteer />,
+  },
+  {
+    path: '/test-progressive',
+    element: (
+      <Suspense fallback={
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <CircularProgress />
+        </Box>
+      }>
+        <ManagerDashboardProgressive />
+      </Suspense>
+    ),
   },
   // Catch-all redirect for incorrect profile routes
   {

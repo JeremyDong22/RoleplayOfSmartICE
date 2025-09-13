@@ -1,9 +1,11 @@
 // Component to handle PWA update notifications and version management
 // Detects when new version is available and prompts user to update
+// Updated: 2025-01-13 - Use complete cleanup for reliable updates
 
 import React, { useEffect, useState } from 'react';
 import { Snackbar, Alert, Button, Box } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { cleanupAndReload } from '../utils/cacheCleanup';
 
 interface UpdateNotificationProps {
   onVersionChange?: (version: string) => void;
@@ -103,18 +105,14 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onVersio
     };
   }, [onVersionChange]);
 
-  const handleUpdate = () => {
-    if (registration?.waiting) {
-      // Mark that we're updating
-      setIsUpdating(true);
-      // Tell waiting service worker to skip waiting
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      setUpdateAvailable(false);
-      // Force reload after a short delay to ensure SW has activated
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-    }
+  const handleUpdate = async () => {
+    // Mark that we're updating
+    setIsUpdating(true);
+    setUpdateAvailable(false);
+
+    // Perform complete cleanup and reload - same as long-press refresh
+    // This ensures 100% reliable updates by clearing all caches and storage
+    await cleanupAndReload(1500);
   };
 
   const handleDismiss = () => {
