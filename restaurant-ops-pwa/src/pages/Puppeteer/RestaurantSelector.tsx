@@ -1,6 +1,7 @@
 // Restaurant Selector Component - Consistent with project UI design
 // Matches the clean, professional style of CEO Dashboard and Inventory Management
 // Updated: 2025-09-02 - Added loading optimization and error handling improvements
+// Updated: 2025-09-13 - v1.1 - Removed timeout promise to let Supabase handle its own timeouts
 
 import React, { useEffect, useState } from 'react'
 import {
@@ -62,23 +63,12 @@ export const RestaurantSelector: React.FC<RestaurantSelectorProps> = ({ onSelect
     try {
       setLoading(true)
       setError(null)
-      
-      // Add timeout for better UX
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('加载超时，请检查网络连接')), 15000)
-      )
-      
-      const dataPromise = SampleManagerService.getRestaurants()
-      
-      const data = await Promise.race([dataPromise, timeoutPromise]) as any
+
+      const data = await SampleManagerService.getRestaurants()
       setRestaurants(data || [])
     } catch (err: any) {
-      if (err.message === '加载超时，请检查网络连接') {
-        setError(err.message)
-      } else {
-        setError('加载餐厅列表失败，请刷新页面重试')
-      }
       console.error('Failed to load restaurants:', err)
+      setError('加载餐厅列表失败，请刷新页面重试')
     } finally {
       setLoading(false)
     }

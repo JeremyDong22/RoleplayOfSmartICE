@@ -2,6 +2,22 @@
 
 ## Last Updated: 2025-09-13
 
+### Loading Progress Tracking Implementation (2025-09-13)
+- **Problem**: Task panels loading slowly with no user feedback
+- **Solution**: Two-phase progress tracking system
+  - Phase 1: Task service initialization (0-100%)
+  - Phase 2: Database queries and processing (0-100%)
+- **Technical Details**:
+  - Added progress callbacks to taskService.initialize()
+  - Enhanced TaskDataContext with loadingProgress and loadingMessage
+  - Fixed race condition using loadingRef to prevent concurrent loads
+- **UI Improvements**:
+  - Determinate circular progress with percentage
+  - Linear progress bar with smooth transitions
+  - Meaningful loading messages at each stage
+- **Abandoned Approach**: Progressive loading was too complex due to component coupling
+// Progressive loading attempted but abandoned - components too tightly coupled
+
 ### Task Submission Timeout Handling Fix (2025-09-13)
 - **Problem Identified**: UI showing "upload failed" while data actually saved to database
 - **Root Cause**: 30s frontend timeout vs backend processing time mismatch + control flow bug
@@ -67,16 +83,17 @@
 - **TimeControl**: Time manipulation for testing/demo
 
 ### Recent Fixes (from git log)
-1. Task submission timeout handling and data persistence (2025-09-13)
-2. Random inspection feature verification and testing (2025-09-13)
-3. Authentication system decision - rollback to cookie auth (2025-01-12)  
-4. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
-5. Task upload optimization with retry queue and network-aware compression
-6. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
-7. Fixed React initialization errors in production builds
-8. Removed circular dependencies
-9. Fixed task filtering for restaurant-specific views
-10. Optimized inventory management loading behavior
+1. Loading progress tracking for better UX (2025-09-13)
+2. Task submission timeout handling and data persistence (2025-09-13)
+3. Random inspection feature verification and testing (2025-09-13)
+4. Authentication system decision - rollback to cookie auth (2025-01-12)  
+5. Fixed department detection in PhotoSubmissionDialog (2025-01-07)
+6. Task upload optimization with retry queue and network-aware compression
+7. Multi-view PhotoSubmissionDialog restored for 收货验货 tasks
+8. Fixed React initialization errors in production builds
+9. Removed circular dependencies
+10. Fixed task filtering for restaurant-specific views
+11. Optimized inventory management loading behavior
 
 ### Active Features
 - Progressive Web App with offline support
@@ -89,6 +106,7 @@
 - Department-based inventory separation (前厅/后厨)
 - Cookie-based authentication (custom implementation)
 - Random table inspection with metadata storage
+- Two-phase loading progress tracking with detailed feedback
 
 ### Database Pattern
 - All tables use `roleplay_` prefix
@@ -110,3 +128,4 @@
 - **Random Inspections**: Metadata includes zone/table selection automatically
 - **Timeout Strategy**: 60s for all submissions, always queue on failure
 - **Error Handling**: Always save data on ANY error, better duplicate than lost
+- **Loading Feedback**: Two-phase progress tracking for transparency

@@ -2,6 +2,7 @@
 // Service for managing task samples in the database
 // Updated: 2025-09-02 - Added caching for restaurant data to improve loading performance
 // Updated: 2025-09-02 - Added security improvements and input validation
+// Updated: 2025-09-13 - v1.2 - Removed AbortSignal.timeout() and excluded icon field to fix loading issues
 
 import { supabase } from './supabase'
 import { validateSqlParam, sanitizeInput, sanitizeFileName } from '../utils/sanitizer'
@@ -26,13 +27,12 @@ export class SampleManagerService {
       return cached.data
     }
     
-    // Fetch from database with timeout
+    // Fetch from database
     const { data, error } = await supabase
       .from('roleplay_restaurants')
       .select('id, name, city, address, icon, is_active')
       .eq('is_active', true)
       .order('name')
-      .abortSignal(AbortSignal.timeout(QUERY_CONFIG.TIMEOUT))
 
     if (error) throw error
     
@@ -62,7 +62,6 @@ export class SampleManagerService {
       .select('*')
       .eq('is_active', true)
       .order('sort_order')
-      .abortSignal(AbortSignal.timeout(QUERY_CONFIG.TIMEOUT))
 
     if (error) throw error
     
