@@ -22,10 +22,13 @@
 1. Clears all localStorage
 2. Clears all sessionStorage
 3. Deletes all IndexedDB databases
-4. Clears all cookies
+4. Clears all cookies (including authentication)
 5. Deletes all cache storage
 6. Unregisters all Service Workers
 7. Redirects to homepage and reloads
+
+// Updated 2025-09-16: No longer preserves auth cookies - complete cleanup is intended
+// Users will need to re-login after deep clean, which is expected behavior
 
 ## Visual Indicators & Animation
 
