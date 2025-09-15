@@ -537,8 +537,14 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
   
   // 最终提交
   const handleSubmit = async () => {
+    // Prevent double submission
+    if (isSubmitting) {
+      console.warn('[PhotoDialog] Submit blocked - already submitting')
+      return
+    }
+
     // 保留原有的evidence格式用于兼容
-    const evidence = photoGroups.flatMap(group => 
+    const evidence = photoGroups.flatMap(group =>
       group.photos.map(photo => ({
         photo: photo.image,
         description: group.comment || '',

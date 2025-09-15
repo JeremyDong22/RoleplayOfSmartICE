@@ -635,8 +635,11 @@ export async function submitTaskWithMedia({
       console.log('[TaskSubmissionHelper] Submission successful:', result.id)
       console.log('[TaskSubmissionHelper] ===== SUBMISSION END =====');
 
-      // Remove from ongoing submissions on success
-      ongoingSubmissions.delete(submissionKey)
+      // Keep submissionKey for 30 seconds to prevent rapid re-submissions
+      setTimeout(() => {
+        ongoingSubmissions.delete(submissionKey)
+        console.log('[TaskSubmissionHelper] Cleared submission key after cooldown:', submissionKey)
+      }, 30000) // 30 second cooldown
 
       onProgress?.(100, '提交成功!')
       return result
@@ -663,8 +666,11 @@ export async function submitTaskWithMedia({
 
       // Throw error to indicate immediate failure (but data is queued)
       const errorMessage = submissionError?.message || 'Failed to submit task'
-      // Remove from ongoing submissions before throwing
-      ongoingSubmissions.delete(submissionKey)
+      // Keep submissionKey for 5 seconds on error to prevent rapid retries
+      setTimeout(() => {
+        ongoingSubmissions.delete(submissionKey)
+        console.log('[TaskSubmissionHelper] Cleared submission key after error cooldown:', submissionKey)
+      }, 5000) // 5 second cooldown on error
 
       // Provide clear feedback based on error type
       if (errorMessage.includes('timeout')) {
@@ -674,8 +680,12 @@ export async function submitTaskWithMedia({
       }
     }
   } catch (error) {
-    // Always clean up the submission key on any error
-    ongoingSubmissions.delete(submissionKey)
+    // Keep submissionKey for 5 seconds on error to prevent rapid retries
+    setTimeout(() => {
+      ongoingSubmissions.delete(submissionKey)
+      console.log('[TaskSubmissionHelper] Cleared submission key after outer error cooldown:', submissionKey)
+    }, 5000) // 5 second cooldown on error
+
     console.error('[TaskSubmissionHelper] Error submitting task:', {
       taskId,
       error,
