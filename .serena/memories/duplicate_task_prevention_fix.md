@@ -1,15 +1,25 @@
 # Duplicate Task Record Prevention Fix
 
-## Date: 2025-09-13
+## Date: 2025-09-13 (Updated: 2025-09-15)
 ## Author: Claude
 
 ## Problem Identified
-Duplicate task records were being created when using test time, particularly when:
+Duplicate task records were being created in multiple scenarios:
+
+### Original Issue (2025-09-13)
 - Testing at 23:59 (test time) while real time was 3:00 AM
 - Business day cutoff logic (10:00 AM) caused inconsistent date calculations
 - Same task could be submitted with different dates due to timing issues
 
+### New Issue Discovered (2025-09-15)
+- **Duplicate submissions with 2-14 second delays**
+- Each task being submitted twice to database
+- Review status showing "pending" despite some records being "approved"
+- Example: 德阳值班经理 at 野百灵 restaurant had 5 pending + 5 approved records for same tasks
+
 ### Root Cause Analysis
+
+#### Issue 1: Date Calculation (2025-09-13)
 1. **Inconsistent Date Calculation**:
    - Code was using `now.toISOString().split('T')[0]` for date
    - This doesn't account for business day cutoff (10 AM)
@@ -20,6 +30,16 @@ Duplicate task records were being created when using test time, particularly whe
    - Duplicate key was only `${taskId}-${userId}-${date}`
    - When date changed due to cutoff logic, duplicates weren't prevented
    - No database-level constraints to prevent duplicates
+
+#### Issue 2: Rapid Re-submission (2025-09-15)
+1. **Premature Cleanup of Submission Lock**:
+   - `ongoingSubmissions.delete(submissionKey)` was called immediately after success
+   - Users could click submit button again within seconds
+   - No cooldown period to prevent rapid re-submissions
+
+2. **Missing Frontend Protection**:
+   - PhotoSubmissionDialog didn't check `isSubmitting` state before processing
+   - Button remained clickable even during submission
 
 ## Solution Implemented
 
@@ -75,11 +95,40 @@ This confirmed the duplicate issue was happening.
    - Real time at 3:00 AM
 2. Verify only one record created per task/user/date/period combination
 
+### 4. Cooldown Period Implementation (2025-09-15)
+**Updated in `taskSubmissionHelper.ts`**:
+
+```typescript
+// Success: 30-second cooldown
+setTimeout(() => {
+  ongoingSubmissions.delete(submissionKey)
+}, 30000)
+
+// Error: 5-second cooldown
+setTimeout(() => {
+  ongoingSubmissions.delete(submissionKey)
+}, 5000)
+```
+
+### 5. Frontend Double-Click Protection (2025-09-15)
+**Updated in `PhotoSubmissionDialog.tsx`**:
+
+```typescript
+const handleSubmit = async () => {
+  // Prevent double submission
+  if (isSubmitting) {
+    console.warn('[PhotoDialog] Submit blocked - already submitting')
+    return
+  }
+  // ... rest of logic
+}
+```
+
 ## Future Enhancement (Recommended)
 Add database constraint for absolute prevention:
 ```sql
 ALTER TABLE roleplay_task_records
-ADD CONSTRAINT unique_task_submission 
+ADD CONSTRAINT unique_task_submission
 UNIQUE (task_id, user_id, date, period_id);
 ```
 
@@ -88,3 +137,5 @@ UNIQUE (task_id, user_id, date, period_id);
 - ✅ Prevents duplicates in production
 - ✅ Consistent date handling across all dashboards
 - ✅ Works correctly with business day cutoff logic
+- ✅ Prevents rapid re-submissions with cooldown periods (2025-09-15)
+- ✅ Frontend protection against double-clicks (2025-09-15)
