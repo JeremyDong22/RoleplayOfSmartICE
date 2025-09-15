@@ -113,7 +113,7 @@ class TaskService {
       const tasksLoaded = await this.loadAllTasks()
 
       onProgress?.(80, '正在组织数据...')
-      
+
       if (!periodsLoaded || !tasksLoaded) {
         // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
         return false

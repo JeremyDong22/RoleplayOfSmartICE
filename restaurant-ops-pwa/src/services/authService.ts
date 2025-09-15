@@ -49,12 +49,14 @@ class AuthService {
   // Get current user from cookies
   getCurrentUser(): AuthUser | null {
     const authToken = Cookies.get('authToken')
-    if (!authToken) return null
+    if (!authToken) {
+      return null
+    }
 
     try {
       const name = Cookies.get('userName') || ''
       const role = Cookies.get('userRole') || ''
-      return {
+      const user = {
         id: Cookies.get('userId') || '',
         email: Cookies.get('userEmail') || '',
         name: name,
@@ -64,7 +66,9 @@ class AuthService {
         roleCode: Cookies.get('userRoleCode') || '',
         restaurantId: Cookies.get('restaurantId') || ''
       }
-    } catch {
+      return user
+    } catch (err) {
+      console.error('[AuthService] Error getting current user:', err)
       return null
     }
   }

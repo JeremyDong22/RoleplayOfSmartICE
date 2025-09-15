@@ -55,18 +55,19 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
         setLoadingProgress(progress)
         setLoadingMessage(message)
       })
-      
+
       if (!initialized) {
-        // Check if user is authenticated using Cookie-based auth (NOT Supabase Auth)
-        // This checks our custom authentication from authService
+        // 检查是否是因为用户未登录
         const currentUser = authService.getCurrentUser()
         if (!currentUser) {
-          // 用户未登录，这是正常的，不需要显示错误
+          // 用户未登录，这是正常的，不显示错误
+          setIsLoading(false)
           return
         }
-        
-        // 如果有会话但初始化失败，显示具体的错误信息
+
+        // 如果有用户但初始化失败，显示错误信息
         setError('无法连接到服务器，请检查网络连接。系统将在5秒后自动重试。')
+        setIsLoading(false)
         // 5秒后自动重试
         setTimeout(() => {
           loadData()
@@ -84,7 +85,12 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       setFloatingTasks(floating)
       setLoadingProgress(100)
       setLoadingMessage('加载完成！')
-      
+
+      // 确保设置isLoading为false（添加短暂延迟让用户看到100%）
+      setTimeout(() => {
+        setIsLoading(false)
+      }, 100)
+
       // 订阅更新
       const unsubscribeTasks = taskService.subscribe('tasks', (data) => {
         // 当任务更新时，重新获取所有数据
@@ -114,20 +120,19 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       }
       
     } catch (err: any) {
-      console.error('Failed to load task data:', err)
+      console.error('[TaskDataContext] Failed to load task data:', err)
       setError(`加载任务数据失败: ${err.message || '未知错误'}`)
-    } finally {
-      setIsLoading(false)
+      setIsLoading(false)  // 确保错误时也设置为false
     }
   }, [])
 
   useEffect(() => {
     let cleanup: (() => void) | undefined
-    
+
     loadData().then(cleanupFn => {
       cleanup = cleanupFn
     })
-    
+
     return () => {
       cleanup?.()
       taskService.cleanup()

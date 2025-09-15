@@ -125,9 +125,30 @@ All database tables use the `roleplay_` prefix to distinguish from standard rest
 - **Migrations**: Use `mcp__supabase-mcp__apply_migration`
 - **Queries**: Use `mcp__supabase-mcp__execute_sql`
 
+## Store Closing Validation (Added 2025-09-15)
+
+### check_business_day_tasks_completed Function
+- **Purpose**: Validates if all required tasks are completed before allowing store closure
+- **Parameters**: 
+  - `p_restaurant_id`: UUID of the restaurant
+  - `p_check_date`: Date to check (defaults to CURRENT_DATE)
+- **Logic**: 
+  - Finds all required tasks for the restaurant (specific + general tasks)
+  - Checks for approved records in task_records table
+  - Returns true only if ALL required tasks have approved records
+- **Important**: Some restaurants have duplicate task definitions (e.g., tasks with `_deyang` suffix)
+
+### Known Data Issues
+- **Duplicate Tasks**: Some restaurants have multiple task definitions for same task
+  - Example: 德阳店 has tasks with both regular IDs and `_deyang` suffix IDs
+  - Same issue with period IDs (regular and `_deyang` suffix)
+- **Recommendation**: Audit and clean duplicate task definitions
+
 ## Testing Considerations
 - Test with all user roles (chef, manager, duty_manager, staff)
 - Verify department filtering works correctly
 - Test business date logic around 10 AM cutoff
 - Check random inspection metadata storage
 - Verify auto-approval logic for different roles
+- Test store closing validation with all tasks completed
+- Check for duplicate task definitions in different restaurants

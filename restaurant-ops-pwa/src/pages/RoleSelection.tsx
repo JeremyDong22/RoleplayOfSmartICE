@@ -92,7 +92,7 @@ export const RoleSelection = () => {
       // Store both the selected role and that it's an admin viewing this role
       localStorage.setItem('selectedRole', role)
       localStorage.setItem('isAdministratorMode', 'true')
-      navigate(`/${role}`)
+      window.location.href = `/${role}`
       return
     }
     
@@ -113,9 +113,9 @@ export const RoleSelection = () => {
     // Store role in localStorage for persistence
     localStorage.setItem('selectedRole', role)
     localStorage.setItem('isAdministratorMode', 'false')
-    
-    // Navigate to the selected role page
-    navigate(`/${role}`)
+
+    // Navigate to the selected role page and reload to ensure data loads
+    window.location.href = `/${role}`
   }
 
   const handleLogout = () => {

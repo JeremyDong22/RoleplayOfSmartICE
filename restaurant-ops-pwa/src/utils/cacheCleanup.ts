@@ -14,7 +14,7 @@
 export async function performCompleteCleanup(): Promise<void> {
   console.log('Performing complete cache and storage cleanup...')
 
-  // 1. Clear localStorage
+  // 1. Clear localStorage completely (auth is in cookies, not localStorage)
   localStorage.clear()
   console.log('✓ localStorage cleared')
 
