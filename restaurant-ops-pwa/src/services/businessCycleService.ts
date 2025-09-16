@@ -154,7 +154,7 @@ export async function getBusinessCycleTaskCompletion(
     .from('roleplay_tasks')
     .select('id, title, role_code, period_id, restaurant_id')
     .in('role_code', ['manager', 'duty_manager'])  // 排除 chef
-    .eq('is_active', true)
+    // Remove is_active filter - all tasks should be considered
     .eq('is_notice', false)  // 排除通知类任务
     .not('is_floating', 'eq', true)  // 排除浮动任务
     .or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)  // 只查询当前餐厅或通用任务

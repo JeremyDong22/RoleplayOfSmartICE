@@ -651,13 +651,18 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       .from('roleplay_tasks')
       .select('id, title, description, role_code, period_id, samples')
       .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
+      // Remove is_active filter - all tasks should be considered
       .eq('is_notice', false)
       .not('is_floating', 'eq', true)
     
-    if (role) {
+    if (role === 'manager') {
+      // For manager, include both manager and duty_manager tasks
+      taskQuery = taskQuery.in('role_code', ['manager', 'duty_manager'])
+    } else if (role) {
+      // For other roles, only get that specific role
       taskQuery = taskQuery.eq('role_code', role)
     } else {
+      // If no role specified, get all roles
       taskQuery = taskQuery.in('role_code', ['manager', 'chef', 'duty_manager'])
     }
     
@@ -680,7 +685,10 @@ export async function getRealTimeCompletionRate(restaurantId: string, role?: 'ma
       .eq('review_status', 'approved')
     
     // 只获取指定角色的已完成任务
-    if (role) {
+    if (role === 'manager') {
+      // For manager, include both manager and duty_manager completed tasks
+      completedQuery = completedQuery.in('roleplay_tasks.role_code', ['manager', 'duty_manager'])
+    } else if (role) {
       completedQuery = completedQuery.eq('roleplay_tasks.role_code', role)
     } else {
       completedQuery = completedQuery.in('roleplay_tasks.role_code', ['manager', 'chef', 'duty_manager'])

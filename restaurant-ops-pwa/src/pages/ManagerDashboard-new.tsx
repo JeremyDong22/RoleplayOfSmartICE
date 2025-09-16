@@ -208,8 +208,14 @@ export const ManagerDashboard: React.FC = () => {
       // 3. 重新加载任务完成状态
       if (currentUserId) {
         const completedIds = await getTodayCompletedTaskIds(currentUserId)
-        setCompletedTaskIds(completedIds)
-        
+        console.log('[handleRefresh] Manager completed IDs:', completedIds)
+
+        // Also load approved duty manager tasks and add review tasks
+        const reviewTasksToAdd = await loadApprovedDutyManagerTasks()
+        const finalCompletedIds = [...completedIds, ...reviewTasksToAdd]
+        console.log('[handleRefresh] Final completed IDs after adding review tasks:', finalCompletedIds)
+        setCompletedTaskIds(finalCompletedIds)
+
         const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
         setDbTaskStatuses(updatedTaskStatuses)
       }
@@ -273,19 +279,21 @@ export const ManagerDashboard: React.FC = () => {
   // Function to load approved duty manager tasks and update review task completion
   const loadApprovedDutyManagerTasks = async () => {
     const restaurantId = await getRestaurantId()
-    
+
     if (!restaurantId || !currentUserId) {
+      console.log('[loadApprovedDutyManagerTasks] Missing restaurantId or currentUserId')
       return []
     }
-    
+
     const approvedDutyTasks = await getTodayApprovedDutyManagerTasks(restaurantId)
-    
+    console.log('[loadApprovedDutyManagerTasks] Approved duty tasks:', approvedDutyTasks)
+
     // Add review tasks to completedIds if their linked tasks are approved
     const reviewTasksToAdd: string[] = []
-    
+
     // Map duty manager tasks to their review tasks dynamically
     const dutyToReviewMap: { [key: string]: string } = {}
-    
+
     // Generate mappings for all periods that have duty manager tasks
     workflowPeriods.forEach(period => {
       const dutyTasks = period.tasks?.dutyManager || []
@@ -293,15 +301,58 @@ export const ManagerDashboard: React.FC = () => {
         dutyToReviewMap[dutyTask.id] = `review-${dutyTask.id}`
       })
     })
-    
+
+    console.log('[loadApprovedDutyManagerTasks] Duty to review map:', dutyToReviewMap)
+
     approvedDutyTasks.forEach(dutyTaskId => {
       const reviewTaskId = dutyToReviewMap[dutyTaskId]
       if (reviewTaskId) {
         reviewTasksToAdd.push(reviewTaskId)
       }
     })
-    
-    
+
+    console.log('[loadApprovedDutyManagerTasks] Review tasks to add:', reviewTasksToAdd)
+
+    return reviewTasksToAdd
+  }
+
+  // Version that accepts userId directly (for use during initial load when state not yet set)
+  const loadApprovedDutyManagerTasksWithUserId = async (userId: string) => {
+    const restaurantId = await getRestaurantId()
+
+    if (!restaurantId || !userId) {
+      console.log('[loadApprovedDutyManagerTasksWithUserId] Missing restaurantId or userId')
+      return []
+    }
+
+    const approvedDutyTasks = await getTodayApprovedDutyManagerTasks(restaurantId)
+    console.log('[loadApprovedDutyManagerTasksWithUserId] Approved duty tasks:', approvedDutyTasks)
+
+    // Add review tasks to completedIds if their linked tasks are approved
+    const reviewTasksToAdd: string[] = []
+
+    // Map duty manager tasks to their review tasks dynamically
+    const dutyToReviewMap: { [key: string]: string } = {}
+
+    // Generate mappings for all periods that have duty manager tasks
+    workflowPeriods.forEach(period => {
+      const dutyTasks = period.tasks?.dutyManager || []
+      dutyTasks.forEach(dutyTask => {
+        dutyToReviewMap[dutyTask.id] = `review-${dutyTask.id}`
+      })
+    })
+
+    console.log('[loadApprovedDutyManagerTasksWithUserId] Duty to review map:', dutyToReviewMap)
+
+    approvedDutyTasks.forEach(dutyTaskId => {
+      const reviewTaskId = dutyToReviewMap[dutyTaskId]
+      if (reviewTaskId) {
+        reviewTasksToAdd.push(reviewTaskId)
+      }
+    })
+
+    console.log('[loadApprovedDutyManagerTasksWithUserId] Review tasks to add:', reviewTasksToAdd)
+
     return reviewTasksToAdd
   }
 
@@ -339,11 +390,14 @@ export const ManagerDashboard: React.FC = () => {
         const completedIds = await getTodayCompletedTaskIds(currentUser.id)
 
         // Load approved duty manager tasks to determine review task completion
+        // Pass userId directly since state might not be updated yet
         setDbLoadingProgress(60)
         setDbLoadingMessage('正在检查审核任务...')
-        const reviewTasksToAdd = await loadApprovedDutyManagerTasks()
+        const reviewTasksToAdd = await loadApprovedDutyManagerTasksWithUserId(currentUser.id)
 
-        setCompletedTaskIds([...completedIds, ...reviewTasksToAdd])
+        const finalCompletedIds = [...completedIds, ...reviewTasksToAdd]
+        console.log('[loadFromDatabase] Initial load - Final completed IDs:', finalCompletedIds)
+        setCompletedTaskIds(finalCompletedIds)
 
         // Load today's task statuses for TaskSummary
         setDbLoadingProgress(80)
@@ -665,9 +719,15 @@ export const ManagerDashboard: React.FC = () => {
           // If this period has ended and it's not the current period
           if (now > periodEnd && period.id !== currentPeriod.id) {
             // Check for uncompleted tasks using database data
-            period.tasks.manager.forEach((task: TaskTemplate) => {
+            // Check both manager and duty_manager tasks
+            const allTasks = [
+              ...(period.tasks.manager || []),
+              ...(period.tasks.duty_manager || [])
+            ]
+
+            allTasks.forEach((task: TaskTemplate) => {
               if (task.isNotice) return // Skip notices
-              
+
               // Use database completedIds instead of local state
               if (!completedIds.includes(task.id)) {
                 updatedMissingTasks.push({
@@ -1149,10 +1209,10 @@ export const ManagerDashboard: React.FC = () => {
     
     // Submit manual closing task to database if it exists
     if (restaurantId && currentUserId && manualClosingTask) {
-      // First check if all tasks are completed
-      const canClose = await restaurantStateService.checkAllTasksCompleted(restaurantId)
+      // Double-check if all tasks are completed using the same validation
+      const { canClose, reason } = await validateCanClose(restaurantId)
       if (!canClose) {
-        alert('还有任务未完成，请先完成所有任务后再闭店。')
+        alert(reason || '还有任务未完成，请先完成所有任务后再闭店。')
         setIsCheckingClosure(false)
         return
       }

@@ -91,9 +91,10 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   const refreshFromDatabase = useCallback(async () => {
     const restaurantId = await getRestaurantId()
     if (!restaurantId) return
-    
+
     setIsLoadingCompletionRate(true)
     try {
+      // Manager still passes 'manager' role but the backend should handle including duty_manager tasks
       const result = await getRealTimeCompletionRate(restaurantId, role)
       
       
@@ -127,7 +128,7 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
       const restaurantId = await getRestaurantId()
       
       if (!currentUser || !restaurantId) return
-      
+
       setIsLoadingStats(true)
       try {
         const stats = await getTaskSummaryStats(currentUser.id, restaurantId, role, testTime)

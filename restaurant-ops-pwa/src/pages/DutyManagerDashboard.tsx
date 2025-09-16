@@ -272,8 +272,8 @@ const DutyManagerDashboard: React.FC = () => {
 
         // 更新已完成的任务ID列表
         // 注意：pending状态的任务不算完成，需要等待审核
-        const completedIds = taskStatuses ? Object.keys(taskStatuses).filter(taskId => 
-          taskStatuses[taskId].status === 'submitted' && 
+        const completedIds = taskStatuses ? Object.keys(taskStatuses).filter(taskId =>
+          taskStatuses[taskId].status === 'submitted' &&
           taskStatuses[taskId].review_status === 'approved'  // 只有approved才算完成
         ) : []
 
