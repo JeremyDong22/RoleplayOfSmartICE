@@ -41,6 +41,29 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
     throw new Error('user_id is required in taskData')
   }
 
+  // Check for existing record to prevent duplicates
+  if (taskData.task_id && taskData.date && taskData.period_id) {
+    const { data: existingRecord } = await getSupabase()
+      .from('roleplay_task_records')
+      .select('id, created_at, status, review_status')
+      .eq('task_id', taskData.task_id)
+      .eq('user_id', taskData.user_id)
+      .eq('date', taskData.date)
+      .eq('period_id', taskData.period_id)
+      .maybeSingle()
+
+    if (existingRecord) {
+      console.log('[TaskRecordService] Duplicate submission prevented. Existing record:', {
+        id: existingRecord.id,
+        created_at: existingRecord.created_at,
+        status: existingRecord.status,
+        review_status: existingRecord.review_status
+      })
+      // Return the existing record instead of creating a duplicate
+      return existingRecord
+    }
+  }
+
   // Try to get user role from cache first
   let userRoleCode: string | undefined;
   const cachedRole = userRoleCache.get(taskData.user_id);

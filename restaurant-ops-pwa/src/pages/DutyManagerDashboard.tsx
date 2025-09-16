@@ -55,6 +55,7 @@ const DutyManagerDashboard: React.FC = () => {
   const { currentTrigger, addSubmission, clearTrigger, reviewStatus, submissions } = useDutyManager()
   const [testTime, setTestTime] = useState<Date | null>(null)
   const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
+  const [localReviewStatus, setLocalReviewStatus] = useState<{ [taskId: string]: any }>({})
   
   // 初始化状态 - 不从 localStorage 加载任务状态
   const [state, setState] = useState<DutyManagerState>({
@@ -394,17 +395,34 @@ const DutyManagerDashboard: React.FC = () => {
         })
         
         console.log('[DutyManagerDashboard] Task successfully submitted:', result.id)
-        
-        // 值班经理任务不应该立即标记为完成，因为需要等待审核
-        // 只更新任务状态，不加入completedTaskIds
+
+        // 更新任务状态：标记为已提交（待审核）
+        // 注意：不要将任务加入completedTaskIds，因为它还在待审核状态
         setState(prev => ({
           ...prev,
-          // 不更新completedTaskIds，保持任务在待审核状态
+          // 不要加入completedTaskIds，让UI显示为待审核状态（橙色）
+          // completedTaskIds: [...prev.completedTaskIds, taskId],
           taskStatuses: {
             ...prev.taskStatuses,
-            [taskId]: { completedAt: now, overdue: false, evidence: data },
+            [taskId]: {
+              completedAt: now,
+              overdue: false,
+              evidence: data,
+              status: 'submitted',  // 明确标记为已提交
+              review_status: 'pending'  // 待审核状态
+            },
           },
         }))
+
+        // 立即更新本地的reviewStatus，让UI显示待审核状态
+        setLocalReviewStatus(prev => ({
+          ...prev,
+          [taskId]: {
+            status: 'pending',
+            submittedAt: now.toISOString()
+          }
+        }))
+
         
         // 提交到Context用于店长审核
         const submission = {
@@ -419,8 +437,8 @@ const DutyManagerDashboard: React.FC = () => {
           },
         }
         
-        // 提交到Context，等待店长审核
-        await addSubmission(submission)
+        // 注释掉重复提交 - submitTaskWithMedia 已经提交到数据库了
+        // await addSubmission(submission)
         
         console.log('[DutyManagerDashboard] Task submission successful')
         

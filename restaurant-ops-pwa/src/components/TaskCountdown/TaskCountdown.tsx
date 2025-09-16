@@ -40,7 +40,8 @@ import {
   Assignment,
   CheckCircle,
   Announcement,
-  Checklist
+  Checklist,
+  HourglassEmpty
 } from '@mui/icons-material'
 import type { TaskTemplate, WorkflowPeriod } from '../../types/task.types'
 
@@ -670,6 +671,9 @@ export const TaskCountdown: React.FC<TaskCountdownProps> = ({
                           {/* 根据不同状态显示不同的图标 */}
                           {isDutyManagerTask && isApproved && (
                             <CheckCircle sx={{ color: 'success.main', fontSize: 30, ml: 1 }} />
+                          )}
+                          {isDutyManagerTask && (isInReview || (isCompleted && !isApproved && !isRejected)) && (
+                            <HourglassEmpty sx={{ color: 'warning.main', fontSize: 30, ml: 1 }} />
                           )}
                           {!isDutyManagerTask && isCompleted && (
                             <CheckCircleOutline sx={{ color: 'success.main', fontSize: 30, ml: 1 }} />
