@@ -197,6 +197,7 @@ export const ManagerDashboard: React.FC = () => {
   const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
   const [closingDialogOpen, setClosingDialogOpen] = useState(false) // Controls closing dialog visibility
   const [closingValidation, setClosingValidation] = useState<any>(null) // Stores validation result
+  const [isPerformingStoreClose, setIsPerformingStoreClose] = useState(false) // Prevents duplicate store closing submissions
   
   // 注册刷新回调 - 软刷新时重新加载数据
   const handleRefresh = useCallback(async () => {
@@ -1216,6 +1217,14 @@ export const ManagerDashboard: React.FC = () => {
 
   // 执行实际的闭店操作
   const performStoreClosing = useCallback(async () => {
+    // 防止重复提交
+    if (isPerformingStoreClose) {
+      console.warn('Store closing already in progress, preventing duplicate submission')
+      return
+    }
+
+    setIsPerformingStoreClose(true)
+
     try {
       const restaurantId = await getRestaurantId()
       if (!restaurantId || !currentUserId || !manualClosingTask) {
@@ -1273,8 +1282,10 @@ export const ManagerDashboard: React.FC = () => {
     } catch (error) {
       console.error('[ManagerDashboard] Error performing store closing:', error)
       alert('执行闭店操作时出错，请重试。')
+    } finally {
+      setIsPerformingStoreClose(false)
     }
-  }, [currentUserId, manualClosingTask, testTime, workflowPeriods])
+  }, [currentUserId, manualClosingTask, testTime, workflowPeriods, isPerformingStoreClose])
   
   // Removed: handleAdvancePeriod - advance button removed from UI
 
@@ -1537,6 +1548,7 @@ export const ManagerDashboard: React.FC = () => {
         onClose={handleCloseDialog}
         onConfirm={performStoreClosing}
         onGoToTasks={handleGoToTasks}
+        isSubmitting={isPerformingStoreClose}
       />
     </>
   )

@@ -74,6 +74,7 @@ interface StoreClosingDialogProps {
   onClose: () => void
   onConfirm: () => void
   onGoToTasks?: () => void
+  isSubmitting?: boolean
 }
 
 const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
@@ -81,7 +82,8 @@ const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
   validation,
   onClose,
   onConfirm,
-  onGoToTasks
+  onGoToTasks,
+  isSubmitting = false
 }) => {
   // Memoize the dialog content to prevent unnecessary re-computations
   const dialogContent = useMemo(() => {
@@ -359,8 +361,9 @@ const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
               variant="contained"
               color="warning"
               onClick={onConfirm}
+              disabled={isSubmitting}
             >
-              确认闭店
+              {isSubmitting ? '正在闭店...' : '确认闭店'}
             </Button>
           </>
         ) : (
@@ -372,8 +375,9 @@ const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
               variant="contained"
               color="success"
               onClick={onConfirm}
+              disabled={isSubmitting}
             >
-              确认闭店
+              {isSubmitting ? '正在闭店...' : '确认闭店'}
             </Button>
           </>
         )}
