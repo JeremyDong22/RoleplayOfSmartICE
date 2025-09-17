@@ -226,7 +226,12 @@ export const TaskSummary: React.FC<TaskSummaryProps> = ({
   
   const handleLateSubmitClick = async (task: TaskTemplate) => {
     // Handle late submission for task
-    
+    console.log('[TaskSummary] handleLateSubmitClick called with task:', {
+      id: task.id,
+      title: task.title,
+      taskObject: task
+    })
+
     // Always query the database for the task's submission_type
     let taskWithRequirement = task
     

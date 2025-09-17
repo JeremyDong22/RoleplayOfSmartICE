@@ -218,10 +218,10 @@ export const UploadQueueIndicator: React.FC = () => {
                       </Box>
                     }
                     secondary={
-                      <Box>
-                        <Chip 
-                          label={getStatusLabel(upload.status)} 
-                          size="small" 
+                      <Box component="span">
+                        <Chip
+                          label={getStatusLabel(upload.status)}
+                          size="small"
                           sx={{ mt: 0.5 }}
                           color={
                             upload.status === UploadStatus.FAILED ? 'error' :
@@ -242,6 +242,7 @@ export const UploadQueueIndicator: React.FC = () => {
                         )}
                       </Box>
                     }
+                    secondaryTypographyProps={{ component: 'div' }}
                   />
                   {upload.status === UploadStatus.FAILED && (
                     <ListItemSecondaryAction>

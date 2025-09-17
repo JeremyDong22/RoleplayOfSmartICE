@@ -11,12 +11,14 @@ export default defineConfig({
   server: {
     https: false,
     port: 5173,
-    strictPort: false,
+    strictPort: true,
+    host: true,
     hmr: {
-      overlay: true,
+      overlay: false,
       protocol: 'ws',
       host: 'localhost',
-      port: 5173
+      port: 5173,
+      clientPort: 5173
     },
     // 允许模型文件缓存，但其他文件禁用缓存
     headers: {

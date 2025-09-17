@@ -16,7 +16,7 @@ import {
   Toolbar, 
   IconButton,
   Typography,
-  CircularProgress,
+  LinearProgress,
   Alert,
   Button,
   Paper,
@@ -34,6 +34,7 @@ import { ClosedPeriodDisplay } from '../components/ClosedPeriodDisplay/ClosedPer
 import { FloatingTaskCard } from '../components/FloatingTaskCard'
 import { NoticeContainer } from '../components/NoticeContainer/NoticeContainer'
 import { NavigationBar } from '../components/Navigation/NavigationBar'
+import { StoreClosingDialog } from '../components/StoreClosingDialog/StoreClosingDialog'
 import { getCurrentPeriodFromDatabase, getNextPeriodFromDatabase } from '../services/businessCycleService'
 import type { WorkflowPeriod, TaskTemplate } from '../types/task.types'
 import { useTaskData } from '../contexts/TaskDataContext'
@@ -194,6 +195,8 @@ export const ManagerDashboard: React.FC = () => {
   const [dbState, setDbState] = useState<RestaurantState | null>(null) // Restaurant state from database
   const [canManualClose, setCanManualClose] = useState(false) // Whether manual closing is allowed
   const [isCheckingClosure, setIsCheckingClosure] = useState(false) // Loading state for closure check
+  const [closingDialogOpen, setClosingDialogOpen] = useState(false) // Controls closing dialog visibility
+  const [closingValidation, setClosingValidation] = useState<any>(null) // Stores validation result
   
   // 注册刷新回调 - 软刷新时重新加载数据
   const handleRefresh = useCallback(async () => {
@@ -1164,73 +1167,74 @@ export const ManagerDashboard: React.FC = () => {
   }
   
   const handleClosingComplete = async () => {
-    
     setIsCheckingClosure(true)
     
     try {
-      // 移除了对floating tasks的检查，因为它们不是强制性的
-      
-      // Always check database state to see if we can close
       const restaurantId = await getRestaurantId()
-      if (restaurantId && currentUserId) {
-        const state = await restaurantStateService.getCurrentState(restaurantId, testTime)
-        
-        // Always validate, regardless of the state's canManualClose flag
-        const { canClose, reason } = await validateCanClose(restaurantId)
+      if (!restaurantId || !currentUserId) {
+        alert('无法获取餐厅信息')
+        return
+      }
+
+      // 使用新的增强验证函数
+      const validation = await restaurantStateService.getStoreClosingValidation(restaurantId, testTime)
       
-      if (!canClose) {
-        alert(reason || '还有未完成的必要任务，无法进行闭店操作。')
+      if (!validation) {
+        alert('无法获取闭店验证信息，请重试')
         return
       }
-    }
-    
-    // Double check local state as well
-    if (missingTasks.length > 0) {
-      alert(`还有 ${missingTasks.length} 个未完成的任务，请先完成所有缺失任务后再闭店。`)
-      return
-    }
-    
-    // Check if current period (last/closing) tasks are all completed
-    const isClosingPeriod = workflowPeriods.length > 0 && currentPeriod?.id === workflowPeriods[workflowPeriods.length - 1].id
-    if (isClosingPeriod) {
-      const uncompletedClosingTasks = currentPeriod.tasks.manager.filter(task => 
-        !task.isNotice && !completedTaskIds.includes(task.id)
-      )
-      if (uncompletedClosingTasks.length > 0) {
-        alert(`还有 ${uncompletedClosingTasks.length} 个闭店任务未完成，请先完成所有闭店任务。`)
-        return
-      }
-    }
-    
-    // Confirm closing
-    if (!confirm('确认要闭店吗？闭店后将进入等待状态直到明天开店时间。')) {
-      return
-    }
-    
-    // Submit manual closing task to database if it exists
-    if (restaurantId && currentUserId && manualClosingTask) {
-      // Double-check if all tasks are completed using the same validation
-      const { canClose, reason } = await validateCanClose(restaurantId)
-      if (!canClose) {
-        alert(reason || '还有任务未完成，请先完成所有任务后再闭店。')
-        setIsCheckingClosure(false)
-        return
-      }
+
+      // 设置验证结果给对话框
+      setClosingValidation(validation)
       
-      // Record the manual closing task completion
+      // 根据验证级别处理
+      switch(validation.validationLevel) {
+        case 'SUCCESS':
+          // 所有任务完成，显示成功确认对话框
+          setClosingDialogOpen(true)
+          break
+          
+        case 'WARNING':
+          // 闭店时段完成但其他时段未完成，显示警告确认对话框
+          setClosingDialogOpen(true)
+          break
+          
+        case 'ERROR':
+          // 闭店时段未完成，显示错误对话框
+          setClosingDialogOpen(true)
+          break
+      }
+    } catch (error) {
+      console.error('[ManagerDashboard] Error during closure check:', error)
+      alert('检查闭店条件时出错，请重试。')
+    } finally {
+      setIsCheckingClosure(false)
+    }
+  }
+
+  // 执行实际的闭店操作
+  const performStoreClosing = async () => {
+    try {
+      const restaurantId = await getRestaurantId()
+      if (!restaurantId || !currentUserId || !manualClosingTask) {
+        alert('无法执行闭店操作')
+        return
+      }
+
+      // 记录手动闭店任务
       await submitTaskRecord({
         task_id: manualClosingTask.id,
-        user_id: currentUserId,  // Changed from userId to user_id
-        restaurant_id: restaurantId,  // Changed from restaurantId to restaurant_id
+        user_id: currentUserId,
+        restaurant_id: restaurantId,
         date: (testTime || new Date()).toISOString().split('T')[0],
-        submission_type: 'text',  // Changed from submissionType to submission_type
+        submission_type: 'text',
         text_content: '手动闭店确认',
         status: 'completed',
-        review_status: 'approved',  // Manual closing is auto-approved
-        period_id: workflowPeriods[workflowPeriods.length - 1]?.id  // Last period
+        review_status: 'approved',
+        period_id: workflowPeriods[workflowPeriods.length - 1]?.id
       })
       
-      // Reload state after successful submission
+      // 重新加载状态
       const newState = await restaurantStateService.getCurrentState(restaurantId, testTime)
       if (newState) {
         setIsManualClosing(newState.isManualClosing)
@@ -1238,35 +1242,35 @@ export const ManagerDashboard: React.FC = () => {
         waitingRef.current = newState.isWaitingForNextDay
         manualClosingRef.current = newState.isManualClosing
       }
-    }
-    
-    // Clear all data and reset to tomorrow's opening
-    // Use React's batching to ensure all states update together
-    React.startTransition(() => {
-      setTaskStatuses([])
-      setCompletedTaskIds([])
-      setMissingTasks([])
-      setReviewTasks([])
-      setIsManualClosing(false)
-      manualClosingRef.current = false // Clear ref too
-      // Clear manual advance state to prevent conflicts
-      setManuallyAdvancedPeriod(null)
-      manualAdvanceRef.current = null
-      setCurrentPeriodId(null) // Clear current period ID
-      setIsWaitingForNextDay(true) // Set waiting state BEFORE clearing period
-      setCurrentPeriod(null) // Clear current period - should show waiting display
       
-      // Set next period to tomorrow's opening
-      const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
-      if (openingPeriod) {
-        setNextPeriod(openingPeriod)
-      }
-    })
+      // 清理状态并重置到明天
+      React.startTransition(() => {
+        setTaskStatuses([])
+        setCompletedTaskIds([])
+        setMissingTasks([])
+        setReviewTasks([])
+        setIsManualClosing(false)
+        manualClosingRef.current = false
+        setManuallyAdvancedPeriod(null)
+        manualAdvanceRef.current = null
+        setCurrentPeriodId(null)
+        setIsWaitingForNextDay(true)
+        setCurrentPeriod(null)
+        
+        const openingPeriod = workflowPeriods.find(p => p.id === 'opening')
+        if (openingPeriod) {
+          setNextPeriod(openingPeriod)
+        }
+      })
+      
+      // 关闭对话框
+      setClosingDialogOpen(false)
+      
+      // 显示成功消息
+      alert('闭店成功！系统将进入等待状态直到明天开店时间。')
     } catch (error) {
-      console.error('[ManagerDashboard] Error during closure check:', error)
-      alert('检查闭店条件时出错，请重试。')
-    } finally {
-      setIsCheckingClosure(false)
+      console.error('[ManagerDashboard] Error performing store closing:', error)
+      alert('执行闭店操作时出错，请重试。')
     }
   }
   
@@ -1327,35 +1331,16 @@ export const ManagerDashboard: React.FC = () => {
         gap: 3,
         backgroundColor: '#f5f5f5'
       }}>
-        {/* 圆形进度条 */}
-        <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-          <CircularProgress
-            variant="determinate"
-            value={isLoading ? loadingProgress : dbLoadingProgress}
-            size={80}
-            thickness={4}
-          />
-          <Box
-            sx={{
-              top: 0,
-              left: 0,
-              bottom: 0,
-              right: 0,
-              position: 'absolute',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+        {/* 进度百分比 */}
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography
+            variant="h4"
+            component="div"
+            color="primary"
+            sx={{ fontWeight: 'medium' }}
           >
-            <Typography
-              variant="h6"
-              component="div"
-              color="primary"
-              sx={{ fontWeight: 'bold' }}
-            >
-              {isLoading ? loadingProgress : dbLoadingProgress}%
-            </Typography>
-          </Box>
+            {isLoading ? loadingProgress : dbLoadingProgress}%
+          </Typography>
         </Box>
 
         {/* 文字提示 */}
@@ -1369,21 +1354,20 @@ export const ManagerDashboard: React.FC = () => {
         </Box>
 
         {/* 横向进度条 */}
-        <Box sx={{ width: '300px' }}>
-          <Box sx={{
-            height: 6,
-            backgroundColor: 'rgba(0,0,0,0.1)',
-            borderRadius: 3,
-            overflow: 'hidden'
-          }}>
-            <Box sx={{
-              height: '100%',
-              width: `${isLoading ? loadingProgress : dbLoadingProgress}%`,
-              backgroundColor: 'primary.main',
+        <Box sx={{ width: '60%', maxWidth: '300px' }}>
+          <LinearProgress 
+            variant="determinate" 
+            value={isLoading ? loadingProgress : dbLoadingProgress}
+            sx={{ 
+              height: 6, 
               borderRadius: 3,
-              transition: 'width 0.3s ease-in-out'
-            }} />
-          </Box>
+              backgroundColor: 'rgba(25, 118, 210, 0.08)',
+              '& .MuiLinearProgress-bar': {
+                borderRadius: 3,
+                backgroundColor: '#1976d2'
+              }
+            }} 
+          />
         </Box>
       </Container>
     )
@@ -1482,7 +1466,9 @@ export const ManagerDashboard: React.FC = () => {
                     >
                       {isCheckingClosure ? (
                         <>
-                          <CircularProgress size={24} sx={{ mr: 1, color: 'inherit' }} />
+                          <Box sx={{ width: 100, mr: 2 }}>
+                            <LinearProgress sx={{ height: 3, borderRadius: 1 }} />
+                          </Box>
                           正在检查...
                         </>
                       ) : (
@@ -1519,6 +1505,21 @@ export const ManagerDashboard: React.FC = () => {
           )}
         </Grid>
       </Container>
+      
+      {/* 闭店确认对话框 */}
+      <StoreClosingDialog
+        open={closingDialogOpen}
+        validation={closingValidation}
+        onClose={() => {
+          setClosingDialogOpen(false)
+          setClosingValidation(null)
+        }}
+        onConfirm={performStoreClosing}
+        onGoToTasks={() => {
+          setClosingDialogOpen(false)
+          // 可以添加逻辑跳转到任务列表或高亮未完成任务
+        }}
+      />
     </>
   )
 }

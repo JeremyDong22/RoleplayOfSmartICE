@@ -55,7 +55,6 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
         setLoadingProgress(progress)
         setLoadingMessage(message)
       })
-
       if (!initialized) {
         // 检查是否是因为用户未登录
         const currentUser = authService.getCurrentUser()
@@ -80,7 +79,7 @@ export const TaskDataProvider: React.FC<TaskDataProviderProps> = ({ children }) 
       setLoadingMessage('正在整理数据...')
       const periods = taskService.getWorkflowPeriods()
       const floating = taskService.getFloatingTasks()
-
+      
       setWorkflowPeriods(periods)
       setFloatingTasks(floating)
       setLoadingProgress(100)

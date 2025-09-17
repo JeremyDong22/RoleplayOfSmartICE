@@ -361,7 +361,16 @@ class TaskService {
   private convertTask(dbTask: DatabaseTask): TaskTemplate {
     // 使用函数获取部门，便于未来扩展
     const department = this.getDepartmentByRole(dbTask.role_code)
-    
+
+    // Debug: Log task IDs being converted
+    if (dbTask.id.includes('_')) {
+      console.log('[TaskService] WARNING: Task ID contains underscore:', {
+        taskId: dbTask.id,
+        taskTitle: dbTask.title,
+        roleCode: dbTask.role_code
+      })
+    }
+
     return {
       id: dbTask.id,
       title: dbTask.title,

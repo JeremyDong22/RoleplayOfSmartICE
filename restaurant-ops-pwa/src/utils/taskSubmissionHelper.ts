@@ -239,11 +239,13 @@ export async function submitTaskWithMedia({
       }
     }
     
-    // 如果有photoGroups，也清理其中的照片数据
+    // 保留photoGroups结构，稍后会用上传后的URL替换原始照片数据
+    let photoGroupsStructure: any[] | undefined = undefined
     if (cleanedData.photoGroups) {
-      cleanedData.photoGroups = cleanedData.photoGroups.map((group: any) => ({
+      // 先保存结构，用于后续恢复
+      photoGroupsStructure = cleanedData.photoGroups.map((group: any) => ({
         ...group,
-        photos: undefined // 移除照片数据，URL会存储在photo_urls中
+        photos: [] // 临时清空，稍后填充URL
       }))
     }
     
@@ -343,6 +345,35 @@ export async function submitTaskWithMedia({
               .map(r => r.url!)
             
             submissionData.photo_urls = [...existingUrls, ...newUrls]
+            
+            // 如果有photoGroups结构，重建带URL的photoGroups
+            if (photoGroupsStructure && data.photoGroups) {
+              let urlIndex = 0
+              const allUrls = [...existingUrls, ...newUrls]
+              
+              // 重建photoGroups，用URL替换原始的base64数据
+              photoGroupsStructure = data.photoGroups.map((group: any) => {
+                const groupWithUrls = {
+                  ...group,
+                  photos: [] as string[]
+                }
+                
+                // 为每个组的照片分配对应的URL
+                if (group.photos && Array.isArray(group.photos)) {
+                  group.photos.forEach(() => {
+                    if (urlIndex < allUrls.length) {
+                      groupWithUrls.photos.push(allUrls[urlIndex])
+                      urlIndex++
+                    }
+                  })
+                }
+                
+                return groupWithUrls
+              })
+              
+              // 保存重建的photoGroups到submission_metadata
+              submissionData.submission_metadata.photoGroups = photoGroupsStructure
+            }
             
             // Check if all uploads succeeded
             const failures = uploadResults.filter(r => !r.success)

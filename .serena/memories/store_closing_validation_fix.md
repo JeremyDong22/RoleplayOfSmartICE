@@ -1,96 +1,146 @@
 # Store Closing Validation Fix
 
 ## Created: 2025-09-15
-## Last Updated: 2025-09-15
+## Last Updated: 2025-09-17
 
 ## Problem Summary
-德阳店 (Deyang store) unable to close despite all tasks appearing completed in UI. System showed "还有任务未完成" (tasks incomplete) error when attempting to close store.
+德阳店 (Deyang store) unable to close despite all tasks appearing completed in UI. System showed "还有任务未完成" (tasks incomplete) error when attempting to close store. Additionally, UI showed 100% completion but didn't display duty_manager's missing tasks.
 
 ## Root Cause Analysis
 
-### Database Design Issue
-The `roleplay_tasks` table contains duplicate task definitions for 德阳店:
-- Same tasks exist with both regular IDs and `_deyang` suffix IDs
-- Example: "收市清洁检查" (Closing Cleanup Check) has 4 different task IDs for the same restaurant
-- Tasks also duplicated across different period IDs (regular and `_deyang` suffix periods)
+### Issue 1: is_active Column Misuse
+- The `is_active` column in `roleplay_tasks` has no meaningful purpose
+- Previous code was filtering tasks by `is_active = true`
+- If a task exists in the database, it should be considered active
+- This caused some required tasks to be ignored in validation
 
-### Data Duplication Pattern
-```sql
--- Example of duplicated tasks for 德阳店
-"收市清洁检查" → 4 task records:
-  - ca0e4eac-ee86-48a3-a3dd-a1dfe1d9ea36_deyang (period: 闭店_deyang)
-  - 82776742-2a39-40d9-a2e0-39a76d677109 (period: 闭店)
-  - 3cfa0be1-377c-43f4-983d-1ad984e9a9b3 (period: 餐后收市午市)
-  - d9c726d7-d3dd-4cf5-87d9-e8659d46f86f_deyang (period: 餐后收市午市_deyang)
-```
+### Issue 2: Role Hierarchy Not Respected
+- Manager is responsible for duty_manager tasks but UI wasn't showing them
+- Frontend only checked manager tasks, not duty_manager tasks
+- RPC function checked both, creating inconsistency between UI and validation
+- Manager's TaskSummary should include both manager and duty_manager tasks
 
-### Validation Logic Problem
-The `check_business_day_tasks_completed` stored procedure was checking ALL task definitions, but staff only completed tasks with `_deyang` suffix, leaving regular tasks "incomplete".
+### Issue 3: Vague Error Messages
+- Store closing only returned boolean without specific missing task details
+- Users couldn't identify which tasks were preventing store closure
+- No actionable information provided in error messages
 
-## Solution Implemented
+## Solution Implemented (2025-09-17)
 
-### Fixed Stored Procedure
+### 1. Updated RPC Function - Enhanced Return Format
 ```sql
 CREATE OR REPLACE FUNCTION public.check_business_day_tasks_completed(
     p_restaurant_id uuid, 
     p_check_date date DEFAULT CURRENT_DATE
 )
--- Now correctly:
--- 1. Identifies which restaurant is requesting closure
--- 2. Finds all required tasks for that specific restaurant
--- 3. Checks if those tasks have approved records
--- 4. Returns true only if ALL required tasks are completed
+-- Now returns detailed JSON object instead of boolean:
+{
+  "is_completed": boolean,
+  "check_date": date,
+  "restaurant_id": uuid,
+  "total_required_tasks": integer,
+  "completed_count": integer,
+  "missing_count": integer,
+  "missing_tasks": [
+    {
+      "id": uuid,
+      "title": string,
+      "role_code": string,
+      "period_name": string
+    }
+  ],
+  "completed_tasks": [...],
+  "validation_message": string (Chinese),
+  "missing_tasks_summary": string (comma-separated)
+}
+
+-- Removed is_active filter completely
+-- Queries tasks with role_code IN ('manager', 'duty_manager')
+-- Excludes chef tasks, notice tasks, and floating tasks
 ```
 
-### Correct Validation Flow
-1. **Frontend**: Gets `restaurantId` from logged-in user
-2. **Service Call**: `restaurantStateService.checkAllTasksCompleted(restaurantId)`
-3. **RPC Function**: Executes PostgreSQL stored procedure
-4. **Validation**: Checks tasks where `restaurant_id = p_restaurant_id OR restaurant_id IS NULL`
-5. **Result**: Returns boolean based on completion status
+### 2. Frontend Updates
 
-## Key Files Involved
-- `/src/pages/ManagerDashboard-new.tsx` - Handles close store button click
-- `/src/services/restaurantStateService.ts` - Calls RPC function
-- `/src/services/businessCycleService.ts` - Alternative validation service
-- Database function: `check_business_day_tasks_completed`
+#### ManagerDashboard-new.tsx
+```typescript
+// Calculate missing tasks from both roles
+const allTasks = [
+  ...(period.tasks.manager || []),
+  ...(period.tasks.duty_manager || [])
+]
+
+// Use validateCanClose for detailed error messages
+const validation = await restaurantStateService.validateCanClose(restaurantId)
+if (!validation.canClose) {
+  showSnackbar(validation.message, 'error')
+}
+```
+
+#### taskRecordService.ts
+```typescript
+// getRealTimeCompletionRate now includes duty_manager tasks for managers
+if (role === 'manager') {
+  taskQuery = taskQuery.in('role_code', ['manager', 'duty_manager'])
+} else {
+  taskQuery = taskQuery.eq('role_code', role)
+}
+// Removed is_active filter
+```
+
+#### businessCycleService.ts
+```typescript
+// getBusinessCycleTaskCompletion
+const { data: allTasks } = await getSupabase()
+  .from('roleplay_tasks')
+  .select('id, title, role_code, period_id, restaurant_id')
+  .in('role_code', ['manager', 'duty_manager'])  // Exclude chef
+  // Remove is_active filter - all tasks should be considered
+  .eq('is_notice', false)  // Exclude notification tasks
+  .not('is_floating', 'eq', true)  // Exclude floating tasks
+```
+
+## Key Fixes Applied
+
+1. **Removed all is_active filters** - Treats all existing tasks as active
+2. **Manager sees duty_manager tasks** - TaskSummary shows both role's tasks
+3. **Detailed error messages** - Store closing returns specific missing task list
+4. **Consistent validation** - Frontend and backend use same logic
+5. **Proper role filtering** - Always pass role parameter to avoid including chef tasks
 
 ## Important Notes
 
-### This is NOT an Edge Function
-- Uses Supabase RPC (Remote Procedure Call)
-- Executes PostgreSQL stored procedure in database
-- Not a Deno/JavaScript Edge Function
+### Role Hierarchy
+- Manager is responsible for ensuring duty_manager tasks are completed
+- If duty_manager doesn't complete tasks, manager must handle them
+- Chef tasks are completely separate and not included in manager's responsibilities
 
-### Temporary Data Fix
-Created approved records for missing duplicate tasks to allow immediate store closing. Long-term solution requires database cleanup.
+### Parameter Passing
+- **Always pass restaurantId** - Required for multi-restaurant support
+- **Always pass role** - Required to filter tasks correctly
+- **Never pass undefined for role** - Would include chef tasks unintentionally
 
-### Restaurant ID Logic
-- Each restaurant has unique UUID
-- Tasks can be restaurant-specific (`restaurant_id = UUID`) or general (`restaurant_id = NULL`)
-- Validation must check both types for the requesting restaurant
-
-## Recommended Long-term Fixes
-
-1. **Database Cleanup**: Remove duplicate task definitions
-2. **Data Constraints**: Add unique constraint on (restaurant_id, title, role_code, period_id)
-3. **Initialization Script Review**: Fix task creation to prevent duplicates
-4. **Migration Strategy**: 
-   - Identify all duplicate tasks across restaurants
-   - Consolidate to single task definition per restaurant/period
-   - Update existing records to use consolidated task IDs
+### Backward Compatibility
+Created wrapper function `check_business_day_tasks_completed_bool()` for any code expecting boolean return value.
 
 ## Testing Verification
 ```sql
--- Verify store can close
+-- Check detailed validation results
 SELECT check_business_day_tasks_completed(
   '893b233f-4422-4f41-b0e0-a170d92a346e'::uuid,  -- 德阳店 ID
   CURRENT_DATE::date
-) as can_close;
--- Should return: true
+);
+-- Returns detailed JSON with missing tasks information
 ```
 
-## Related Issues
-- Similar problems may exist for other restaurants if they have duplicate task definitions
-- Need to audit all restaurants for this pattern
-- Consider implementing data integrity checks in application layer
+## Files Modified
+- `/src/pages/ManagerDashboard-new.tsx` - Include duty_manager tasks in missing calculation
+- `/src/services/taskRecordService.ts` - Include duty_manager in manager's completion rate
+- `/src/services/businessCycleService.ts` - Remove is_active filter
+- `/src/components/TaskSummary/TaskSummary.tsx` - Ensure proper role parameter passing
+- Database function: `check_business_day_tasks_completed` - Enhanced return format
+
+## Lessons Learned
+1. **Database columns without clear purpose should be questioned** - is_active had no meaningful use
+2. **Role hierarchies need consistent implementation** - Frontend and backend must match
+3. **Error messages should be actionable** - Always provide specific details about what's wrong
+4. **Multi-restaurant systems need careful parameter passing** - Can't rely on defaults

@@ -112,6 +112,92 @@ class RestaurantStateService {
   }
 
   /**
+   * 获取增强的闭店验证信息
+   * 区分闭店时段任务（必须完成）和其他时段任务（可选完成）
+   */
+  async getStoreClosingValidation(restaurantId: string, date?: Date): Promise<{
+    canClose: boolean
+    validationLevel: 'SUCCESS' | 'WARNING' | 'ERROR'
+    message: string
+    closingPeriod: {
+      isCompleted: boolean
+      totalTasks: number
+      completedCount: number
+      missingTasks: Array<{
+        id: string
+        title: string
+        roleCode: string
+        periodName: string
+      }>
+    }
+    otherPeriods: {
+      isCompleted: boolean
+      totalTasks: number
+      completedCount: number
+      missingTasks: Array<{
+        id: string
+        title: string
+        roleCode: string
+        periodName: string
+        timeSlot: string
+      }>
+      missingByPeriod: Record<string, Array<{
+        id: string
+        title: string
+        roleCode: string
+      }>>
+    }
+    actionsRequired: Array<{
+      type: 'COMPLETE_TASK' | 'CONFIRM_SKIP'
+      priority: 'CRITICAL' | 'OPTIONAL'
+      description: string
+      tasks: any[]
+    }>
+  } | null> {
+    try {
+      const checkDate = date ? date.toISOString().split('T')[0] : undefined
+      
+      const { data, error } = await supabase
+        .rpc('check_store_closing_validation', {
+          p_restaurant_id: restaurantId,
+          p_current_date: checkDate || new Date().toISOString().split('T')[0]
+        })
+
+      if (error) {
+        console.error('[RestaurantStateService] Error getting closing validation:', error)
+        return null
+      }
+
+      if (!data) {
+        return null
+      }
+
+      return {
+        canClose: data.canClose,
+        validationLevel: data.validationLevel,
+        message: data.message,
+        closingPeriod: {
+          isCompleted: data.closingPeriod?.isCompleted || false,
+          totalTasks: data.closingPeriod?.totalTasks || 0,
+          completedCount: data.closingPeriod?.completedCount || 0,
+          missingTasks: data.closingPeriod?.missingTasks || []
+        },
+        otherPeriods: {
+          isCompleted: data.otherPeriods?.isCompleted || false,
+          totalTasks: data.otherPeriods?.totalTasks || 0,
+          completedCount: data.otherPeriods?.completedCount || 0,
+          missingTasks: data.otherPeriods?.missingTasks || [],
+          missingByPeriod: data.otherPeriods?.missingByPeriod || {}
+        },
+        actionsRequired: data.actionsRequired || []
+      }
+    } catch (error) {
+      console.error('[RestaurantStateService] Unexpected error:', error)
+      return null
+    }
+  }
+
+  /**
    * 提交手动闭店任务
    */
   async submitManualClosing(

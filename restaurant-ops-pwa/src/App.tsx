@@ -13,18 +13,18 @@ import { LoginPageEnhanced } from './pages/Login/LoginPageEnhanced'
 import { RoleSelection } from './pages/RoleSelection'
 // Use lazy loading for dashboard components to avoid circular dependencies
 import { lazy, Suspense } from 'react'
-import { CircularProgress, Box } from '@mui/material'
+import { CircularProgress, Box, Typography } from '@mui/material'
 import { UpdateNotification } from './components/UpdateNotification'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 // VERSION 1.0.2 - Using lazy loading for dashboards
 // Cache prevention via version comment to force rebuild
 
-const ManagerDashboard = lazy(() => {
-  return import('./pages/ManagerDashboard-new.tsx').then(module => ({ default: module.ManagerDashboard }));
-});
-const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new.tsx').then(module => ({ default: module.ChefDashboard })))
-const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard.tsx'))
+const ManagerDashboard = lazy(() => 
+  import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }))
+);
+const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new').then(module => ({ default: module.ChefDashboard })))
+const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard'))
 import ProfilePageEnhanced from './pages/ProfilePage/ProfilePageEnhanced'
 import TestFloatingCamera from './pages/TestFloatingCamera'
 import { DutyManagerProvider } from './contexts/DutyManagerContext'
@@ -106,8 +106,10 @@ const router = createBrowserRouter([
         index: true,
         element: (
           <Suspense fallback={
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 2 }}>
               <CircularProgress />
+              <Typography color="text.secondary">Loading Manager Dashboard...</Typography>
+              <Typography variant="caption" color="text.secondary">If this persists, check console for errors</Typography>
             </Box>
           }>
             <ManagerDashboard />
