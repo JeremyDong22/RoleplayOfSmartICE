@@ -4,7 +4,7 @@
 // Updated: 2025-01-18 - Fixed role label display to properly show 店长/值班经理/厨师 based on role_code
 // Purpose: 显示闭店验证结果，支持三种状态：SUCCESS（直接闭店）、WARNING（确认后闭店）、ERROR（禁止闭店）
 
-import React from 'react'
+import React, { memo, useMemo, useCallback } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -76,16 +76,22 @@ interface StoreClosingDialogProps {
   onGoToTasks?: () => void
 }
 
-export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
+const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
   open,
   validation,
   onClose,
   onConfirm,
   onGoToTasks
 }) => {
-  if (!validation) return null
+  // Memoize the dialog content to prevent unnecessary re-computations
+  const dialogContent = useMemo(() => {
+    if (!validation) return null
+    return { validation }
+  }, [validation])
 
-  const getIcon = () => {
+  if (!dialogContent) return null
+
+  const getIcon = useCallback(() => {
     switch (validation.validationLevel) {
       case 'SUCCESS':
         return <CheckCircleIcon sx={{ fontSize: 48, color: 'success.main' }} />
@@ -94,9 +100,9 @@ export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
       case 'ERROR':
         return <ErrorIcon sx={{ fontSize: 48, color: 'error.main' }} />
     }
-  }
+  }, [validation?.validationLevel])
 
-  const getTitle = () => {
+  const getTitle = useCallback(() => {
     switch (validation.validationLevel) {
       case 'SUCCESS':
         return '✅ 可以安全闭店'
@@ -105,9 +111,9 @@ export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
       case 'ERROR':
         return '❌ 无法闭店'
     }
-  }
+  }, [validation?.validationLevel])
 
-  const getAlertSeverity = () => {
+  const getAlertSeverity = useCallback(() => {
     switch (validation.validationLevel) {
       case 'SUCCESS':
         return 'success'
@@ -116,9 +122,9 @@ export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
       case 'ERROR':
         return 'error'
     }
-  }
+  }, [validation?.validationLevel])
 
-  const renderTaskList = (tasks: MissingTask[], showPeriod: boolean = true) => (
+  const renderTaskList = useCallback((tasks: MissingTask[], showPeriod: boolean = true) => (
     <List dense>
       {tasks.map((task) => (
         <ListItem key={task.id}>
@@ -160,9 +166,9 @@ export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
         </ListItem>
       ))}
     </List>
-  )
+  ), [])
 
-  const renderMissingByPeriod = () => {
+  const renderMissingByPeriod = useCallback(() => {
     const { missingByPeriod } = validation.otherPeriods
     const periods = Object.keys(missingByPeriod || {})
 
@@ -210,7 +216,7 @@ export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
         ))}
       </Box>
     )
-  }
+  }, [validation?.otherPeriods])
 
   return (
     <Dialog
@@ -368,5 +374,7 @@ export const StoreClosingDialog: React.FC<StoreClosingDialogProps> = ({
     </Dialog>
   )
 }
+
+export const StoreClosingDialog = memo(StoreClosingDialogComponent)
 
 export default StoreClosingDialog

@@ -1213,7 +1213,7 @@ export const ManagerDashboard: React.FC = () => {
   }
 
   // 执行实际的闭店操作
-  const performStoreClosing = async () => {
+  const performStoreClosing = useCallback(async () => {
     try {
       const restaurantId = await getRestaurantId()
       if (!restaurantId || !currentUserId || !manualClosingTask) {
@@ -1272,7 +1272,7 @@ export const ManagerDashboard: React.FC = () => {
       console.error('[ManagerDashboard] Error performing store closing:', error)
       alert('执行闭店操作时出错，请重试。')
     }
-  }
+  }, [currentUserId, manualClosingTask, testTime, workflowPeriods])
   
   // Removed: handleAdvancePeriod - advance button removed from UI
 
@@ -1510,15 +1510,15 @@ export const ManagerDashboard: React.FC = () => {
       <StoreClosingDialog
         open={closingDialogOpen}
         validation={closingValidation}
-        onClose={() => {
+        onClose={useCallback(() => {
           setClosingDialogOpen(false)
           setClosingValidation(null)
-        }}
+        }, [])}
         onConfirm={performStoreClosing}
-        onGoToTasks={() => {
+        onGoToTasks={useCallback(() => {
           setClosingDialogOpen(false)
           // 可以添加逻辑跳转到任务列表或高亮未完成任务
-        }}
+        }, [])}
       />
     </>
   )
