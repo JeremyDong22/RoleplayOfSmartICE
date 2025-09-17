@@ -7,7 +7,7 @@
 // Fixed: Manager now receives review tasks for BOTH afternoon (14:00-15:30) and evening (21:30+) 
 // duty manager submissions. Previously only worked for evening period.
 // Updated: 2025-01-05 - 移除所有 console.log 语句，保留 console.error 和已注释的 console 语句用于调试
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRefreshable } from '../contexts/RefreshContext'
 import { 
@@ -533,9 +533,10 @@ export const ManagerDashboard: React.FC = () => {
     
     // Always run initial update
     updatePeriods()
-    
-    // Always set interval to check for period changes
-    intervalId = setInterval(updatePeriods, 1000)
+
+    // Check for period changes less frequently to improve performance
+    // Only check every 5 seconds instead of every second
+    intervalId = setInterval(updatePeriods, 5000)
     
     return () => {
       if (intervalId) {
@@ -645,9 +646,9 @@ export const ManagerDashboard: React.FC = () => {
       lastCheckedHour = currentHour
     }
     
-    // Check immediately and then every second
+    // Check immediately and then every 30 seconds (sufficient for daily reset detection)
     checkForDailyReset()
-    const interval = setInterval(checkForDailyReset, 1000)
+    const interval = setInterval(checkForDailyReset, 30000)
     
     return () => clearInterval(interval)
   }, [testTime, isWaitingForNextDay])
@@ -818,7 +819,8 @@ export const ManagerDashboard: React.FC = () => {
     }
     
     updateOverdueStatus()
-    const interval = setInterval(updateOverdueStatus, 1000)
+    // Check overdue status every 10 seconds instead of every second
+    const interval = setInterval(updateOverdueStatus, 10000)
     
     return () => clearInterval(interval)
   }, [testTime, currentPeriod])
@@ -1300,21 +1302,43 @@ export const ManagerDashboard: React.FC = () => {
     setCurrentPeriod(newPeriod)
     setNextPeriod(getNextPeriodFromDatabase(workflowPeriods, now))
   }, [testTime, clearTrigger])
-  
-  // Always append floating tasks at the end
-  // Include review tasks for duty manager tasks in BOTH lunch closing AND evening closing periods
-  let baseTasks = currentPeriod?.tasks?.manager || []
-  // Check if current period is either lunch closing (14:00-15:30) or evening closing (21:30+)
-  const shouldIncludeReviewTasks = isClosingPeriod(currentPeriod) || isLunchClosingPeriod(currentPeriod)
-  if (shouldIncludeReviewTasks) {
-    baseTasks = [...baseTasks, ...reviewTasks]
-  }
-  const currentTasks = [...baseTasks, ...floatingTasks]
-  
-  // Separate regular tasks and notices
-  const regularTasks = currentTasks.filter(t => !t.isNotice)
-  const notices = currentTasks.filter(t => t.isNotice)
-  const isServicePeriod = currentPeriod?.id === 'lunch-service' || currentPeriod?.id === 'dinner-service'
+
+  // Handle closing dialog close
+  const handleCloseDialog = useCallback(() => {
+    setClosingDialogOpen(false)
+    setClosingValidation(null)
+  }, [])
+
+  // Handle go to tasks from closing dialog
+  const handleGoToTasks = useCallback(() => {
+    setClosingDialogOpen(false)
+    // 可以添加逻辑跳转到任务列表或高亮未完成任务
+  }, [])
+
+  // Memoize task computations for better performance
+  const { currentTasks, regularTasks, notices, isServicePeriod } = useMemo(() => {
+    // Always append floating tasks at the end
+    // Include review tasks for duty manager tasks in BOTH lunch closing AND evening closing periods
+    let baseTasks = currentPeriod?.tasks?.manager || []
+    // Check if current period is either lunch closing (14:00-15:30) or evening closing (21:30+)
+    const shouldIncludeReviewTasks = isClosingPeriod(currentPeriod) || isLunchClosingPeriod(currentPeriod)
+    if (shouldIncludeReviewTasks) {
+      baseTasks = [...baseTasks, ...reviewTasks]
+    }
+    const tasks = [...baseTasks, ...floatingTasks]
+
+    // Separate regular tasks and notices
+    const regular = tasks.filter(t => !t.isNotice)
+    const noticeList = tasks.filter(t => t.isNotice)
+    const isService = currentPeriod?.id === 'lunch-service' || currentPeriod?.id === 'dinner-service'
+
+    return {
+      currentTasks: tasks,
+      regularTasks: regular,
+      notices: noticeList,
+      isServicePeriod: isService
+    }
+  }, [currentPeriod, reviewTasks, floatingTasks])
   
   
   const shouldShowClosedDisplay = !currentPeriod || isWaitingForNextDay
@@ -1510,15 +1534,9 @@ export const ManagerDashboard: React.FC = () => {
       <StoreClosingDialog
         open={closingDialogOpen}
         validation={closingValidation}
-        onClose={useCallback(() => {
-          setClosingDialogOpen(false)
-          setClosingValidation(null)
-        }, [])}
+        onClose={handleCloseDialog}
         onConfirm={performStoreClosing}
-        onGoToTasks={useCallback(() => {
-          setClosingDialogOpen(false)
-          // 可以添加逻辑跳转到任务列表或高亮未完成任务
-        }, [])}
+        onGoToTasks={handleGoToTasks}
       />
     </>
   )

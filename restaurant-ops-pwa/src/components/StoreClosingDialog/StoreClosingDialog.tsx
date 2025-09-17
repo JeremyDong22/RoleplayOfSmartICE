@@ -89,38 +89,42 @@ const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
     return { validation }
   }, [validation])
 
-  if (!dialogContent) return null
-
   const getIcon = useCallback(() => {
-    switch (validation.validationLevel) {
+    switch (validation?.validationLevel) {
       case 'SUCCESS':
         return <CheckCircleIcon sx={{ fontSize: 48, color: 'success.main' }} />
       case 'WARNING':
         return <WarningIcon sx={{ fontSize: 48, color: 'warning.main' }} />
       case 'ERROR':
         return <ErrorIcon sx={{ fontSize: 48, color: 'error.main' }} />
+      default:
+        return null
     }
   }, [validation?.validationLevel])
 
   const getTitle = useCallback(() => {
-    switch (validation.validationLevel) {
+    switch (validation?.validationLevel) {
       case 'SUCCESS':
         return '✅ 可以安全闭店'
       case 'WARNING':
         return '⚠️ 闭店确认'
       case 'ERROR':
         return '❌ 无法闭店'
+      default:
+        return ''
     }
   }, [validation?.validationLevel])
 
   const getAlertSeverity = useCallback(() => {
-    switch (validation.validationLevel) {
+    switch (validation?.validationLevel) {
       case 'SUCCESS':
         return 'success'
       case 'WARNING':
         return 'warning'
       case 'ERROR':
         return 'error'
+      default:
+        return 'info'
     }
   }, [validation?.validationLevel])
 
@@ -217,6 +221,9 @@ const StoreClosingDialogComponent: React.FC<StoreClosingDialogProps> = ({
       </Box>
     )
   }, [validation?.otherPeriods])
+
+  // Early return after all hooks are declared
+  if (!dialogContent) return null
 
   return (
     <Dialog
