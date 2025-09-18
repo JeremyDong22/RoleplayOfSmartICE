@@ -223,6 +223,9 @@ export const ChefDashboard: React.FC = () => {
   // Load completed tasks from Supabase on mount
   useEffect(() => {
     async function loadFromDatabase() {
+      const startTime = performance.now()
+      console.log('[PERF ChefDashboard] Starting database load')
+
       // 防止重复加载
       if (hasInitialized) return
 
@@ -230,8 +233,11 @@ export const ChefDashboard: React.FC = () => {
         setDbLoadingProgress(0)
         setDbLoadingMessage('正在验证用户身份...')
 
-        // Get current user from authService instead of supabase.auth
+        // Get current user from authService first
+        const authStartTime = performance.now()
         const currentUser = authService.getCurrentUser()
+        console.log(`[PERF ChefDashboard] Auth check: ${performance.now() - authStartTime}ms`)
+
         if (!currentUser) {
           console.error('No authenticated user from authService')
           setIsLoadingFromDb(false)
@@ -240,16 +246,33 @@ export const ChefDashboard: React.FC = () => {
 
         setCurrentUserId(currentUser.id)
 
-        // Load today's completed tasks
         setDbLoadingProgress(40)
-        setDbLoadingMessage('正在加载今日完成记录...')
-        const completedIds = await getTodayCompletedTaskIds(currentUser.id)
-        setCompletedTaskIds(completedIds)
+        setDbLoadingMessage('正在并行加载数据...')
 
-        // Load today's task statuses for TaskSummary
-        setDbLoadingProgress(70)
-        setDbLoadingMessage('正在加载任务详情...')
-        const taskStatuses = await getTodayTaskStatuses(currentUser.id)
+        // Run both queries in parallel using Promise.all
+        const parallelStartTime = performance.now()
+        const [completedIds, taskStatuses] = await Promise.all([
+          // Load today's completed tasks
+          (async () => {
+            const startTime = performance.now()
+            const ids = await getTodayCompletedTaskIds(currentUser.id)
+            console.log(`[PERF ChefDashboard] Completed tasks query: ${performance.now() - startTime}ms, found ${ids.length} tasks`)
+            return ids
+          })(),
+
+          // Load today's task statuses
+          (async () => {
+            const startTime = performance.now()
+            const statuses = await getTodayTaskStatuses(currentUser.id)
+            console.log(`[PERF ChefDashboard] Task statuses query: ${performance.now() - startTime}ms, found ${statuses.length} statuses`)
+            return statuses
+          })()
+        ])
+
+        console.log(`[PERF ChefDashboard] Parallel operations completed in ${performance.now() - parallelStartTime}ms`)
+
+        // Set both states together
+        setCompletedTaskIds(completedIds)
         setDbTaskStatuses(taskStatuses)
 
         // Check for global test time
@@ -260,6 +283,7 @@ export const ChefDashboard: React.FC = () => {
 
         setDbLoadingProgress(100)
         setDbLoadingMessage('加载完成！')
+        console.log(`[PERF ChefDashboard] Total load time: ${performance.now() - startTime}ms`)
 
       } catch (error) {
         console.error('Error loading from database:', error)

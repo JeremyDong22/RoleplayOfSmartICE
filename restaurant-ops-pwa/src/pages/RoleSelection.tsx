@@ -74,7 +74,10 @@ export const RoleSelection = () => {
   
   // Debug: Log current user info
 
-  const handleRoleSelect = (role: 'manager' | 'chef' | 'duty-manager' | 'ceo' | 'puppeteer') => {
+  const handleRoleSelect = async (role: 'manager' | 'chef' | 'duty-manager' | 'ceo' | 'puppeteer') => {
+    // Performance logging
+    const startTime = performance.now()
+    console.log(`[PERF] Role selection started: ${role} at ${new Date().toISOString()}`)
     
     // Check if user has permission to access this role
     const roleCodeMap: Record<string, string> = {
@@ -89,30 +92,38 @@ export const RoleSelection = () => {
     
     // Administrator can access all roles
     if (currentUser?.roleCode === 'administrator') {
+      console.log(`[PERF] Administrator mode detected, time: ${performance.now() - startTime}ms`)
       // Store both the selected role and that it's an admin viewing this role
       localStorage.setItem('selectedRole', role)
       localStorage.setItem('isAdministratorMode', 'true')
+      console.log(`[PERF] LocalStorage set, redirecting to /${role}, time: ${performance.now() - startTime}ms`)
       window.location.href = `/${role}`
       return
     }
     
     // Special handling for CEO role - also check if role name is "总经理"
     if (role === 'ceo') {
+      console.log(`[PERF] Checking CEO permission, time: ${performance.now() - startTime}ms`)
       if (currentUser?.roleCode !== 'ceo' && currentUser?.role !== '总经理') {
         setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
         return
       }
     // Puppeteer is accessible to all users
     } else if (role === 'puppeteer') {
+      console.log(`[PERF] Puppeteer role selected, time: ${performance.now() - startTime}ms`)
       // Everyone can access Puppeteer
     } else if (currentUser?.roleCode !== requiredRole) {
+      console.log(`[PERF] Permission denied for role: ${role}, time: ${performance.now() - startTime}ms`)
       setError(`您没有权限访问此角色。您的角色是：${currentUser?.role}`)
       return
     }
-    
+
+    console.log(`[PERF] Role permission verified, time: ${performance.now() - startTime}ms`)
+
     // Store role in localStorage for persistence
     localStorage.setItem('selectedRole', role)
     localStorage.setItem('isAdministratorMode', 'false')
+    console.log(`[PERF] LocalStorage updated, redirecting to /${role}, time: ${performance.now() - startTime}ms`)
 
     // Navigate to the selected role page and reload to ensure data loads
     window.location.href = `/${role}`

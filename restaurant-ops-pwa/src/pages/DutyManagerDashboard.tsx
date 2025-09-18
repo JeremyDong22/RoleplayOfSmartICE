@@ -63,7 +63,7 @@ const DutyManagerDashboard: React.FC = () => {
     completedTaskIds: [],
     taskStatuses: {},
     noticeComments: [],
-    isWaitingForTrigger: true,
+    isWaitingForTrigger: true, // 初始为true，会在初始化时根据时段更新
     currentTrigger: undefined,
   })
   const [isInitialized, setIsInitialized] = useState(false)
@@ -311,22 +311,22 @@ const DutyManagerDashboard: React.FC = () => {
 
   // 检查当前时段并自动加载任务
   useEffect(() => {
-    // 只在初始化完成后执行
-    if (!isInitialized) return
-    
+    // 立即检查时段，不等待初始化完成
+    if (!currentPeriod) return
+
     // 如果是闭店时段或午市收市时段，加载值班经理任务
     if (isClosingPeriod(currentPeriod) || isLunchClosingPeriod(currentPeriod)) {
-      
+
       // 获取当前时段的值班经理任务
       const dutyTasks = (currentPeriod.tasks as any).dutyManager || []
-      
-      
+
+
       // 获取所有值班经理任务（不再需要prerequisiteTrigger）
       const periodTasks = dutyTasks.filter((task: any) => {
         return task.role === 'DutyManager' && task.uploadRequirement !== '审核'
       })
-      
-      
+
+
       if (periodTasks.length > 0) {
         setState(prev => ({
           ...prev,
@@ -347,8 +347,16 @@ const DutyManagerDashboard: React.FC = () => {
           isInClosingPeriod: isClosingPeriod(currentPeriod),
         }))
       }
+    } else {
+      // 如果不在闭店时段，保持等待状态
+      setState(prev => ({
+        ...prev,
+        isWaitingForTrigger: true,
+        activeTasks: [],
+        currentTrigger: undefined,
+      }))
     }
-  }, [currentPeriod, testTime, isInitialized])  // 简化依赖，避免循环
+  }, [currentPeriod, testTime])  // 移除isInitialized依赖，让它立即执行
 
   // 任务完成处理
   const handleTaskComplete = async (taskId: string, data: any) => {

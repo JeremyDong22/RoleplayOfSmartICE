@@ -65,6 +65,8 @@ class RestaurantConfigService {
    * 实际的初始化逻辑
    */
   private async _doInitialize(): Promise<RestaurantConfig | null> {
+    const startTime = performance.now()
+    // console.log('[PERF RestaurantConfig] Initialization started')
     try {
       // 直接从 Cookies 获取用户信息，避免循环依赖
       const userId = Cookies.get('userId')
@@ -78,12 +80,15 @@ class RestaurantConfigService {
       
       // 首先检查用户是否有餐厅ID
       if (restaurantId) {
+        // console.log(`[PERF RestaurantConfig] Found restaurant ID in cookies: ${restaurantId}`)
         // 获取餐厅详情
+        const queryStartTime = performance.now()
         const { data: restaurant, error: restaurantError } = await getSupabase()
           .from('roleplay_restaurants')
           .select('id, name, is_active')
           .eq('id', restaurantId)
           .single()
+        // console.log(`[PERF RestaurantConfig] Restaurant query completed in ${performance.now() - queryStartTime}ms`)
         
         if (restaurantError) {
         }
@@ -95,17 +100,21 @@ class RestaurantConfigService {
             isActive: restaurant.is_active
           }
           this.initialized = true
+          console.log(`[PERF RestaurantConfig] Total initialization time: ${performance.now() - startTime}ms`)
           return this.currentRestaurant
         }
       }
       
       // 如果用户没有分配餐厅，尝试从用户profile获取
       if (userId) {
+        // console.log('[PERF RestaurantConfig] No restaurant ID in cookies, checking user profile')
+        const profileStartTime = performance.now()
         const { data: userProfile, error: profileError } = await getSupabase()
           .from('roleplay_users')
           .select('restaurant_id')
           .eq('id', userId)
           .single()
+        // console.log(`[PERF RestaurantConfig] User profile query completed in ${performance.now() - profileStartTime}ms`)
         
         if (profileError) {
         }
@@ -128,6 +137,7 @@ class RestaurantConfigService {
               isActive: restaurant.is_active
             }
             this.initialized = true
+            // console.log(`[PERF RestaurantConfig] Total initialization time (from user profile): ${performance.now() - startTime}ms`)
             return this.currentRestaurant
           }
         }

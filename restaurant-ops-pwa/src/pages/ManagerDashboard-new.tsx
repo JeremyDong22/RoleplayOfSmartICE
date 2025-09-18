@@ -363,6 +363,8 @@ export const ManagerDashboard: React.FC = () => {
   // Load completed tasks from Supabase on mount
   useEffect(() => {
     async function loadFromDatabase() {
+      const startTime = performance.now()
+      console.log('[PERF ManagerDashboard] Starting database load')
       // 防止重复加载
       if (hasInitialized || loadingRef.current) return
       loadingRef.current = true
@@ -371,12 +373,7 @@ export const ManagerDashboard: React.FC = () => {
         setDbLoadingProgress(0)
         setDbLoadingMessage('正在连接数据库...')
 
-        // 首先刷新 DutyManagerContext 的数据库状态
-        setDbLoadingProgress(20)
-        setDbLoadingMessage('正在同步值班经理数据...')
-        await refreshFromDatabase()
-
-        // Get current user from authService instead of supabase.auth
+        // Get current user from authService first
         const currentUser = authService.getCurrentUser()
         // console.log('[ManagerDashboard] Current user from authService:', currentUser)
         if (!currentUser) {
@@ -388,25 +385,55 @@ export const ManagerDashboard: React.FC = () => {
         setCurrentUserId(currentUser.id)
         // console.log('[ManagerDashboard] Set currentUserId to:', currentUser.id)
 
-        // Load today's completed tasks
-        setDbLoadingProgress(40)
-        setDbLoadingMessage('正在加载今日完成记录...')
-        const completedIds = await getTodayCompletedTaskIds(currentUser.id)
+        setDbLoadingProgress(20)
+        setDbLoadingMessage('正在并行加载数据...')
 
-        // Load approved duty manager tasks to determine review task completion
-        // Pass userId directly since state might not be updated yet
+        // Run independent operations in parallel using Promise.all
+        const parallelStartTime = performance.now()
+        const [
+          dutyManagerResult,
+          completedIds,
+          taskStatuses
+        ] = await Promise.all([
+          // DutyManagerContext refresh
+          (async () => {
+            const startTime = performance.now()
+            await refreshFromDatabase()
+            console.log(`[PERF ManagerDashboard] DutyManagerContext refresh: ${performance.now() - startTime}ms`)
+          })(),
+
+          // Load today's completed tasks
+          (async () => {
+            const startTime = performance.now()
+            const ids = await getTodayCompletedTaskIds(currentUser.id)
+            console.log(`[PERF ManagerDashboard] Completed tasks query: ${performance.now() - startTime}ms, found ${ids.length} tasks`)
+            return ids
+          })(),
+
+          // Load today's task statuses
+          (async () => {
+            const startTime = performance.now()
+            const statuses = await getTodayTaskStatuses(currentUser.id)
+            console.log(`[PERF ManagerDashboard] Task statuses query: ${performance.now() - startTime}ms, found ${statuses.length} statuses`)
+            return statuses
+          })()
+        ])
+
+        console.log(`[PERF ManagerDashboard] Parallel operations completed in ${performance.now() - parallelStartTime}ms`)
+
+        // Now load review tasks which depend on completed tasks
         setDbLoadingProgress(60)
         setDbLoadingMessage('正在检查审核任务...')
+        const reviewStartTime = performance.now()
         const reviewTasksToAdd = await loadApprovedDutyManagerTasksWithUserId(currentUser.id)
+        console.log(`[PERF ManagerDashboard] Review tasks query: ${performance.now() - reviewStartTime}ms, found ${reviewTasksToAdd.length} tasks`)
 
+        // Combine completed task IDs
         const finalCompletedIds = [...completedIds, ...reviewTasksToAdd]
         console.log('[loadFromDatabase] Initial load - Final completed IDs:', finalCompletedIds)
-        setCompletedTaskIds(finalCompletedIds)
 
-        // Load today's task statuses for TaskSummary
-        setDbLoadingProgress(80)
-        setDbLoadingMessage('正在加载任务详情...')
-        const taskStatuses = await getTodayTaskStatuses(currentUser.id)
+        // Set all states together
+        setCompletedTaskIds(finalCompletedIds)
         setDbTaskStatuses(taskStatuses)
 
         // Check for global test time
@@ -420,6 +447,7 @@ export const ManagerDashboard: React.FC = () => {
 
         setDbLoadingProgress(100)
         setDbLoadingMessage('加载完成！')
+        console.log(`[PERF ManagerDashboard] Total load time: ${performance.now() - startTime}ms`)
 
       } catch (error) {
         // console.error('Error loading from database:', error)

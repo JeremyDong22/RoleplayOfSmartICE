@@ -93,6 +93,8 @@ class TaskService {
   }
   
   private async _doInitialize(onProgress?: (progress: number, message: string) => void): Promise<boolean> {
+    const initStartTime = performance.now()
+    console.log('[PERF TaskService] Initialization started')
 
     try {
       // Removed unnecessary delay - services should handle their own initialization
@@ -105,16 +107,44 @@ class TaskService {
         return false
       }
 
-      // 加载初始数据
-      onProgress?.(30, '正在加载营业期间...')
-      const periodsLoaded = await this.loadPeriods()
+      // 获取餐厅ID一次，然后传递给两个方法
+      onProgress?.(20, '正在获取餐厅配置...')
+      const restaurantIdStartTime = performance.now()
+      const restaurantId = await restaurantConfigService.getRestaurantId()
+      // console.log(`[PERF TaskService] Restaurant ID fetched once in ${performance.now() - restaurantIdStartTime}ms`)
 
-      onProgress?.(60, '正在加载任务数据...')
-      const tasksLoaded = await this.loadAllTasks()
+      if (!restaurantId) {
+        console.error('[TaskService] No restaurant ID available')
+        return false
+      }
+
+      // 加载初始数据 - 并行加载以提高性能
+      onProgress?.(30, '正在加载数据...')
+
+      // 并行加载periods和tasks，大幅减少等待时间
+      const parallelStartTime = performance.now()
+      const [periodsResult, tasksResult] = await Promise.all([
+        // 加载营业期间
+        (async () => {
+          const startTime = performance.now()
+          const result = await this.loadPeriodsWithId(restaurantId)
+          // Individual period load time logged above
+          return result
+        })(),
+        // 加载任务数据
+        (async () => {
+          const startTime = performance.now()
+          const result = await this.loadAllTasksWithId(restaurantId)
+          // Individual task load time logged above
+          return result
+        })()
+      ])
+
+      console.log(`[PERF TaskService] Parallel loading completed in ${performance.now() - parallelStartTime}ms`)
 
       onProgress?.(80, '正在组织数据...')
 
-      if (!periodsLoaded || !tasksLoaded) {
+      if (!periodsResult || !tasksResult) {
         // 如果数据加载失败，返回false但不抛出错误，让应用继续运行
         return false
       }
@@ -122,12 +152,14 @@ class TaskService {
       
       // Mark as initialized
       this.isInitialized = true
-      
+      console.log(`[PERF TaskService] Total initialization time: ${performance.now() - initStartTime}ms`)
+
       // 启用实时订阅（减少延迟以提高响应速度）
       setTimeout(() => {
+        console.log('[PERF TaskService] Starting real-time subscription')
         this.subscribeToChanges()
       }, 500)
-      
+
       return true
     } catch (error) {
       console.error('[TaskService] Initialization error:', error)
@@ -136,24 +168,17 @@ class TaskService {
   }
 
   /**
-   * 加载所有工作流期间
-   * Updated: 2025-08-04 - Added restaurant-specific period loading
+   * 加载所有工作流期间 - 使用传入的餐厅ID
    */
-  private async loadPeriods(retryCount = 0): Promise<boolean> {
+  private async loadPeriodsWithId(restaurantId: string, retryCount = 0): Promise<boolean> {
     try {
-      // Get current restaurant ID
-      const restaurantId = await restaurantConfigService.getRestaurantId()
-      
-      if (!restaurantId) {
-        // No restaurant ID available
-        return false
-      }
-      
+      const queryStartTime = performance.now()
       const { data, error } = await supabase
         .from('roleplay_workflow_periods')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .order('display_order')
+      // console.log(`[PERF TaskService] Periods query completed in ${performance.now() - queryStartTime}ms, found ${data?.length || 0} periods`)
 
       if (error) {
         throw error
@@ -163,50 +188,66 @@ class TaskService {
       return true
     } catch (error: any) {
       // Error loading periods
-      
+
       // 如果是网络错误且还有重试次数，则重试
       if (retryCount < 3 && (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION'))) {
         // Retrying load periods with shorter delay
         await new Promise(resolve => setTimeout(resolve, 200 * (retryCount + 1))) // 更短的递增延迟 (200ms, 400ms, 600ms)
-        return this.loadPeriods(retryCount + 1)
+        return this.loadPeriodsWithId(restaurantId, retryCount + 1)
       }
-      
+
       return false
     }
   }
 
   /**
-   * 加载所有任务
-   * Updated: 2025-08-04 - Added restaurant-specific task loading
+   * 加载所有工作流期间 - 原方法保留用于兼容
+   * Updated: 2025-08-04 - Added restaurant-specific period loading
    */
-  private async loadAllTasks(retryCount = 0): Promise<boolean> {
+  private async loadPeriods(retryCount = 0): Promise<boolean> {
+    const startTime = performance.now()
     try {
       // Get current restaurant ID
       const restaurantId = await restaurantConfigService.getRestaurantId()
-      
+      // console.log(`[PERF TaskService] Restaurant ID fetched in ${performance.now() - startTime}ms`)
+
       if (!restaurantId) {
-        // No restaurant ID available for loading tasks
+        // No restaurant ID available
         return false
       }
-      
+
+      return this.loadPeriodsWithId(restaurantId, retryCount)
+    } catch (error: any) {
+      return false
+    }
+  }
+
+  /**
+   * 加载所有任务 - 使用传入的餐厅ID
+   */
+  private async loadAllTasksWithId(restaurantId: string, retryCount = 0): Promise<boolean> {
+    try {
       // 加载任务时，同时获取餐厅特定任务和全局任务
+      const queryStartTime = performance.now()
       const { data, error } = await supabase
         .from('roleplay_tasks')
         .select('*')
         .or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)
         .order('sort_order')
+      // console.log(`[PERF TaskService] Tasks query completed in ${performance.now() - queryStartTime}ms, found ${data?.length || 0} tasks`)
 
       if (error) {
         throw error
       }
 
       // 按期间组织任务
+      const organizingStartTime = performance.now()
       const tasksByPeriod = new Map<string, DatabaseTask[]>()
-      
+
       data?.forEach((task) => {
         // 根据is_floating字段决定任务分组
         let periodId: string
-        
+
         if (task.is_floating === true) {
           periodId = 'floating'
         } else if (task.period_id) {
@@ -215,7 +256,7 @@ class TaskService {
           // 如果没有period_id且不是floating，跳过此任务
           return
         }
-        
+
         if (!tasksByPeriod.has(periodId)) {
           tasksByPeriod.set(periodId, [])
         }
@@ -223,6 +264,7 @@ class TaskService {
       })
 
       this.tasksCache = tasksByPeriod
+      // console.log(`[PERF TaskService] Tasks organized in ${performance.now() - organizingStartTime}ms`)
       return true
     } catch (error: any) {
       console.error('Error loading tasks:', {
@@ -231,13 +273,37 @@ class TaskService {
         hint: error.hint || '',
         code: error.code || ''
       })
-      
+
       // 如果是网络错误且还有重试次数，则重试
       if (retryCount < 3 && (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION'))) {
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
-        return this.loadAllTasks(retryCount + 1)
+        return this.loadAllTasksWithId(restaurantId, retryCount + 1)
       }
-      
+
+      return false
+    }
+  }
+
+  /**
+   * 加载所有任务 - 原方法保留用于兼容
+   * Updated: 2025-08-04 - Added restaurant-specific task loading
+   */
+  private async loadAllTasks(retryCount = 0): Promise<boolean> {
+    const startTime = performance.now()
+    try {
+      // Get current restaurant ID
+      const restaurantId = await restaurantConfigService.getRestaurantId()
+      console.log(`[PERF TaskService] Restaurant ID for tasks fetched in ${performance.now() - startTime}ms`)
+
+      if (!restaurantId) {
+        // No restaurant ID available for loading tasks
+        return false
+      }
+
+      const result = await this.loadAllTasksWithId(restaurantId, retryCount)
+      // console.log(`[PERF TaskService] Total loadAllTasks time: ${performance.now() - startTime}ms`)
+      return result
+    } catch (error: any) {
       return false
     }
   }
@@ -362,14 +428,14 @@ class TaskService {
     // 使用函数获取部门，便于未来扩展
     const department = this.getDepartmentByRole(dbTask.role_code)
 
-    // Debug: Log task IDs being converted
-    if (dbTask.id.includes('_')) {
-      console.log('[TaskService] WARNING: Task ID contains underscore:', {
-        taskId: dbTask.id,
-        taskTitle: dbTask.title,
-        roleCode: dbTask.role_code
-      })
-    }
+    // Debug: Log task IDs being converted - COMMENTED OUT TO REDUCE LOG SPAM
+    // if (dbTask.id.includes('_')) {
+    //   console.log('[TaskService] WARNING: Task ID contains underscore:', {
+    //     taskId: dbTask.id,
+    //     taskTitle: dbTask.title,
+    //     roleCode: dbTask.role_code
+    //   })
+    // }
 
     return {
       id: dbTask.id,
@@ -512,17 +578,19 @@ class TaskService {
    * 手动刷新所有数据
    */
   async refresh(): Promise<boolean> {
-    
-    // 重新加载所有数据
-    const periodsLoaded = await this.loadPeriods()
-    const tasksLoaded = await this.loadAllTasks()
-    
+
+    // 并行重新加载所有数据
+    const [periodsLoaded, tasksLoaded] = await Promise.all([
+      this.loadPeriods(),
+      this.loadAllTasks()
+    ])
+
     if (periodsLoaded && tasksLoaded) {
       // 通知所有监听器数据已更新
       this.notifyListeners('refresh', this.getWorkflowPeriods())
       return true
     }
-    
+
     return false
   }
 
