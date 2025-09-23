@@ -1,8 +1,9 @@
 /**
  * Progressive Task Loading Context
  * 渐进式任务加载上下文 - 根据营业状态智能加载组件
- * Version: 1.0.0
+ * Version: 1.1.0
  * Created: 2025-01-13
+ * Updated: 2025-01-24 - Use unified PageLoader component
  *
  * 功能：
  * 1. 首先判断是否在营业时间内
@@ -27,6 +28,7 @@ import {
   Stack,
   LinearProgress
 } from '@mui/material'
+import { PageLoader } from '../components/PageLoader/PageLoader'
 
 // 加载阶段枚举
 export enum LoadingPhase {
@@ -409,21 +411,9 @@ export const ProgressiveTaskProvider: React.FC<ProgressiveTaskProviderProps> = (
     init()
   }, [])
 
-  // 渲染加载界面
+  // 渲染加载界面 - 使用统一的PageLoader组件
   if (loadingPhase === LoadingPhase.CHECKING_HOURS) {
-    return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-        flexDirection="column"
-        gap={2}
-      >
-        <CircularProgress />
-        <Typography>正在检查营业状态...</Typography>
-      </Box>
-    )
+    return <PageLoader message="正在检查营业状态..." />
   }
 
   // 不在营业时间的界面

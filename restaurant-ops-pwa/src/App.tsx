@@ -7,6 +7,7 @@
 // Updated: 2025-01-13 - Fixed auth initialization timing
 // Updated: 2025-09-08 - Added PWA update notification system
 // Updated: 2025-01-24 - Added service worker cleanup
+// Updated: 2025-01-24 v2.0 - Unified loading UI with PageLoader component
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -15,6 +16,7 @@ import { RoleSelection } from './pages/RoleSelection'
 // Use lazy loading for dashboard components to avoid circular dependencies
 import { lazy, Suspense } from 'react'
 import { CircularProgress, Box, Typography } from '@mui/material'
+import { PageLoader } from './components/PageLoader/PageLoader'
 // Removed UpdateNotification for silent updates
 import { ErrorBoundary } from './components/ErrorBoundary'
 
@@ -103,13 +105,7 @@ const router = createBrowserRouter([
       {
         index: true,
         element: (
-          <Suspense fallback={
-            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 2 }}>
-              <CircularProgress />
-              <Typography color="text.secondary">Loading Manager Dashboard...</Typography>
-              <Typography variant="caption" color="text.secondary">If this persists, check console for errors</Typography>
-            </Box>
-          }>
+          <Suspense fallback={null}>
             <ManagerDashboard />
           </Suspense>
         ),
@@ -136,11 +132,7 @@ const router = createBrowserRouter([
       {
         index: true,
         element: (
-          <Suspense fallback={
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-              <CircularProgress />
-            </Box>
-          }>
+          <Suspense fallback={null}>
             <ChefDashboard />
           </Suspense>
         ),
@@ -167,11 +159,7 @@ const router = createBrowserRouter([
       {
         index: true,
         element: (
-          <Suspense fallback={
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-              <CircularProgress />
-            </Box>
-          }>
+          <Suspense fallback={null}>
             <DutyManagerDashboard />
           </Suspense>
         ),
