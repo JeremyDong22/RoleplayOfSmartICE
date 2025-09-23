@@ -52,7 +52,7 @@ interface DutyManagerState {
 
 const DutyManagerDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const { currentTrigger, addSubmission, clearTrigger, reviewStatus, submissions } = useDutyManager()
+  const { currentTrigger, addSubmission, clearTrigger, reviewStatus, submissions, refreshFromDatabase } = useDutyManager()
   const [testTime, setTestTime] = useState<Date | null>(null)
   const [currentPeriod, setCurrentPeriod] = useState<WorkflowPeriod | null>(null)
   const [localReviewStatus, setLocalReviewStatus] = useState<{ [taskId: string]: any }>({})
@@ -455,7 +455,41 @@ const DutyManagerDashboard: React.FC = () => {
           const updatedTaskStatuses = await getTodayTaskStatuses(currentUserId)
           setDbTaskStatuses(updatedTaskStatuses)
         }
-        
+
+        // 刷新整个组件状态，确保UI立即更新
+        await refreshFromDatabase()
+
+        // 重新加载值班经理的任务状态
+        const { taskStatuses: updatedStatuses } = await dutyManagerPersistence.getDutyManagerTaskStatuses(
+          userId,
+          restaurantId
+        )
+
+        // 更新本地状态，确保UI立即反映最新状态
+        if (updatedStatuses) {
+          const completedIds = Object.keys(updatedStatuses).filter(taskId =>
+            updatedStatuses[taskId].status === 'submitted' &&
+            updatedStatuses[taskId].review_status === 'approved'
+          )
+
+          setState(prev => ({
+            ...prev,
+            completedTaskIds: completedIds,
+            taskStatuses: Object.fromEntries(
+              Object.entries(updatedStatuses).map(([taskId, status]) => [
+                taskId,
+                {
+                  completedAt: status.submittedAt,
+                  overdue: false,
+                  evidence: {},
+                  status: status.status,
+                  review_status: status.review_status
+                }
+              ])
+            )
+          }))
+        }
+
         // 清理成功上传的localStorage
         try {
           const photoStorageKey = `photo-collection-${taskId}`
