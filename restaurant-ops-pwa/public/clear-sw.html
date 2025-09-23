@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>清理Service Worker</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        .success {
+            color: green;
+            margin: 10px 0;
+        }
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Service Worker 清理工具</h1>
+
+    <div id="status"></div>
+
+    <button onclick="clearEverything()">🧹 完全清理（推荐）</button>
+    <button onclick="checkStatus()">📊 检查状态</button>
+
+    <div id="output"></div>
+
+    <script>
+        async function clearEverything() {
+            const output = document.getElementById('output');
+            const messages = [];
+
+            try {
+                // 1. 取消注册所有 Service Workers
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const registration of registrations) {
+                        await registration.unregister();
+                        messages.push(`✅ 已注销 Service Worker: ${registration.scope}`);
+                    }
+                    if (registrations.length === 0) {
+                        messages.push('⚠️ 没有发现 Service Worker');
+                    }
+                }
+
+                // 2. 清理所有缓存
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    for (const cacheName of cacheNames) {
+                        await caches.delete(cacheName);
+                        messages.push(`✅ 已删除缓存: ${cacheName}`);
+                    }
+                    if (cacheNames.length === 0) {
+                        messages.push('⚠️ 没有发现缓存');
+                    }
+                }
+
+                // 3. 清理 localStorage
+                localStorage.clear();
+                messages.push('✅ 已清理 localStorage');
+
+                // 4. 清理 sessionStorage
+                sessionStorage.clear();
+                messages.push('✅ 已清理 sessionStorage');
+
+                // 5. 清理 IndexedDB
+                if (window.indexedDB) {
+                    const dbs = await indexedDB.databases();
+                    for (const db of dbs) {
+                        indexedDB.deleteDatabase(db.name);
+                        messages.push(`✅ 已删除 IndexedDB: ${db.name}`);
+                    }
+                }
+
+                output.innerHTML = `
+                    <div class="success">
+                        <h3>清理完成！</h3>
+                        <pre>${messages.join('\n')}</pre>
+                        <p>请关闭这个标签页，然后重新访问网站。</p>
+                    </div>
+                `;
+
+            } catch (error) {
+                output.innerHTML = `
+                    <div class="error">
+                        <h3>清理失败</h3>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+
+        async function checkStatus() {
+            const output = document.getElementById('output');
+            const status = [];
+
+            // 检查 Service Workers
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                status.push(`Service Workers: ${registrations.length} 个`);
+                registrations.forEach(reg => {
+                    status.push(`  - ${reg.scope} (${reg.active ? '活跃' : '等待'})`);
+                });
+            }
+
+            // 检查缓存
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                status.push(`\n缓存: ${cacheNames.length} 个`);
+                for (const name of cacheNames) {
+                    const cache = await caches.open(name);
+                    const keys = await cache.keys();
+                    status.push(`  - ${name}: ${keys.length} 个文件`);
+                }
+            }
+
+            // 检查 localStorage
+            status.push(`\nlocalStorage: ${localStorage.length} 个项目`);
+
+            // 检查 IndexedDB
+            if (window.indexedDB && indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                status.push(`\nIndexedDB: ${dbs.length} 个数据库`);
+                dbs.forEach(db => {
+                    status.push(`  - ${db.name} (版本 ${db.version})`);
+                });
+            }
+
+            output.innerHTML = `
+                <div>
+                    <h3>当前状态</h3>
+                    <pre>${status.join('\n')}</pre>
+                </div>
+            `;
+        }
+
+        // 页面加载时检查状态
+        window.onload = checkStatus;
+    </script>
+</body>
+</html>

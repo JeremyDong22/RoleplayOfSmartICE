@@ -15,7 +15,7 @@ import { RoleSelection } from './pages/RoleSelection'
 // Use lazy loading for dashboard components to avoid circular dependencies
 import { lazy, Suspense } from 'react'
 import { CircularProgress, Box, Typography } from '@mui/material'
-import { UpdateNotification } from './components/UpdateNotification'
+// Removed UpdateNotification for silent updates
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 // VERSION 1.0.2 - Using lazy loading for dashboards
@@ -379,7 +379,6 @@ function App() {
                     <RouterProvider router={router} />
                   </ErrorBoundary>
                   <NotificationPermission />
-                  <UpdateNotification />
                 </DutyManagerProvider>
               </ErrorBoundary>
             </TaskDataProvider>
