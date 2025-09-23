@@ -1,4 +1,5 @@
 // 值班经理任务审核对话框 - 改进为列表视图，支持图片放大查看
+// Version: 2.0 - 添加渐进式图片加载优化
 import React, { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -28,6 +29,8 @@ import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
 import type { TaskTemplate } from '../../types/task.types'
 import { useDutyManager } from '../../contexts/DutyManagerContext'
+import { ProgressiveImage } from '../ProgressiveImage/ProgressiveImage'
+import { preloadImage } from '../../utils/supabaseImageTransform'
 
 interface DutyManagerSubmission {
   taskId: string
@@ -153,11 +156,27 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
     return '值班任务'
   }
 
-  // 点击图片时设置放大的图片和索引
-  const handleImageClick = (image: string) => {
+  // 点击图片时设置放大的图片和索引，并预加载原图
+  const handleImageClick = async (image: string) => {
     const index = allImages.findIndex(img => img === image)
     setCurrentImageIndex(index)
+
+    // 预加载原图以确保放大查看时快速显示
+    try {
+      await preloadImage(image)
+    } catch (error) {
+      console.error('Failed to preload full image:', error)
+    }
+
     setEnlargedImage(image)
+
+    // 预加载前后图片
+    if (index > 0) {
+      preloadImage(allImages[index - 1]).catch(() => {})
+    }
+    if (index < allImages.length - 1) {
+      preloadImage(allImages[index + 1]).catch(() => {})
+    }
   }
 
   // 在放大视图中切换图片
@@ -356,7 +375,6 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                                       height: 100,
                                       borderRadius: 1,
                                       overflow: 'hidden',
-                                      cursor: 'pointer',
                                       border: '2px solid transparent',
                                       transition: 'all 0.2s',
                                       '&:hover': {
@@ -364,21 +382,16 @@ export const ReviewTaskDialog: React.FC<ReviewTaskDialogProps> = ({
                                         transform: 'scale(1.05)'
                                       }
                                     }}
-                                    onClick={() => isValidPhoto && handleImageClick(photoUrl)}
                                   >
                                     {isValidPhoto ? (
-                                      <Box
-                                        component="img"
+                                      <ProgressiveImage
                                         src={photoUrl}
                                         alt={`组${groupIndex + 1}-照片${photoIdx + 1}`}
-                                        sx={{
-                                          width: '100%',
-                                          height: '100%',
-                                          objectFit: 'cover'
-                                        }}
-                                        onError={(e: any) => {
-                                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjUwIiB5PSI1MCIgc3R5bGU9ImZpbGw6Izk5OTtmb250LXNpemU6MTJweDtmb250LWZhbWlseTpBcmlhbCxIZWx2ZXRpY2Esc2Fucy1zZXJpZjtkb21pbmFudC1iYXNlbGluZTpjZW50cmFsIj7liqDovb3lpLbotKU8L3RleHQ+PC9zdmc+'
-                                        }}
+                                        width={100}
+                                        height={100}
+                                        onClick={() => handleImageClick(photoUrl)}
+                                        showZoomIcon={false}
+                                        loading="lazy"
                                       />
                                     ) : (
                                       <Box
