@@ -1,5 +1,5 @@
-// Configuration for Restaurant Operations PWA with service worker and manifest setup
-// Updated to use existing SVG icons instead of non-existent PNG files
+// Configuration for Restaurant Operations with optimized service worker
+// Updated: 2025-01-24 - Removed PWA manifest, kept essential caching only
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -40,69 +40,32 @@ export default defineConfig({
     react(),
     modelHeaders(), // Add custom headers for model files
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['vite.svg', 'icon.svg', 'icon-192x192.svg'],
+      registerType: 'prompt', // User controls updates
       injectRegister: 'auto',
-      manifest: {
-        name: 'Restaurant Operations Management',
-        short_name: 'RestOps',
-        description: 'Restaurant operations management system with task tracking',
-        theme_color: '#1976d2',
-        background_color: '#ffffff',
-        display: 'standalone',
-        orientation: 'portrait',
-        icons: [
-          {
-            src: '/icon-192x192.svg',
-            sizes: '192x192',
-            type: 'image/svg+xml'
-          },
-          {
-            src: '/icon.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml'
-          },
-          {
-            src: '/icon.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
-          }
-        ]
-      },
+      manifest: false, // Disable PWA installation
       workbox: {
-        // 添加模型文件到预缓存列表
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,bin,json}'],
-        // Exclude large image files from precaching
-        globIgnores: ['**/task-samples/**/*.jpg', '**/task-samples/**/*.jpeg'],
-        // 提升到10MB以支持模型文件
+        // Only precache essential static assets
+        globPatterns: ['**/*.{ico,svg,woff,woff2}'], // Only fonts and icons
+        // Exclude all other files from precaching
+        globIgnores: ['**/*.{js,css,html,json,jpg,jpeg,png,webp}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
+        skipWaiting: false, // Don't auto-takeover
+        clientsClaim: false, // Don't auto-claim clients
+        cleanupOutdatedCaches: true, // Clean old caches
         runtimeCaching: [
-          // 人脸识别模型 - 缓存优先，永久保存
+          // Face recognition models - permanent cache (never changes)
           {
             urlPattern: /\/models\/.*\.(bin|json)$/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'face-models-v2',  // 统一版本号，避免冲突
+              cacheName: 'face-models-permanent',
               expiration: {
                 maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1年缓存
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year cache
               },
               cacheableResponse: {
-                statuses: [0, 200] // 支持跨域请求
+                statuses: [0, 200]
               }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/wdpeoyugsxqnpwwtkqsl\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
-              },
-              networkTimeoutSeconds: 5 // 5秒超时后使用缓存
             }
           },
           // Cache task sample images at runtime instead of precaching

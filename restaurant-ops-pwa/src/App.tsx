@@ -6,6 +6,7 @@
 // Updated: 2025-08-12 - Removed FaceIO, implemented auto face detection
 // Updated: 2025-01-13 - Fixed auth initialization timing
 // Updated: 2025-09-08 - Added PWA update notification system
+// Updated: 2025-01-24 - Added service worker cleanup
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -46,6 +47,7 @@ import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
 import { initializeCacheManager } from './utils/cacheManager'
 import { faceModelManager } from './services/faceModelManager'
 import { getSupabase } from './services/supabase'
+import { initServiceWorkerCleanup } from './utils/cleanupOldServiceWorker'
 
 // CEO Dashboard imports
 import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
@@ -303,7 +305,8 @@ function App() {
       initialized = true
       
       try {
-        // Initialize core services
+        // Initialize core services and cleanup old SW
+        initServiceWorkerCleanup()
         initializeCacheManager()
         initializeStorage()
         
