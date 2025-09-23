@@ -44,39 +44,39 @@ export default defineConfig({
       injectRegister: 'auto',
       manifest: false, // Disable PWA installation
       workbox: {
-        // Only precache essential static assets
-        globPatterns: ['**/*.{ico,svg,woff,woff2}'], // Only fonts and icons
-        // Exclude all other files from precaching
-        globIgnores: ['**/*.{js,css,html,json,jpg,jpeg,png,webp}'],
+        // Don't precache anything - let runtime caching handle important files
+        globPatterns: [], // Empty - no precaching
+        // Exclude all files from precaching
+        globIgnores: ['**/*'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
         skipWaiting: false, // Don't auto-takeover
         clientsClaim: false, // Don't auto-claim clients
         cleanupOutdatedCaches: true, // Clean old caches
         runtimeCaching: [
-          // Face recognition models - permanent cache (never changes)
+          // Face recognition models - StaleWhileRevalidate for background updates
           {
             urlPattern: /\/models\/.*\.(bin|json)$/i,
-            handler: 'CacheFirst',
+            handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'face-models-permanent',
+              cacheName: 'face-models-v3',
               expiration: {
                 maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year cache
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year max
               },
               cacheableResponse: {
                 statuses: [0, 200]
               }
             }
           },
-          // Cache task sample images at runtime instead of precaching
+          // Task sample images - StaleWhileRevalidate for background updates
           {
             urlPattern: /\/task-samples\/.*\.(jpg|jpeg|png|webp)$/i,
-            handler: 'CacheFirst',
+            handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'task-samples-cache',
+              cacheName: 'task-samples-v2',
               expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days, will check for updates
               }
             }
           }
