@@ -2,6 +2,7 @@
  * App Layout Component with persistent Navigation Bar and Global Refresh Button
  * Created: 2025-08-22
  * Updated: 2025-08-27 - Added global refresh button
+ * Updated: 2025-11-08 - Added TaskReminderBanner
  * Purpose: Provides a shared layout with navigation bar and refresh button
  */
 
@@ -10,6 +11,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { NavigationBar } from '../Navigation/NavigationBar'
 import { GlobalRefreshButton } from '../GlobalRefreshButton/GlobalRefreshButton'
 import { UploadQueueIndicator } from '../UploadQueueIndicator'
+import { TaskReminderBanner } from '../TaskReminderBanner/TaskReminderBanner'
 import { authService } from '../../services/authService'
 import { Box } from '@mui/material'
 
@@ -55,15 +57,18 @@ export const AppLayout: React.FC = () => {
   
   return (
     <>
+      {/* Task reminder banner - shows at top of screen */}
+      <TaskReminderBanner role={userRole} />
+
       {/* Content area - will change when navigating */}
       <Outlet />
-      
+
       {/* Global UI indicators - floating above navigation */}
       {showRefreshButton && (
-        <Box sx={{ 
-          position: 'fixed', 
-          bottom: 80, 
-          right: 16, 
+        <Box sx={{
+          position: 'fixed',
+          bottom: 80,
+          right: 16,
           zIndex: 1200,
           display: 'flex',
           flexDirection: 'column',
@@ -73,7 +78,7 @@ export const AppLayout: React.FC = () => {
           <UploadQueueIndicator />
         </Box>
       )}
-      
+
       {/* Navigation bar - stays persistent */}
       <NavigationBar role={userRole} />
     </>

@@ -1,72 +1,59 @@
-// Main App component with routing and Realtime integration
-// Updated: 2025-07-31 - Added restaurant initialization
-// Updated: 2025-08-03 - Added automatic cache management
-// Updated: 2025-08-04 - Added force clear cache button
-// Updated: 2025-08-11 - Added face-api.js face recognition
-// Updated: 2025-08-12 - Removed FaceIO, implemented auto face detection
-// Updated: 2025-01-13 - Fixed auth initialization timing
-// Updated: 2025-09-08 - Added PWA update notification system
-// Updated: 2025-01-24 - Added service worker cleanup
-// Updated: 2025-01-24 v2.0 - Unified loading UI with PageLoader component
+// Main App component with routing and context providers
+// Version 3.0 - Refactored: Cleaned imports, simplified ErrorBoundary nesting, conditional test routes
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
+import { lazy, Suspense, useEffect } from 'react'
+import { CircularProgress, Box } from '@mui/material'
+
+// Core Components
 import { LoginPageEnhanced } from './pages/Login/LoginPageEnhanced'
 import { RoleSelection } from './pages/RoleSelection'
-// Use lazy loading for dashboard components to avoid circular dependencies
-import { lazy, Suspense } from 'react'
-import { CircularProgress, Box, Typography } from '@mui/material'
-import { PageLoader } from './components/PageLoader/PageLoader'
-// Removed UpdateNotification for silent updates
 import { ErrorBoundary } from './components/ErrorBoundary'
-
-// VERSION 1.0.2 - Using lazy loading for dashboards
-// Cache prevention via version comment to force rebuild
-
-const ManagerDashboard = lazy(() => 
-  import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }))
-);
-const ChefDashboard = lazy(() => import('./pages/ChefDashboard-new').then(module => ({ default: module.ChefDashboard })))
-const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard'))
-import ProfilePageEnhanced from './pages/ProfilePage/ProfilePageEnhanced'
-import TestFloatingCamera from './pages/TestFloatingCamera'
-import { DutyManagerProvider } from './contexts/DutyManagerContext'
-import { TaskDataProvider } from './contexts/TaskDataContext'
-import { useEffect, useState } from 'react'
-import { realtimeService } from './services/realtimeService'
-import { Snackbar, Alert } from '@mui/material'
-import { TestRealtime } from './pages/TestRealtime'
-import { TestDatabase } from './pages/TestDatabase'
-import TestFloatingTasks from './pages/TestFloatingTasks'
-import TestTaskUpload from './pages/TestTaskUpload'
-import TestProgressiveImage from './pages/TestProgressiveImage'
-import { initializeStorage } from './utils/initializeStorage'
-import NotificationPermission from './components/NotificationPermission/NotificationPermission'
 import { PrivateRoute } from './components/PrivateRoute'
-import { restaurantConfigService } from './services/restaurantConfigService'
-import { authService } from './services/authService'
-import { enableSupabaseDebug, testSupabaseQueries } from './utils/debugSupabase'
-import { TestRealtimeDebug } from './pages/TestRealtimeDebug'
-import { initializeCacheManager } from './utils/cacheManager'
-import { faceModelManager } from './services/faceModelManager'
-import { getSupabase } from './services/supabase'
-import { initServiceWorkerCleanup } from './utils/cleanupOldServiceWorker'
-
-// CEO Dashboard imports
-import { CEODashboardDB as CEODashboard } from './pages/CEODashboard/CEODashboardDB'
-import { DebugAuth } from './pages/DebugAuth'
+import { AppLayout } from './components/Layout/AppLayout'
+import { TaskReminderBanner } from './components/TaskReminderBanner/TaskReminderBanner'
+import ProfilePageEnhanced from './pages/ProfilePage/ProfilePageEnhanced'
 import { NotificationsPage } from './pages/NotificationsPage'
 
-// Inventory Management import
-import { InventoryManagement } from './pages/InventoryManagement/InventoryManagement'
-import { AppLayout } from './components/Layout/AppLayout'
+// Context Providers
 import { RefreshProvider } from './contexts/RefreshContext'
+import { TaskDataProvider } from './contexts/TaskDataContext'
+import { DutyManagerProvider } from './contexts/DutyManagerContext'
 
-// Puppeteer import
-import { Puppeteer } from './pages/Puppeteer'
-import { TestListSample } from './pages/TestListSample'
+// Services
+import { realtimeService } from './services/realtimeService'
+import { restaurantConfigService } from './services/restaurantConfigService'
+import { authService } from './services/authService'
+import { initializeStorage } from './utils/initializeStorage'
+import { initializeCacheManager } from './utils/cacheManager'
+import { initServiceWorkerCleanup } from './utils/cleanupOldServiceWorker'
 
-// Progressive loading version removed - using TestProgressiveImage instead
+// Lazy-loaded Dashboards
+const ManagerDashboard = lazy(() =>
+  import('./pages/ManagerDashboard-new').then(module => ({ default: module.ManagerDashboard }))
+)
+const ChefDashboard = lazy(() =>
+  import('./pages/ChefDashboard-new').then(module => ({ default: module.ChefDashboard }))
+)
+const DutyManagerDashboard = lazy(() => import('./pages/DutyManagerDashboard'))
+const CEODashboard = lazy(() =>
+  import('./pages/CEODashboard/CEODashboardDB').then(module => ({ default: module.CEODashboardDB }))
+)
+
+// Feature Pages
+import { InventoryManagement } from './pages/InventoryManagement/InventoryManagement'
+
+// Test Pages (only imported in development)
+const TestFloatingCamera = lazy(() => import('./pages/TestFloatingCamera'))
+const TestRealtime = lazy(() => import('./pages/TestRealtime').then(m => ({ default: m.TestRealtime })))
+const TestDatabase = lazy(() => import('./pages/TestDatabase').then(m => ({ default: m.TestDatabase })))
+const TestFloatingTasks = lazy(() => import('./pages/TestFloatingTasks'))
+const TestTaskUpload = lazy(() => import('./pages/TestTaskUpload'))
+const TestRealtimeDebug = lazy(() => import('./pages/TestRealtimeDebug').then(m => ({ default: m.TestRealtimeDebug })))
+const DebugAuth = lazy(() => import('./pages/DebugAuth').then(m => ({ default: m.DebugAuth })))
+const Puppeteer = lazy(() => import('./pages/Puppeteer').then(m => ({ default: m.Puppeteer })))
+const TestProgressiveImage = lazy(() => import('./pages/TestProgressiveImage'))
 
 const theme = createTheme({
   palette: {
@@ -78,6 +65,82 @@ const theme = createTheme({
     },
   },
 })
+
+// Test routes - only available in development
+const testRoutes = import.meta.env.DEV ? [
+  {
+    path: '/test-camera',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestFloatingCamera />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/test-realtime',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestRealtime />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/test-database',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestDatabase />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/test-floating',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestFloatingTasks />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/test-upload',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestTaskUpload />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/test-realtime-debug',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestRealtimeDebug />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/debug-auth',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <DebugAuth />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/puppeteer',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <Puppeteer />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/test-progressive',
+    element: (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>}>
+        <TestProgressiveImage />
+      </Suspense>
+    ),
+  },
+] : []
 
 // Create router with React Router v7 syntax - using nested routes for shared layout
 const router = createBrowserRouter([
@@ -212,50 +275,8 @@ const router = createBrowserRouter([
       },
     ],
   },
-  {
-    path: '/test-camera',
-    element: <TestFloatingCamera />,
-  },
-  {
-    path: '/test-realtime',
-    element: <TestRealtime />,
-  },
-  {
-    path: '/test-database',
-    element: <TestDatabase />,
-  },
-  {
-    path: '/test-floating',
-    element: <TestFloatingTasks />,
-  },
-  {
-    path: '/test-upload',
-    element: <TestTaskUpload />,
-  },
-  {
-    path: '/test-realtime-debug',
-    element: <TestRealtimeDebug />,
-  },
-  {
-    path: '/debug-auth',
-    element: <DebugAuth />,
-  },
-  {
-    path: '/puppeteer',
-    element: <Puppeteer />,
-  },
-  {
-    path: '/test-progressive',
-    element: (
-      <Suspense fallback={
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-          <CircularProgress />
-        </Box>
-      }>
-        <TestProgressiveImage />
-      </Suspense>
-    ),
-  },
+  // Spread test routes (only in development)
+  ...testRoutes,
   // Catch-all redirect for incorrect profile routes
   {
     path: '/manager/profile/:userId/notifications',
@@ -276,73 +297,36 @@ const router = createBrowserRouter([
   },
 ])
 
-// Version 1.0.2 - Cleaned up verbose logging
 function App() {
-  const [realtimeStatus] = useState<string>('')
-  const [showNotification, setShowNotification] = useState(false)
-
   useEffect(() => {
     let initialized = false
-    
+
     const initializeApp = async () => {
       if (initialized) return
       initialized = true
-      
+
       try {
         // Initialize core services and cleanup old SW
         initServiceWorkerCleanup()
         initializeCacheManager()
         initializeStorage()
-        
+
         // Initialize restaurant config if user is logged in
         const currentUser = authService.getCurrentUser()
         if (currentUser) {
           await restaurantConfigService.initialize()
         }
-        
+
         console.log('✅ Services initialized')
       } catch (error) {
         console.error('❌ Initialization error:', error)
       }
     }
-    
+
     // Add small delay to batch initialization and avoid race conditions
     const timer = setTimeout(() => {
       initializeApp()
     }, 10)
-    
-    // 模拟用户登录后启动 Realtime
-    // const initRealtime = async () => {
-    //   try {
-    //     // 这里应该从用户登录状态获取，现在模拟一个用户
-    //     const mockUser = {
-    //       id: 'test-user-id',
-    //       restaurant_id: 'test-restaurant-id',
-    //       role: 'manager'
-    //     }
-
-    //     // 订阅任务更新
-    //     realtimeService.subscribeToTasks(mockUser.restaurant_id)
-    //     realtimeService.subscribeToNotifications(mockUser.id)
-    //     realtimeService.trackPresence(mockUser.id, mockUser.role)
-        
-    //     setRealtimeStatus('Realtime 服务已连接')
-    //     setShowNotification(true)
-
-    //     // 测试发送广播消息
-    //     setTimeout(() => {
-    //       realtimeService.sendBroadcast('系统测试：WebSocket 连接正常', 'normal')
-    //     }, 2000)
-
-    //   } catch (error) {
-    //     console.error('Realtime initialization failed:', error)
-    //     setRealtimeStatus('Realtime 连接失败')
-    //     setShowNotification(true)
-    //   }
-    // }
-
-    // 暂时注释掉自动初始化，等用户系统完善后再启用
-    // initRealtime()
 
     return () => {
       clearTimeout(timer)
@@ -355,33 +339,13 @@ function App() {
       <CssBaseline />
       <ErrorBoundary>
         <RefreshProvider>
-          <ErrorBoundary>
-            <TaskDataProvider>
-              <ErrorBoundary>
-                <DutyManagerProvider>
-                  <ErrorBoundary>
-                    <RouterProvider router={router} />
-                  </ErrorBoundary>
-                  <NotificationPermission />
-                </DutyManagerProvider>
-              </ErrorBoundary>
-            </TaskDataProvider>
-          </ErrorBoundary>
+          <TaskDataProvider>
+            <DutyManagerProvider>
+              <RouterProvider router={router} />
+            </DutyManagerProvider>
+          </TaskDataProvider>
         </RefreshProvider>
       </ErrorBoundary>
-      <Snackbar 
-        open={showNotification} 
-        autoHideDuration={3000} 
-        onClose={() => setShowNotification(false)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={() => setShowNotification(false)} 
-          severity={realtimeStatus.includes('失败') ? 'error' : 'success'}
-        >
-          {realtimeStatus}
-        </Alert>
-      </Snackbar>
     </ThemeProvider>
   )
 }
