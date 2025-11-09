@@ -7,6 +7,7 @@
 // 4. Temporarily disabled face recognition verification - testing phase
 // 5. Tasks now submit directly without face verification requirement
 // 6. Fixed 交割损耗称重 to use PhotoSubmissionDialog instead of StructuredInputDialog for proper UI flow
+// 7. (2025-11-09) Changed 备餐准备 午市/晚市 determination to use period displayName instead of task IDs for multi-restaurant scalability
 import React, { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -32,11 +33,13 @@ import AudioRecordingDialog from '../AudioRecordingDialog'
 import TextInputDialog from '../TextInputDialog'
 import ListSubmissionDialog from '../ListSubmissionDialog'
 import StructuredInputDialog from '../StructuredInputDialog'
+import PrepChecklistDialog from '../PrepChecklistDialog'
 // Face verification imports - enabled for production
 import { FaceVerificationDialogFree } from '../FaceVerification/FaceVerificationDialogFree'
 import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
 import { inventoryService } from '../../services/inventoryService'
+import { taskService } from '../../services/taskService'
 import type { TaskTemplate } from '../../types/task.types'
 
 interface TaskSubmissionDialogProps {
@@ -313,6 +316,30 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
 
   // Show appropriate submission dialog based on task requirements
   if (showSubmissionDialog || !isLateSubmission) {
+    // Special case: 备餐准备 tasks should use PrepChecklistDialog
+    if (task.title.includes('备餐准备') || task.title.includes('备餐')) {
+      // Determine prep time based on period displayName (scalable for multi-restaurant)
+      // Get period from task service to check if it's 午市 or 晚市
+      const periods = taskService.getWorkflowPeriods()
+      const taskPeriod = periods.find(p => p.id === task.periodId)
+
+      // Default to 晚市 if period not found, check displayName for 午市
+      const prepTime = taskPeriod?.displayName.includes('午市') ? '午市' : '晚市'
+
+      return (
+        <>
+          <PrepChecklistDialog
+            open={open}
+            prepTime={prepTime}
+            onClose={handleClose}
+            onSubmit={(data) => {
+              handleTaskSubmit(data)
+            }}
+          />
+        </>
+      )
+    }
+
     // Special case: 交割损耗称重 should use PhotoSubmissionDialog like receiving inspection tasks
     if (task.title === '交割损耗称重' && task.structuredFields?.enabled) {
       // Use dynamic fields if available, otherwise use task's structured fields

@@ -249,13 +249,17 @@ export async function submitTaskWithMedia({
       }))
     }
     
+    // 提取structured_data到顶层（用于备餐等结构化任务）
+    const { structured_data, ...metadataWithoutStructuredData } = cleanedData
+
     const submissionData: any = {
       user_id: userId,
       restaurant_id: restaurantId,
       task_id: taskId,
       date,
       period_id: periodId,
-      submission_metadata: cleanedData
+      submission_metadata: metadataWithoutStructuredData,
+      ...(structured_data && { structured_data }) // 如果有structured_data则添加到顶层
     }
     
     // If there's a late submission reason, include it and mark as late

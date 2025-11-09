@@ -25,6 +25,7 @@ export interface TaskTemplate {
   isNotice?: boolean
   role: 'Manager' | 'Chef' | 'DutyManager'
   department: '前厅' | '后厨'
+  periodId?: string | null  // 所属时段ID，用于关联 workflow_periods
   uploadRequirement?: '拍照' | '录音' | '记录' | '列表' | '审核' | null
   timeSlot?: string  // Optional, for display purposes
   startTime?: string // Optional, for display purposes

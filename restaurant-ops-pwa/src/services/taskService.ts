@@ -441,9 +441,10 @@ class TaskService {
       id: dbTask.id,
       title: dbTask.title,
       description: dbTask.description || '',
-      role: dbTask.role_code === 'manager' ? 'Manager' : 
+      role: dbTask.role_code === 'manager' ? 'Manager' :
             dbTask.role_code === 'chef' ? 'Chef' : 'DutyManager',
       department: department as '前厅' | '后厨',
+      periodId: dbTask.period_id || null,  // 新增：传递时段ID，用于判断午市/晚市等
       isNotice: dbTask.is_notice || false,
       uploadRequirement: this.mapSubmissionTypeToChinese(dbTask.submission_type),
       isFloating: dbTask.is_floating || false,

@@ -24,6 +24,7 @@ export interface TaskRecord {
   photo_urls?: string[]
   audio_url?: string
   submission_metadata?: any
+  structured_data?: any  // 添加structured_data字段用于备餐等结构化数据
   review_status?: 'pending' | 'approved' | 'rejected'
   reviewed_by?: string
   reviewed_at?: string
