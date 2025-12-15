@@ -38,7 +38,6 @@ import PrepChecklistDialog from '../PrepChecklistDialog'
 import { FaceVerificationDialogFree } from '../FaceVerification/FaceVerificationDialogFree'
 import { authService } from '../../services/authService'
 import { faceRecognitionService } from '../../services/faceRecognitionService'
-import { inventoryService } from '../../services/inventoryService'
 import { taskService } from '../../services/taskService'
 import type { TaskTemplate } from '../../types/task.types'
 
@@ -67,7 +66,6 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
   const [explanation, setExplanation] = useState('')
   const [showSubmissionDialog, setShowSubmissionDialog] = useState(false)
   const [dynamicStructuredFields, setDynamicStructuredFields] = useState<any>(null)
-  const [isLoadingFields, setIsLoadingFields] = useState(false)
   // Face verification states - enabled for production
   const [showFaceVerification, setShowFaceVerification] = useState(false)
   const [pendingSubmissionData, setPendingSubmissionData] = useState<any>(null)
@@ -94,40 +92,8 @@ export const TaskSubmissionDialog: React.FC<TaskSubmissionDialogProps> = ({
           // The zone and table have already been selected when user clicked "完成任务"
         }
         
-        // Check if task needs dynamic fields
-        const needsDynamicFields = task.title.includes('收货验货') || 
-          task.title.includes('损耗盘点') ||
-          task.title.includes('交割损耗') ||
-          (task.structuredFields?.dynamic === true)
-        
-        if (needsDynamicFields) {
-          setIsLoadingFields(true)
-          try {
-            // Clear cache before loading to ensure fresh data
-            inventoryService.clearCache()
-            
-            const user = authService.getCurrentUser()
-            const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
-            const isLossCount = task.title.includes('损耗盘点') || task.title.includes('交割损耗')
-            const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨', isLossCount)
-            
-            // Always set enabled: true for these tasks
-            setDynamicStructuredFields({
-              ...fields,
-              enabled: true
-            })
-          } catch (error) {
-            console.error('[TaskSubmissionDialog] Failed to load dynamic fields:', error)
-            // Still show structured fields even on error
-            setDynamicStructuredFields({
-              enabled: true,
-              fields: []
-            })
-          } finally {
-            setIsLoadingFields(false)
-          }
-        } else if (task.structuredFields?.enabled) {
-          // Use existing structured fields if they're enabled but not dynamic
+        // Use task's structured fields directly
+        if (task.structuredFields?.enabled) {
           setDynamicStructuredFields(task.structuredFields)
         }
       }

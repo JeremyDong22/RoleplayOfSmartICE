@@ -8,7 +8,6 @@
 import { submitTaskRecord } from '../services/taskRecordService'
 import { uploadPhoto, uploadAudio } from '../services/storageService'
 import { compressImage, needsCompression, formatFileSize, estimateFileSize } from './imageCompressor'
-import { inventoryService } from '../services/inventoryService'
 import { uploadQueueService } from '../services/uploadQueueService'
 
 // Fixed batch size - no fallback

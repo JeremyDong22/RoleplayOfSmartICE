@@ -50,9 +50,7 @@ import {
   Inventory as InventoryIcon,
   AttachMoney as MoneyIcon
 } from '@mui/icons-material'
-import { InventoryItemPicker } from '../InventoryItemPicker'
 import { authService } from '../../services/authService'
-import { inventoryService } from '../../services/inventoryService'
 
 // 视图类型
 type ViewType = 'samples' | 'camera' | 'photos'
@@ -515,12 +513,6 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
     // 只在非结构化任务时才自动填充
     if (!currentComment && sampleList[selectedSampleIndex]?.text && !structuredFields?.enabled) {
       setCurrentComment(sampleList[selectedSampleIndex].text)
-    }
-    
-    // 如果是收货验货任务，清除库存缓存以获取最新数据
-    if ((taskName.includes('收货') || taskName.includes('验货')) && structuredFields?.enabled) {
-      console.log('[PhotoSubmissionDialog] 清除库存缓存，准备加载最新数据')
-      inventoryService.clearCache()
     }
     
     setSaveDialogOpen(true)
@@ -1421,39 +1413,24 @@ export const PhotoSubmissionDialog: React.FC<PhotoSubmissionDialogProps> = ({
                   return null
                 }
                 
-                // 使用 InventoryItemPicker 组件处理物品名称选择
-                if (field.key === 'item_name' && field.type === 'select') {
-                  const user = authService.getCurrentUser()
-                  const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
-                  
+                // 处理物品名称输入
+                if (field.key === 'item_name') {
                   return (
-                    <Box key={field.key} sx={{ mb: 2 }}>
-                      <InventoryItemPicker
-                        value={structuredData.item_name || null}
-                        onChange={(itemName) => {
-                          setStructuredData({
-                            ...structuredData,
-                            item_name: itemName
-                          })
-                        }}
-                        department={department as '前厅' | '后厨'}
-                        label={field.label}
-                        required={field.required}
-                        showQuantity={true}  // 显示库存数量
-                        showUnit={false}     // 不显示单位
-                        placeholder="搜索或选择物品..."
-                        onItemSelect={(item) => {
-                          // 自动填充单位
-                          if (item.unit) {
-                            setStructuredData(prev => ({
-                              ...prev,
-                              item_name: item.item_name,
-                              unit: item.unit
-                            }))
-                          }
-                        }}
-                      />
-                    </Box>
+                    <TextField
+                      key={field.key}
+                      fullWidth
+                      label={field.label}
+                      value={structuredData.item_name || ''}
+                      onChange={(e) => {
+                        setStructuredData({
+                          ...structuredData,
+                          item_name: e.target.value
+                        })
+                      }}
+                      required={field.required}
+                      sx={{ mb: 2 }}
+                      placeholder="请输入物品名称"
+                    />
                   )
                 } else if (field.type === 'select') {
                   return (

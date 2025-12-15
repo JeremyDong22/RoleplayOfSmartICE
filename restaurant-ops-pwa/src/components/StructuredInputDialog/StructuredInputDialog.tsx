@@ -35,10 +35,8 @@ import {
   PhotoCamera as PhotoCameraIcon,
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material'
-import { inventoryService } from '../../services/inventoryService'
 import { authService } from '../../services/authService'
 import { restaurantConfigService } from '../../services/restaurantConfigService'
-import { InventoryItemPicker } from '../InventoryItemPicker'
 
 interface StructuredInputDialogProps {
   open: boolean
@@ -84,40 +82,8 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
   }, [open, taskName])
 
   const loadFields = async () => {
-    // 如果是收货验货、损耗盘点或交割损耗，动态加载库存列表
-    if (taskName.includes('收货') || taskName.includes('验货') || taskName.includes('损耗') || taskName.includes('盘点') || taskName.includes('交割')) {
-      setIsLoadingFields(true)
-      try {
-        const user = authService.getCurrentUser()
-        const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
-        const isLossCount = taskName.includes('损耗盘点') || taskName.includes('交割损耗')
-        
-        // 生成动态字段（损耗类任务不需要质量检查）
-        const fields = await inventoryService.generateStructuredFields(department as '前厅' | '后厨', isLossCount)
-        
-        // 如果是损耗盘点或交割损耗，添加损耗原因字段
-        if (isLossCount) {
-          fields.fields.push({
-            key: 'reason',
-            type: 'select',
-            label: '损耗原因',
-            options: taskName.includes('交割') ? ['交割处理', '去除淋巴', '去除脂肪', '其他'] : ['正常损耗', '过期', '损坏/丢失'],
-            required: true
-          })
-        }
-        
-        setDynamicFields(fields)
-      } catch (error) {
-        console.error('Failed to load dynamic fields:', error)
-        // 使用数据库配置的字段作为后备
-        setDynamicFields(structuredFields)
-      } finally {
-        setIsLoadingFields(false)
-      }
-    } else {
-      // 使用数据库配置的字段
-      setDynamicFields(structuredFields)
-    }
+    // 直接使用数据库配置的字段
+    setDynamicFields(structuredFields)
   }
 
   const validateForm = () => {
@@ -389,48 +355,21 @@ export const StructuredInputDialog: React.FC<StructuredInputDialogProps> = ({
                 return null
               }
               
-              // 使用 InventoryItemPicker 组件处理物品名称选择
-              if (field.key === 'item_name' && field.type === 'select') {
-                const user = authService.getCurrentUser()
-                const department = user?.roleCode === 'chef' ? '后厨' : '前厅'
-                
+              // 处理物品名称输入
+              if (field.key === 'item_name') {
                 return (
-                  <Box key={field.key} sx={{ mb: 2 }}>
-                    <InventoryItemPicker
-                      value={formData.item_name || null}
-                      onChange={(itemName) => {
-                        handleFieldChange('item_name', itemName)
-                      }}
-                      department={department as '前厅' | '后厨'}
-                      label={field.label}
-                      required={field.required}
-                      error={!!errors.item_name}
-                      helperText={errors.item_name}
-                      showQuantity={taskName.includes('损耗') || taskName.includes('交割')}
-                      showUnit={false}  // 不显示单位
-                      disabled={isCheckingInventory}
-                      onItemSelect={async (item) => {
-                        // 自动填充单位
-                        if (item.unit) {
-                          handleFieldChange('unit', item.unit)
-                        }
-                        // 如果是损耗盘点或交割损耗，设置库存数量
-                        if (taskName.includes('损耗') || taskName.includes('交割')) {
-                          setAvailableQuantity(item.quantity)
-                          setIsCheckingInventory(false)
-                          
-                          // 如果已有数量，立即验证
-                          if (formData.quantity && item.quantity !== null) {
-                            if (formData.quantity > item.quantity) {
-                              setErrors(prev => ({ ...prev, quantity: `库存不足，当前库存：${item.quantity}` }))
-                            } else {
-                              setErrors(prev => ({ ...prev, quantity: '' }))
-                            }
-                          }
-                        }
-                      }}
-                    />
-                  </Box>
+                  <TextField
+                    key={field.key}
+                    fullWidth
+                    label={field.label}
+                    value={formData.item_name || ''}
+                    onChange={(e) => handleFieldChange('item_name', e.target.value)}
+                    required={field.required}
+                    error={!!errors.item_name}
+                    helperText={errors.item_name}
+                    sx={{ mb: 2 }}
+                    placeholder="请输入物品名称"
+                  />
                 )
               } else if (field.type === 'select') {
                 return (

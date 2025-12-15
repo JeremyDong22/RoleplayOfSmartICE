@@ -12,9 +12,7 @@ import {
 import {
   Assignment,
   Person,
-  Dashboard,
-  Notifications,
-  Inventory
+  Notifications
 } from '@mui/icons-material'
 
 interface NavigationBarProps {
@@ -34,20 +32,14 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
   }
   
   const baseRoute = roleRoutes[role]
-  
-  // Check if this is inventory page or if user can access inventory
-  const isInventoryPage = location.pathname.includes('/inventory')
-  // 除了 duty-manager 以外的所有角色都可以访问库存
-  const canAccessInventory = role !== 'duty-manager'
-  
+
   // Determine current value based on pathname
   const getCurrentValue = () => {
-    if (location.pathname.includes('/inventory')) return 3
     if (location.pathname.includes('/profile')) return 1
     if (location.pathname.includes('/notifications')) return 2
     return 0 // Default to tasks
   }
-  
+
   const handleChange = (event: React.SyntheticEvent, newValue: number) => {
     switch (newValue) {
       case 0:
@@ -70,9 +62,6 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
         } else {
           navigate('/role-selection')
         }
-        break
-      case 3:
-        navigate('/inventory')
         break
     }
   }
@@ -109,12 +98,6 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({ role }) => {
             </Badge>
           }
         />
-        {(canAccessInventory || isInventoryPage) && (
-          <BottomNavigationAction
-            label="库存"
-            icon={<Inventory />}
-          />
-        )}
       </BottomNavigation>
     </Paper>
   )

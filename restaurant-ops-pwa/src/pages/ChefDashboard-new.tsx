@@ -38,7 +38,6 @@ import { getSupabase } from '../services/supabase'
 import { authService } from '../services/authService'
 import { getRestaurantId } from '../utils/restaurantSetup'
 import { restaurantStateService, type RestaurantState } from '../services/restaurantStateService'
-import { inventoryService } from '../services/inventoryService'
 import { getBusinessDateAsync } from '../services/businessDayService'
 
 // Pre-load workflow markdown content for browser
@@ -645,14 +644,6 @@ export const ChefDashboard: React.FC = () => {
       try {
         const task = currentTasks.find(t => t.id === taskId)
         if (task) {
-          // Clear inventory cache after completing receiving/loss tasks
-          if (task.title.includes('收货') || task.title.includes('验货') || 
-              task.title.includes('损耗') || task.title.includes('盘点') ||
-              task.title.includes('交割')) {
-            inventoryService.clearCache()
-            console.log('[ChefDashboard] Cleared inventory cache after task completion:', task.title)
-          }
-          
           const restaurantId = await getRestaurantId()
           if (!restaurantId) {
             console.error('No restaurant ID found')

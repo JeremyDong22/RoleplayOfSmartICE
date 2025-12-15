@@ -41,9 +41,6 @@ const CEODashboard = lazy(() =>
   import('./pages/CEODashboard/CEODashboardDB').then(module => ({ default: module.CEODashboardDB }))
 )
 
-// Feature Pages
-import { InventoryManagement } from './pages/InventoryManagement/InventoryManagement'
-
 // Test Pages (only imported in development)
 const TestFloatingCamera = lazy(() => import('./pages/TestFloatingCamera'))
 const TestRealtime = lazy(() => import('./pages/TestRealtime').then(m => ({ default: m.TestRealtime })))
@@ -257,21 +254,6 @@ const router = createBrowserRouter([
       {
         path: 'notifications',
         element: <NotificationsPage role="ceo" />,
-      },
-    ],
-  },
-  // Inventory Management route with shared layout
-  {
-    path: '/inventory',
-    element: (
-      <PrivateRoute path="/inventory">
-        <AppLayout />
-      </PrivateRoute>
-    ),
-    children: [
-      {
-        index: true,
-        element: <InventoryManagement />,
       },
     ],
   },
