@@ -2,6 +2,8 @@
 // Stores face descriptors in Supabase database for centralized management
 // Updated: 2025-08-13 - Removed mobile-specific logic, unified loading with detailed logging
 // Updated: 2025-08-14 - Removed all console.log statements
+// Updated: 2025-12-15 - Migrated from roleplay_users to master_employee table (v1.1)
+// Note: face_descriptor field may need to be added to master_employee if not present
 
 import * as faceapi from 'face-api.js'
 import { getSupabase } from './supabase'
@@ -103,7 +105,7 @@ class FaceRecognitionService {
   // Check if user has enrolled face descriptor
   async hasUserEnrolled(userId: string): Promise<boolean> {
     const { data, error } = await getSupabase()
-      .from('roleplay_users')
+      .from('master_employee')
       .select('face_descriptor')
       .eq('id', userId)
       .single()
@@ -177,7 +179,7 @@ class FaceRecognitionService {
 
       // Save to Supabase
       const { error } = await getSupabase()
-        .from('roleplay_users')
+        .from('master_employee')
         .update({ face_descriptor: descriptor })
         .eq('id', userId)
 
@@ -205,7 +207,7 @@ class FaceRecognitionService {
     try {
       // Get stored face descriptor from Supabase
       const { data, error } = await getSupabase()
-        .from('roleplay_users')
+        .from('master_employee')
         .select('face_descriptor')
         .eq('id', userId)
         .single()
@@ -270,7 +272,7 @@ class FaceRecognitionService {
   // Clear user's face data (for reset/re-enrollment)
   async clearUserFaceData(userId: string): Promise<void> {
     const { error } = await getSupabase()
-      .from('roleplay_users')
+      .from('master_employee')
       .update({ face_descriptor: null })
       .eq('id', userId)
 

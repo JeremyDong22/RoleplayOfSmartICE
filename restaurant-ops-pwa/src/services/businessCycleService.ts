@@ -309,12 +309,12 @@ export const SQL_QUERIES = {
       tr.review_status,
       tr.created_at,
       tr.reviewed_at,
-      u.display_name as submitted_by,
-      reviewer.display_name as reviewed_by
+      u.employee_name as submitted_by,
+      reviewer.employee_name as reviewed_by
     FROM roleplay_task_records tr
     JOIN roleplay_tasks t ON tr.task_id = t.id
-    JOIN roleplay_users u ON tr.user_id = u.id
-    LEFT JOIN roleplay_users reviewer ON tr.reviewed_by = reviewer.id
+    JOIN master_employee u ON tr.user_id = u.id
+    LEFT JOIN master_employee reviewer ON tr.reviewed_by = reviewer.id
     WHERE tr.created_at >= '2025-07-31 10:00:00'
       AND tr.created_at <= '2025-08-01 04:00:00'
       AND t.role_code IN ('manager', 'duty_manager')  -- 排除 chef

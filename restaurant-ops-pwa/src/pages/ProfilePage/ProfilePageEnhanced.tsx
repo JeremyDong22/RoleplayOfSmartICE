@@ -340,10 +340,9 @@ const SmartFaceEnrollmentDialog: React.FC<{
       
       // Save all descriptors to database
       const { error: dbError } = await supabase
-        .from('roleplay_users')
-        .update({ 
-          face_descriptor: allDescriptors, // Store as array of arrays
-          face_enrolled_at: new Date().toISOString()
+        .from('master_employee')
+        .update({
+          face_descriptor: allDescriptors // Store as array of arrays
         })
         .eq('id', user.id)
       
@@ -938,7 +937,7 @@ const FaceTestDialog: React.FC<{
     try {
       // Fetch user's stored face descriptor
       const { data, error } = await supabase
-        .from('roleplay_users')
+        .from('master_employee')
         .select('face_descriptor')
         .eq('id', user.id)
         .single()
@@ -1112,11 +1111,11 @@ const ProfilePageEnhanced: React.FC = () => {
     
     try {
       const { data, error } = await supabase
-        .from('roleplay_users')
+        .from('master_employee')
         .select('face_descriptor')
         .eq('id', currentUser.id)
         .single()
-      
+
       setHasFaceRegistered(!!data?.face_descriptor && data.face_descriptor.length > 0)
     } catch (err) {
       console.error('Failed to check face status:', err)
@@ -1124,22 +1123,21 @@ const ProfilePageEnhanced: React.FC = () => {
       setLoading(false)
     }
   }
-  
+
   const handleLogout = async () => {
     await authService.logout()
     navigate('/login')
   }
-  
+
   const handleDeleteFace = async () => {
     const currentUser = authService.getCurrentUser()
     if (!currentUser) return
-    
+
     try {
       const { error } = await supabase
-        .from('roleplay_users')
-        .update({ 
-          face_descriptor: null,
-          face_enrolled_at: null
+        .from('master_employee')
+        .update({
+          face_descriptor: null
         })
         .eq('id', currentUser.id)
       

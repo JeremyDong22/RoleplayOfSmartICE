@@ -4,6 +4,7 @@
  * Created: 2025-08-02
  * Updated: 2025-01-13 - 优化缓存逻辑，避免重复初始化
  * Updated: 2025-01-05 - 移除所有 console.log 语句，保留 console.error 用于生产环境错误处理
+ * Updated: 2025-12-15 - Migrated from roleplay_restaurants to master_restaurant and roleplay_users to master_employee (v1.1)
  */
 
 import { getSupabase } from './supabase'
@@ -84,19 +85,19 @@ class RestaurantConfigService {
         // 获取餐厅详情
         const queryStartTime = performance.now()
         const { data: restaurant, error: restaurantError } = await getSupabase()
-          .from('roleplay_restaurants')
-          .select('id, name, is_active')
+          .from('master_restaurant')
+          .select('id, restaurant_name, is_active')
           .eq('id', restaurantId)
           .single()
         // console.log(`[PERF RestaurantConfig] Restaurant query completed in ${performance.now() - queryStartTime}ms`)
-        
+
         if (restaurantError) {
         }
-        
+
         if (restaurant) {
           this.currentRestaurant = {
             id: restaurant.id,
-            name: restaurant.name,
+            name: restaurant.restaurant_name,
             isActive: restaurant.is_active
           }
           this.initialized = true
@@ -110,30 +111,30 @@ class RestaurantConfigService {
         // console.log('[PERF RestaurantConfig] No restaurant ID in cookies, checking user profile')
         const profileStartTime = performance.now()
         const { data: userProfile, error: profileError } = await getSupabase()
-          .from('roleplay_users')
+          .from('master_employee')
           .select('restaurant_id')
           .eq('id', userId)
           .single()
         // console.log(`[PERF RestaurantConfig] User profile query completed in ${performance.now() - profileStartTime}ms`)
-        
+
         if (profileError) {
         }
-        
+
         if (userProfile?.restaurant_id) {
           // 获取餐厅详情
           const { data: restaurant, error: restaurantError } = await getSupabase()
-            .from('roleplay_restaurants')
-            .select('id, name, is_active')
+            .from('master_restaurant')
+            .select('id, restaurant_name, is_active')
             .eq('id', userProfile.restaurant_id)
             .single()
-          
+
           if (restaurantError) {
             }
-          
+
           if (restaurant) {
             this.currentRestaurant = {
               id: restaurant.id,
-              name: restaurant.name,
+              name: restaurant.restaurant_name,
               isActive: restaurant.is_active
             }
             this.initialized = true
@@ -145,12 +146,12 @@ class RestaurantConfigService {
       
       // 如果没有用户或用户没有分配餐厅，获取第一个活跃的餐厅
       const { data: restaurants, error: restaurantsError } = await getSupabase()
-        .from('roleplay_restaurants')
-        .select('id, name, is_active')
+        .from('master_restaurant')
+        .select('id, restaurant_name, is_active')
         .eq('is_active', true)
         .order('created_at')
         .limit(1)
-      
+
       if (restaurantsError) {
         // 如果是认证错误，静默返回null
         if (restaurantsError.message?.includes('access control') || restaurantsError.message?.includes('CORS')) {
@@ -159,11 +160,11 @@ class RestaurantConfigService {
         console.error('[RestaurantConfigService] Error fetching restaurants:', restaurantsError)
         return null
       }
-      
+
       if (restaurants && restaurants.length > 0) {
         this.currentRestaurant = {
           id: restaurants[0].id,
-          name: restaurants[0].name,
+          name: restaurants[0].restaurant_name,
           isActive: restaurants[0].is_active
         }
         this.initialized = true
@@ -225,16 +226,16 @@ class RestaurantConfigService {
   async getActiveRestaurants(): Promise<RestaurantConfig[]> {
     try {
       const { data, error } = await getSupabase()
-        .from('roleplay_restaurants')
-        .select('id, name, is_active')
+        .from('master_restaurant')
+        .select('id, restaurant_name, is_active')
         .eq('is_active', true)
-        .order('name')
-      
+        .order('restaurant_name')
+
       if (error) throw error
-      
+
       return data.map(r => ({
         id: r.id,
-        name: r.name,
+        name: r.restaurant_name,
         isActive: r.is_active
       }))
     } catch (error) {
@@ -249,21 +250,21 @@ class RestaurantConfigService {
   async setCurrentRestaurant(restaurantId: string): Promise<boolean> {
     try {
       const { data: restaurant } = await getSupabase()
-        .from('roleplay_restaurants')
-        .select('id, name, is_active')
+        .from('master_restaurant')
+        .select('id, restaurant_name, is_active')
         .eq('id', restaurantId)
         .single()
-      
+
       if (restaurant) {
         this.currentRestaurant = {
           id: restaurant.id,
-          name: restaurant.name,
+          name: restaurant.restaurant_name,
           isActive: restaurant.is_active
         }
         this.initialized = true
         return true
       }
-      
+
       return false
     } catch (error) {
       console.error('[RestaurantConfigService] Error setting restaurant:', error)

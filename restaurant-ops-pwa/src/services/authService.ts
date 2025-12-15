@@ -1,16 +1,18 @@
 /**
  * Custom Authentication Service - NOT using Supabase Auth!
- * 
+ *
  * This service manages user authentication using:
  * 1. Cookie-based session management (NOT Supabase Auth)
- * 2. Custom user table (roleplay_users) in database
+ * 2. Custom user table (master_employee) in database
  * 3. Two login methods:
  *    - Password login: login() method
  *    - Face recognition login: setCurrentUser() method
- * 
+ *
  * Created: 2025-07-24 - Handles auth state with cookies and custom user table
  * Updated: 2025-08-13 - Use getSupabase() function to avoid stale references
  * Updated: 2025-08-14 - Added clear documentation to avoid confusion with Supabase Auth
+ * Updated: 2025-12-15 - Migrated from roleplay_users to master_employee table (v1.1)
+ * Updated: 2025-12-16 - Fixed login to validate password_hash from database instead of demo pattern (v1.2)
  */
 import Cookies from 'js-cookie'
 import { getSupabase } from './supabase'
@@ -22,9 +24,9 @@ export interface AuthUser {
   role: string
   roleCode: string
   restaurantId: string
-  display_name?: string
+  employee_name?: string  // Updated from display_name
   role_name?: string
-  face_descriptor?: number[] | null
+  // Note: face_descriptor removed from master_employee schema, handled separately if needed
 }
 
 class AuthService {
@@ -60,7 +62,7 @@ class AuthService {
         id: Cookies.get('userId') || '',
         email: Cookies.get('userEmail') || '',
         name: name,
-        display_name: name, // Same as name for compatibility
+        employee_name: name, // Updated from display_name for compatibility
         role: role,
         role_name: role, // Same as role for compatibility
         roleCode: Cookies.get('userRoleCode') || '',
@@ -76,22 +78,25 @@ class AuthService {
   /**
    * PASSWORD LOGIN METHOD
    * Login user with username and password
-   * This queries our custom roleplay_users table, NOT Supabase Auth
+   * This queries our custom master_employee table, NOT Supabase Auth
+   * v1.2: Now validates password_hash from database
    */
   async login(username: string, password: string): Promise<{ user: AuthUser; error?: string }> {
     try {
-      // Query user by username
+      // Query user by username AND password_hash
+      // This validates credentials in a single query
       const { data: userData, error: userError } = await getSupabase()
-        .from('roleplay_users')
+        .from('master_employee')
         .select(`
           *,
-          roleplay_roles!role_id (
-            role_code,
-            role_name_zh,
-            role_name_en
+          master_role!role_code (
+            code,
+            name,
+            permission_level
           )
         `)
         .eq('username', username)
+        .eq('password_hash', password)
         .eq('is_active', true)
         .single()
 
@@ -99,24 +104,17 @@ class AuthService {
         return { user: null as any, error: '用户名或密码错误' }
       }
 
-      // For demo purposes, we'll use a simple password check
-      // In production, this should use proper auth
-      const expectedPassword = `${username}123` // Simple demo password pattern
-      if (password !== expectedPassword) {
-        return { user: null as any, error: '用户名或密码错误' }
-      }
-
       // Create auth session - handle both single object and array response
-      const roleData = Array.isArray(userData.roleplay_roles) 
-        ? userData.roleplay_roles[0] 
-        : userData.roleplay_roles
-      
+      const roleData = Array.isArray(userData.master_role)
+        ? userData.master_role[0]
+        : userData.master_role
+
       const authUser: AuthUser = {
         id: userData.id,
-        email: `${username}@restaurant.com`,
-        name: userData.full_name,
-        role: roleData?.role_name_zh || '',
-        roleCode: roleData?.role_code || '',
+        email: userData.email || `${username}@restaurant.com`,
+        name: userData.employee_name,
+        role: roleData?.name || '',
+        roleCode: roleData?.code || '',
         restaurantId: userData.restaurant_id
       }
 
@@ -200,8 +198,6 @@ class AuthService {
     if (userData.role) Cookies.set('userRole', updatedUser.role, { expires: 7 })
     if (userData.roleCode) Cookies.set('userRoleCode', updatedUser.roleCode, { expires: 7 })
     if (userData.restaurantId) Cookies.set('restaurantId', updatedUser.restaurantId, { expires: 7 })
-    
-    // Note: face_descriptor is not stored in cookies, only in memory/database
   }
 
   /**
@@ -232,7 +228,7 @@ class AuthService {
   }
 }
 
-// VERSION: 1.0.1 - Module loaded
+// VERSION: 1.2.0 - Fixed login to validate password_hash from database (2025-12-16)
 
 // Export singleton getter to avoid immediate instantiation
 export const getAuthService = () => AuthService.getInstance();

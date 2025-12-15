@@ -89,7 +89,7 @@ export async function testSupabaseQueries() {
   
   // Test 2: Try to fetch restaurants (public table)
   const { data: restaurants, error: restaurantsError } = await supabase
-    .from('roleplay_restaurants')
+    .from('master_restaurant')
     .select('id, name')
     .limit(1);
   
@@ -103,7 +103,7 @@ export async function testSupabaseQueries() {
   const currentUser = authService.getCurrentUser();
   if (currentUser && currentUser.id) {
     const { data: profile, error: profileError } = await supabase
-      .from('roleplay_users')
+      .from('master_employee')
       .select('*')
       .eq('id', currentUser.id)
       .single();

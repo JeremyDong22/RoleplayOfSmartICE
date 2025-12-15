@@ -270,11 +270,11 @@ export const LoginPageEnhanced = () => {
         let result
         try {
           result = await getSupabase()
-            .from('roleplay_users')
+            .from('master_employee')
             .select('*')
             .not('face_descriptor', 'is', null)
             .abortSignal(controller.signal)
-          
+
           setDetectionProgress(50) // Database query complete
           // Small delay to show the progress
           await new Promise(resolve => setTimeout(resolve, 200))
@@ -285,10 +285,10 @@ export const LoginPageEnhanced = () => {
             const freshSupabase = resetSupabaseClient()
             const retryController = new AbortController()
             const retryTimeout = setTimeout(() => retryController.abort(), 5000)
-            
+
             try {
               result = await freshSupabase
-                .from('roleplay_users')
+                .from('master_employee')
                 .select('*')
                 .not('face_descriptor', 'is', null)
                 .abortSignal(retryController.signal)
@@ -545,7 +545,7 @@ export const LoginPageEnhanced = () => {
     try {
       // Get all users with face descriptors
       const { data: users, error: dbError } = await getSupabase()
-        .from('roleplay_users')
+        .from('master_employee')
         .select('*')
         .not('face_descriptor', 'is', null)
       

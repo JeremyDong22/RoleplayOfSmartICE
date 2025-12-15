@@ -29,10 +29,10 @@ export class SampleManagerService {
     
     // Fetch from database
     const { data, error } = await supabase
-      .from('roleplay_restaurants')
-      .select('id, name, city, address, icon, is_active')
+      .from('master_restaurant')
+      .select('id, restaurant_name, city, address, is_active')
       .eq('is_active', true)
-      .order('name')
+      .order('restaurant_name')
 
     if (error) throw error
     
@@ -58,7 +58,7 @@ export class SampleManagerService {
     }
     
     const { data, error } = await supabase
-      .from('roleplay_roles')
+      .from('master_role')
       .select('*')
       .eq('is_active', true)
       .order('sort_order')

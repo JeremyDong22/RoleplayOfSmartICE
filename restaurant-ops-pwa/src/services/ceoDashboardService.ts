@@ -158,13 +158,14 @@ class CEODashboardService {
   async getRestaurants(): Promise<{ id: string; name: string; address?: string; city?: string }[]> {
     try {
       const { data, error } = await supabase
-        .from('roleplay_restaurants')
-        .select('id, name, address, city')
+        .from('master_restaurant')
+        .select('id, restaurant_name, address, city')
         .eq('is_active', true)
-        .order('name');
+        .order('restaurant_name');
 
       if (error) throw error;
-      return data || [];
+      // Map restaurant_name to name for compatibility
+      return (data || []).map(r => ({ ...r, name: r.restaurant_name }));
     } catch (error) {
       console.error('[CEODashboardService] Error fetching restaurants:', error);
       return [];
@@ -175,21 +176,21 @@ class CEODashboardService {
   async getRestaurantEmployees(restaurantId: string): Promise<any[]> {
     try {
       const { data, error } = await supabase
-        .from('roleplay_users')
+        .from('master_employee')
         .select(`
           id,
-          full_name,
-          role_id,
+          employee_name,
+          role_code,
           is_active,
-          roleplay_roles!roleplay_users_role_id_fkey (
-            id,
-            role_name_zh,
-            role_code
+          master_role!role_code (
+            code,
+            name,
+            permission_level
           )
         `)
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
-        .in('roleplay_roles.role_code', ['manager', 'chef', 'duty_manager']);
+        .in('role_code', ['manager', 'chef', 'duty_manager']);
 
       if (error) throw error;
       return data || [];
@@ -277,11 +278,11 @@ class CEODashboardService {
             period_id,
             submission_type
           ),
-          roleplay_users!roleplay_task_records_user_id_fkey (
+          master_employee!roleplay_task_records_user_id_fkey (
             id,
-            full_name,
-            roleplay_roles!roleplay_users_role_id_fkey (
-              role_name_zh
+            employee_name,
+            master_role!master_employee_role_code_fkey (
+              name
             )
           )
         `)
@@ -360,8 +361,8 @@ class CEODashboardService {
           task_id: record.task_id,
           task_title: record.roleplay_tasks.title,
           user_id: record.user_id,
-          user_name: record.roleplay_users.full_name,
-          role_name: record.roleplay_users.roleplay_roles?.role_name_zh || '',
+          user_name: record.master_employee.employee_name,
+          role_name: record.master_employee.master_role?.name || '',
           submission_type: record.submission_type || record.roleplay_tasks.submission_type,
           text_content: record.text_content,
           photo_urls: record.photo_urls,
@@ -471,8 +472,8 @@ class CEODashboardService {
         if (!employeeMap.has(userId)) {
           employeeMap.set(userId, {
             user_id: userId,
-            user_name: record.roleplay_users.full_name,
-            role_name: record.roleplay_users.roleplay_roles?.role_name_zh || '',
+            user_name: record.master_employee.employee_name,
+            role_name: record.master_employee.master_role?.name || '',
             completed_tasks: 0,
             total_tasks: 0,
             on_time_rate: 100,
@@ -516,7 +517,7 @@ class CEODashboardService {
 
       // 6. 获取餐厅名称和地址信息
       const { data: restaurant } = await supabase
-        .from('roleplay_restaurants')
+        .from('master_restaurant')
         .select('name, address, city')
         .eq('id', restaurantId)
         .single();
@@ -759,8 +760,8 @@ class CEODashboardService {
           task_id: record.task_id,
           task_title: record.roleplay_tasks?.title || '',
           user_id: record.user_id,
-          user_name: record.roleplay_users?.full_name || '',
-          role_name: record.roleplay_users?.roleplay_roles?.role_name_zh || '',
+          user_name: record.master_employee?.employee_name || '',
+          role_name: record.master_employee?.master_role?.name || '',
           submission_type: record.submission_type || record.roleplay_tasks?.submission_type,
           text_content: record.text_content,
           photo_urls: record.photo_urls,
@@ -917,8 +918,8 @@ class CEODashboardService {
           
           employeeMap.set(userId, {
             user_id: userId,
-            user_name: record.roleplay_users?.full_name || '',
-            role_name: record.roleplay_users?.roleplay_roles?.role_name_zh || '',
+            user_name: record.master_employee?.employee_name || '',
+            role_name: record.master_employee?.master_role?.name || '',
             role_code: roleCode,
             completed_tasks: 0,
             total_tasks: roleTasks.length,
@@ -1098,11 +1099,11 @@ class CEODashboardService {
                 period_id,
                 submission_type
               ),
-              roleplay_users!roleplay_task_records_user_id_fkey (
+              master_employee!roleplay_task_records_user_id_fkey (
                 id,
-                full_name,
-                roleplay_roles!roleplay_users_role_id_fkey (
-                  role_name_zh
+                employee_name,
+                master_role!master_employee_role_code_fkey (
+                  name
                 )
               )
             `)
@@ -1112,21 +1113,20 @@ class CEODashboardService {
         
         // 获取所有餐厅的员工
         supabase
-          .from('roleplay_users')
+          .from('master_employee')
           .select(`
             id,
-            full_name,
-            role_id,
+            employee_name,
+            role_code,
             restaurant_id,
             is_active,
-            roleplay_roles!roleplay_users_role_id_fkey (
-              id,
-              role_name_zh,
-              role_code
+            master_role!master_employee_role_code_fkey (
+              code,
+              name
             )
           `)
           .eq('is_active', true)
-          .in('roleplay_roles.role_code', ['manager', 'chef', 'duty_manager'])
+          .in('role_code', ['manager', 'chef', 'duty_manager'])
       ]);
       console.timeEnd('[CEODashboardService] Fetching base data');
       
@@ -1279,11 +1279,11 @@ class CEODashboardService {
             submission_type,
             is_floating
           ),
-          roleplay_users!user_id(
+          master_employee!roleplay_task_records_user_id_fkey(
             id,
-            full_name,
-            roleplay_roles(
-              role_name_zh
+            employee_name,
+            master_role!master_employee_role_code_fkey(
+              name
             )
           )
         `)
@@ -1315,8 +1315,8 @@ class CEODashboardService {
           task_id: record.task_id,
           task_title: record.roleplay_tasks.title,
           user_id: record.user_id,
-          user_name: record.roleplay_users.full_name,
-          role_name: record.roleplay_users.roleplay_roles?.role_name_zh || '',
+          user_name: record.master_employee.employee_name,
+          role_name: record.master_employee.master_role?.name || '',
           submission_type: record.submission_type || record.roleplay_tasks.submission_type,
           text_content: record.text_content,
           photo_urls: record.photo_urls,

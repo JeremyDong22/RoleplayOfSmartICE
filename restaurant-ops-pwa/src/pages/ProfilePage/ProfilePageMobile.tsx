@@ -253,7 +253,7 @@ const MobileFaceEnrollmentDialog: React.FC<{
       }
       
       const { error: dbError } = await supabase
-        .from('roleplay_users')
+        .from('master_employee')
         .update({ face_descriptor: Array.from(avgDescriptor) })
         .eq('id', user.id)
       
@@ -611,7 +611,7 @@ const MobileFaceTestDialog: React.FC<{
     
     try {
       const { data, error } = await supabase
-        .from('roleplay_users')
+        .from('master_employee')
         .select('face_descriptor')
         .eq('id', user.id)
         .single()

@@ -3,6 +3,7 @@
 // 负责任务提交、审核、查询等数据库操作
 // Updated: 2025-08-02 - Added test time support for date queries
 // Updated: 2025-08-21 - Changed getTodayCompletedTaskIds and getTodayTaskStatuses to filter by restaurant_id and role_code instead of user_id to ensure all managers see consistent data
+// Updated: 2025-12-15 - Migrated from roleplay_users to master_employee table (v1.1)
 
 import { getSupabase, supabase } from './supabase'
 import { canCloseBusinessCycle, getBusinessCycleTaskCompletion } from './businessCycleService'
@@ -75,17 +76,15 @@ export async function submitTaskRecord(taskData: Partial<TaskRecord>) {
   } else {
     // Fetch user role if not cached or expired
     const { data: userData } = await getSupabase()
-      .from('roleplay_users')
+      .from('master_employee')
       .select(`
         id,
-        roleplay_roles!inner (
-          role_code
-        )
+        role_code
       `)
       .eq('id', taskData.user_id)
       .single()
-    
-    userRoleCode = userData?.roleplay_roles?.role_code;
+
+    userRoleCode = userData?.role_code;
     
     // Cache the role
     if (userRoleCode) {
@@ -280,23 +279,21 @@ export async function getTodayCompletedTaskIds(userId: string): Promise<string[]
   
   // First get the user's restaurant_id and role_code
   const { data: userData, error: userError } = await getSupabase()
-    .from('roleplay_users')
+    .from('master_employee')
     .select(`
       restaurant_id,
-      roleplay_roles!inner (
-        role_code
-      )
+      role_code
     `)
     .eq('id', userId)
     .single()
-  
+
   if (userError || !userData) {
     console.error('[getTodayCompletedTaskIds] Error getting user data:', userError)
     return []
   }
-  
+
   const restaurantId = userData.restaurant_id
-  const roleCode = userData.roleplay_roles?.role_code
+  const roleCode = userData.role_code
   
   if (!restaurantId || !roleCode) {
     console.error('[getTodayCompletedTaskIds] Missing restaurant_id or role_code')
@@ -389,23 +386,21 @@ export async function getCompletedTasksInRange(
 ): Promise<string[]> {
   // First get the user's restaurant_id and role_code
   const { data: userData, error: userError } = await getSupabase()
-    .from('roleplay_users')
+    .from('master_employee')
     .select(`
       restaurant_id,
-      roleplay_roles!inner (
-        role_code
-      )
+      role_code
     `)
     .eq('id', userId)
     .single()
-  
+
   if (userError || !userData) {
     console.error('[getCompletedTasksInRange] Error getting user data:', userError)
     return []
   }
-  
+
   const restaurantId = userData.restaurant_id
-  const roleCode = userData.roleplay_roles?.role_code
+  const roleCode = userData.role_code
   
   if (!restaurantId || !roleCode) {
     console.error('[getCompletedTasksInRange] Missing restaurant_id or role_code')
@@ -539,23 +534,21 @@ export async function getTodayTaskStatuses(userId: string): Promise<TaskStatusDe
   
   // First get the user's restaurant_id and role_code
   const { data: userData, error: userError } = await getSupabase()
-    .from('roleplay_users')
+    .from('master_employee')
     .select(`
       restaurant_id,
-      roleplay_roles!inner (
-        role_code
-      )
+      role_code
     `)
     .eq('id', userId)
     .single()
-  
+
   if (userError || !userData) {
     console.error('[getTodayTaskStatuses] Error getting user data:', userError)
     return []
   }
-  
+
   const restaurantId = userData.restaurant_id
-  const roleCode = userData.roleplay_roles?.role_code
+  const roleCode = userData.role_code
   
   if (!restaurantId || !roleCode) {
     console.error('[getTodayTaskStatuses] Missing restaurant_id or role_code')

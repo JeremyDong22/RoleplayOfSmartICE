@@ -171,7 +171,7 @@ export class RealtimeService {
 
   // Connection management
   async checkConnection() {
-    const { data, error } = await this.supabase.from('roleplay_users').select('id').limit(1);
+    const { data, error } = await this.supabase.from('master_employee').select('id').limit(1);
     return !error;
   }
 

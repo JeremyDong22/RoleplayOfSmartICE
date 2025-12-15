@@ -39,11 +39,11 @@ export const RoleSelection = () => {
       try {
         // Fetch user's restaurant information
         const { data, error } = await supabase
-          .from('roleplay_users')
+          .from('master_employee')
           .select(`
             restaurant_id,
-            roleplay_restaurants (
-              name,
+            master_restaurant (
+              restaurant_name,
               address,
               city
             )
@@ -51,17 +51,17 @@ export const RoleSelection = () => {
           .eq('username', currentUser.username)
           .eq('is_active', true)
           .single()
-        
+
         if (error) {
           console.error('Error fetching restaurant info:', error)
           return
         }
-        
-        if (data?.roleplay_restaurants) {
+
+        if (data?.master_restaurant) {
           setRestaurantInfo({
-            name: data.roleplay_restaurants.name || '未知餐厅',
-            address: data.roleplay_restaurants.address || '未知地址',
-            city: data.roleplay_restaurants.city || '未知城市'
+            name: data.master_restaurant.restaurant_name || '未知餐厅',
+            address: data.master_restaurant.address || '未知地址',
+            city: data.master_restaurant.city || '未知城市'
           })
         }
       } catch (err) {

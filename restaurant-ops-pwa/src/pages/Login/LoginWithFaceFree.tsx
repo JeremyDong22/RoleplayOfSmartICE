@@ -151,7 +151,7 @@ export const LoginWithFaceFree: FC = () => {
     try {
       // Get all users with face descriptors
       const { data: users, error: dbError } = await supabase
-        .from('roleplay_users')
+        .from('master_employee')
         .select('*')
         .not('face_descriptor', 'is', null)
       
