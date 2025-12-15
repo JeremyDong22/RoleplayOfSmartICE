@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Overview
+This is a Progressive Web App (PWA) for restaurant operations management, built with React + TypeScript + Vite + MUI, using Supabase as the backend. The application supports multi-restaurant operations with role-based task management across different time periods throughout the day.
+
 ## 待完成的自动化任务
 - **Storage照片自动清理**: 已部署Edge Function `cleanup-orphaned-photos`，需要在GitHub添加Secret `SUPABASE_ANON_KEY`来启用每日自动清理，或手动运行 `./scripts/manual-cleanup.sh`
 
@@ -9,11 +12,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development
 ```bash
-npm run dev          # Start development server (Vite)
-npm run build        # TypeScript check + production build
+# From restaurant-ops-pwa directory
+npm run dev          # Start development server (Vite) on port 5173
+npm run build        # TypeScript check + production build with service worker versioning
+npm run build:check  # TypeScript build check before production build
 npm run lint         # Run ESLint
 npm run preview      # Preview production build locally
 ```
+
+### Important Notes
+- Server runs on port 5173 with HMR (Hot Module Replacement)
+- Build process auto-updates service worker version
+- Always work from `/restaurant-ops-pwa` directory
 
 ### Testing a specific time period
 When testing time-based features, use the EditableTime component in the top bar:
@@ -191,53 +201,175 @@ Use `size` prop instead of `xs/sm/md/lg` props.
 - **Region**: us-east-1
 - **Database Host**: db.wdpeoyugsxqnpwwtkqsl.supabase.co
 
-### Database Tables
+### Important: Database Table Naming Convention
+**All project-related tables use the `roleplay_` prefix.** When searching for tables or writing queries, always filter by this prefix. For example:
+```sql
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public' AND table_name LIKE 'roleplay_%'
+```
 
-1. **roleplay_restaurants** - Multi-restaurant support
-   - id, name, is_active, created_at, updated_at
+### Core Database Tables
 
-2. **roleplay_roles** - User roles
-   - id, code (manager/chef/duty_manager/staff), name, description
+1. **roleplay_restaurants** - Multi-restaurant configuration
+   - `id` (uuid, PK)
+   - `name` (text) - Restaurant name
+   - `is_active` (boolean) - Active status
+   - `created_at`, `updated_at` (timestamp)
 
-3. **roleplay_users** - User accounts
-   - id, email, display_name, role_code, restaurant_id, is_active
+2. **roleplay_roles** - User role definitions
+   - `id` (uuid, PK)
+   - `code` (text) - Role code: manager, chef, duty_manager, staff, ceo
+   - `name` (text) - Display name
+   - `description` (text)
 
-4. **roleplay_workflow_periods** - Time periods for tasks
-   - id, name, display_name, start_time, end_time, is_event_driven, display_order
+3. **roleplay_users** - User accounts and profiles
+   - `id` (uuid, PK, FK to auth.users)
+   - `email` (text)
+   - `display_name` (text)
+   - `role_code` (text, FK to roleplay_roles)
+   - `restaurant_id` (uuid, FK to roleplay_restaurants)
+   - `is_active` (boolean)
+   - `face_descriptor` (text) - For face recognition login
 
-5. **roleplay_tasks** - Task definitions
-   - id, title, description, role_code, period_id, submission_type, is_notice, is_floating, etc.
+4. **roleplay_workflow_periods** - Time period definitions
+   - `id` (text, PK) - e.g., "opening", "lunch_service"
+   - `name` (text) - System name
+   - `display_name` (text) - Chinese display name
+   - `start_time` (time) - Period start time
+   - `end_time` (time) - Period end time
+   - `is_event_driven` (boolean) - Manual trigger vs time-based
+   - `display_order` (integer) - Sort order
+   - `restaurant_id` (uuid, FK) - Restaurant-specific periods
+
+5. **roleplay_tasks** - Task template definitions
+   - `id` (uuid, PK)
+   - `title` (text) - Task title
+   - `description` (text) - Task description
+   - `role_code` (text) - Assigned role
+   - `period_id` (text, FK to roleplay_workflow_periods)
+   - `submission_type` (text) - photo, audio, text, checklist, structured
+   - `required_photos` (integer) - Number of photos required
+   - `is_floating` (boolean) - Can be submitted multiple times
+   - `is_notice` (boolean) - Information-only task
+   - `floating_type` (text) - daily, anytime
+   - `sort_order` (integer)
+   - `samples` (jsonb) - Sample images/data for reference
+   - `structured_fields` (jsonb) - Field definitions for structured input
+   - `manual_closing` (boolean) - Requires manual trigger
+   - `is_random_inspection` (boolean) - Random inspection task
+   - `auto_generated` (boolean) - System-generated task
+   - `prerequisite_periods`, `prerequisite_trigger`, `linked_tasks` - Task dependencies
 
 6. **roleplay_task_records** - Task submission records
-   - id, task_id, user_id, restaurant_id, date, status, review_status, submission data
+   - `id` (uuid, PK)
+   - `task_id` (uuid, FK to roleplay_tasks)
+   - `user_id` (uuid, FK to roleplay_users)
+   - `restaurant_id` (uuid, FK)
+   - `date` (date) - Submission date
+   - `status` (text) - completed, pending, missed
+   - `review_status` (text) - pending, approved, rejected (for duty_manager tasks)
+   - `submission_type` (text)
+   - `photos`, `audio_url`, `text_content`, `checklist_items`, `structured_data` - Submission content
+   - `submitted_at`, `reviewed_at` (timestamp)
+   - `is_overdue` (boolean)
 
 7. **roleplay_notice_responses** - Responses to notice tasks
-   - id, notice_id, user_id, restaurant_id, comment, created_at
+   - `id` (uuid, PK)
+   - `notice_id` (uuid, FK to roleplay_tasks)
+   - `user_id` (uuid, FK)
+   - `restaurant_id` (uuid, FK)
+   - `comment` (text)
+   - `created_at` (timestamp)
+
+8. **roleplay_daily_reports** (Materialized View) - Daily aggregated statistics
+   - Pre-computed daily task completion rates by restaurant and role
+   - Refreshed via scheduled job
 
 ### Storage Configuration
-- **Bucket**: `RolePlay` (public, 50MB limit)
-- **Structure**: `/{userId}/{date}/{taskId}/`
-- **Supported**: JPEG, PNG, WebP images; MP3, WAV, WebM audio
+- **Bucket**: `RolePlay` (public, 50MB file size limit)
+- **Path Structure**: `/{userId}/{date}/{taskId}/filename.ext`
+- **Supported Formats**:
+  - Images: JPEG, PNG, WebP
+  - Audio: MP3, WAV, WebM
+- **Auto-cleanup**: Edge Function removes orphaned photos older than 30 days
+
+## Querying Supabase Data
+
+### Finding Project Tables
+Since all tables use the `roleplay_` prefix, when you need to explore the database structure:
+
+```typescript
+// In code
+const { data: tables } = await supabase
+  .from('information_schema.tables')
+  .select('table_name')
+  .like('table_name', 'roleplay_%')
+
+// Using Supabase MCP tools
+mcp__supabase__execute_sql({
+  project_id: "wdpeoyugsxqnpwwtkqsl",
+  query: "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'roleplay_%' ORDER BY table_name"
+})
+```
+
+### Common Query Patterns
+
+**Get tasks for a specific role and period:**
+```sql
+SELECT * FROM roleplay_tasks
+WHERE role_code = 'manager'
+  AND period_id = 'opening'
+  AND is_active = true
+ORDER BY sort_order
+```
+
+**Get today's task submissions for a restaurant:**
+```sql
+SELECT tr.*, t.title, u.display_name
+FROM roleplay_task_records tr
+JOIN roleplay_tasks t ON tr.task_id = t.id
+JOIN roleplay_users u ON tr.user_id = u.id
+WHERE tr.restaurant_id = 'xxx'
+  AND tr.date = CURRENT_DATE
+ORDER BY tr.submitted_at DESC
+```
 
 ## Key Services
 
-### restaurantConfigService
+### restaurantConfigService (`src/services/restaurantConfigService.ts`)
 Manages restaurant configuration without hardcoding:
 - Fetches restaurant from user profile or first active restaurant
 - No more 'default-restaurant' fallbacks
 - Provides restaurant ID and name dynamically
+- Call `await restaurantConfigService.initialize()` after login
 
-### taskService
-Loads all tasks and periods from database:
-- Real-time updates via Supabase channels
-- Converts database format to application format
+### taskService (`src/services/taskService.ts`)
+Loads all tasks and periods from Supabase database:
+- Real-time updates via Supabase Realtime channels
+- Converts database format to application TaskTemplate format
 - Caches data for performance
+- Subscription-based updates notify components of changes
 
-### businessCycleService
-Manages business hours and task completion:
+### businessCycleService (`src/services/businessCycleService.ts`)
+Manages business hours and task completion tracking:
 - Infers opening/closing times from workflow periods
-- Tracks task completion across the day
-- Handles cross-day operations
+- Tracks task completion throughout the business day
+- Handles cross-day operations (e.g., closing after midnight)
+- Provides completion rate calculations
+
+### taskRecordService (`src/services/taskRecordService.ts`)
+Handles task submission and record management:
+- Creates task records in `roleplay_task_records`
+- Uploads photos/audio to Supabase Storage
+- Auto-approves non-duty_manager tasks
+- Manages review workflow for duty_manager submissions
+
+### authService (`src/services/authService.ts`)
+Manages user authentication and session:
+- Supabase Auth integration
+- Face recognition login support
+- Role-based access control
+- Session persistence in localStorage
 
 ## Testing & Development
 
@@ -253,12 +385,48 @@ The app works without real-time features if needed:
 - Manual refresh to sync changes
 - Suitable for offline-first scenarios
 
+## Tech Stack
+
+### Frontend
+- **React 19** with TypeScript
+- **Vite 7** - Build tool and dev server
+- **Material-UI v7** - Component library
+  - Use `import Grid from '@mui/material/Grid'` for Grid2 component
+  - Use `size` prop instead of deprecated `xs/sm/md/lg`
+- **React Router v7** - Client-side routing with nested routes
+- **Redux Toolkit** - State management (minimal usage, mostly React Context)
+- **Framer Motion** - Animations
+- **date-fns** - Date manipulation
+
+### Backend & Infrastructure
+- **Supabase** - Backend-as-a-Service
+  - PostgreSQL database with Row Level Security (RLS)
+  - Realtime subscriptions for live updates
+  - Storage for photos/audio files
+  - Edge Functions for serverless operations
+  - Auth with custom providers (email + face recognition)
+- **PWA** - Progressive Web App with Service Worker
+  - Offline-first architecture
+  - Background sync for task submissions
+  - Installable on mobile devices
+
+### Development Tools
+- **TypeScript 5.8** - Type safety
+- **ESLint** - Code linting
+- **Vite Plugin PWA** - Service worker generation
+
 ## Best Practices
 
-1. **No Hardcoding**: All configuration comes from Supabase
-2. **Type Safety**: Use TypeScript interfaces from database types
-3. **Error Handling**: Gracefully handle database connection issues
-4. **Performance**: Use caching and batch operations where possible
+1. **No Hardcoding**: All configuration comes from Supabase database tables
+2. **Type Safety**: Use TypeScript interfaces from `src/types/database.ts`
+3. **Error Handling**: Gracefully handle database connection issues with try-catch
+4. **Performance**:
+   - Use `Promise.all()` for parallel database queries
+   - Implement caching with 5-minute TTL where appropriate
+   - Lazy-load dashboard components with React.lazy()
+5. **Database Queries**: Always filter by `roleplay_` prefix when searching tables
+6. **Task Approval Logic**: Only duty_manager tasks require review; others auto-approve
+7. **Testing**: Delete test files and unused SQL scripts after verification
 
 ## CEO Dashboard Features (Updated 2025-08-06)
 
@@ -330,6 +498,67 @@ Each period shows:
 - Department-based task filtering with role mapping
 - Automatic alerts generation based on missing/late tasks
 
-## Stop and talk to me every time if you have confusion or you're not sure that something needs to be done or if you think something needs to be clarified into a better state. For most of the time you will need to search for codebase and make a good clarification of what we should agree on before take off.
+## Quick Reference
 
-## Be sure to make our codebase clean always after you write and run the test files. Delete those test files also. For SQL scripts and all of the scripts that are unrelated to our project and it's not in use, you should check it every time after you've done the job.
+### Common File Locations
+- **Services**: `src/services/*.ts` - All business logic and Supabase interactions
+- **Types**: `src/types/*.ts` - TypeScript type definitions
+- **Dashboards**: `src/pages/*Dashboard/` - Role-specific dashboard components
+- **Contexts**: `src/contexts/*.tsx` - React Context providers for state
+- **Database Types**: `src/types/database.ts` - Auto-generated from Supabase schema
+
+### Environment Variables (`.env`)
+```bash
+VITE_SUPABASE_URL=https://wdpeoyugsxqnpwwtkqsl.supabase.co
+VITE_SUPABASE_ANON_KEY=<your-anon-key>
+```
+
+### Common Component Patterns
+
+**Loading data from Supabase:**
+```typescript
+import { supabase } from '@/services/supabase'
+
+const { data, error } = await supabase
+  .from('roleplay_tasks')
+  .select('*')
+  .eq('role_code', 'manager')
+  .order('sort_order')
+```
+
+**Using MUI Grid v2:**
+```typescript
+import Grid from '@mui/material/Grid'
+
+<Grid container spacing={2}>
+  <Grid size={{ xs: 12, md: 6 }}>Content</Grid>
+</Grid>
+```
+
+## Development Workflow Guidelines
+
+### Before Making Changes
+1. **Always ask for clarification** if requirements are ambiguous
+2. **Search the codebase** to understand existing patterns before implementing
+3. **Check database schema** to understand data relationships
+4. **Review related services** to avoid duplicating logic
+
+### After Making Changes
+1. **Delete test files** after verification
+2. **Remove unused SQL scripts** and temporary code
+3. **Update comments** with version numbers when modifying files
+4. **Verify no hardcoded values** - all config should come from database
+5. **Run linter** with `npm run lint` before committing
+
+### When Working with Database
+1. Always use `roleplay_` prefix when searching for tables
+2. Filter by `restaurant_id` for multi-restaurant queries
+3. Check for existing materialized views before writing complex queries
+4. Use Supabase MCP tools for quick database exploration
+
+## Important Reminders
+
+- Task approval: Only `duty_manager` role tasks need manager review; all others auto-approve
+- Time periods: Business hours are inferred from `roleplay_workflow_periods` table
+- Floating tasks: Can be submitted multiple times and don't count toward completion rate
+- Storage paths: Always use format `/{userId}/{date}/{taskId}/filename.ext`

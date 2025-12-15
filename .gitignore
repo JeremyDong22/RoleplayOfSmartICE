@@ -47,3 +47,6 @@ dist-ssr
 !.env.example
 node_modules
 worktrees/
+
+# MCP configuration with secrets
+.mcp.json
